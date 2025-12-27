@@ -1,0 +1,18 @@
+{
+  "name": "op3-root",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint"
+  },
+  "keywords": [],
+  "author": "apisurf.dev",
+  "license": "ISC",
+  "packageManager": "pnpm@10.25.0",
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  }
+}

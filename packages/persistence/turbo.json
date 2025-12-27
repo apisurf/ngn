@@ -1,0 +1,7 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": { "dependsOn": ["op3-os#build"] },
+    "dev": { "persistent": true, "cache": false }
+  }
+}
