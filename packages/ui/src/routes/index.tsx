@@ -28,7 +28,12 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Tooltip as UITooltip } from "@/components/ui/tooltip";
 import { formatDistanceToNow, format } from "date-fns";
 import { useState } from "react";
-import { LuActivity, LuFile, LuFolder, LuLayoutDashboard } from "react-icons/lu";
+import {
+  LuActivity,
+  LuFile,
+  LuFolder,
+  LuLayoutDashboard,
+} from "react-icons/lu";
 import {
   LineChart,
   Line,
@@ -138,6 +143,12 @@ function Dashboard() {
     nodeToString: (node) => node.name,
     rootNode: fileTasksTree,
   });
+
+  // Get top-level folder IDs to auto-expand
+  const topLevelFolderIds =
+    fileTasksTree.children
+      ?.filter((child) => child.children && child.children.length > 0)
+      .map((child) => child.id) || [];
 
   // Format numbers with k/m notation
   const formatNumber = (num: number): string => {
@@ -329,217 +340,256 @@ function Dashboard() {
       </CardLight>
 
       <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6} mt={6}>
+        {/* Left Column - File Tasks (full height) */}
         <GridItem>
-          <CardLight>
-            <HStack gap={3} mb={4}>
-              <Box p={2} borderRadius="lg" bg="green.500/15" color="green.400">
-                <LuFolder size={20} />
-              </Box>
-              <Box>
-                <Text fontSize="sm" fontWeight="medium" color="fg.emphasized">
-                  File Tasks
-                </Text>
-                <Text fontSize="xs" color="fg.muted">
-                  Browse registered task files
-                </Text>
-              </Box>
-            </HStack>
-            <TreeView.Root collection={fileTasksCollection}>
-              <Box maxH="280px" overflowY="auto">
-                <TreeView.Tree>
-                  <TreeView.Node
-                    indentGuide={<TreeView.BranchIndentGuide />}
-                    render={({ node, nodeState }) =>
-                      nodeState.isBranch ? (
-                        <TreeView.BranchControl cursor="pointer">
-                          <LuFolder />
-                          <TreeView.BranchText fontSize="md">
-                            {node.name}
-                          </TreeView.BranchText>
-                        </TreeView.BranchControl>
-                      ) : (
-                        <TreeView.Item
-                          cursor="pointer"
-                          onClick={() => {
-                            navigate({
-                              to: "/tasks/$taskId/details",
-                              params: { taskId: node._id.toString() },
-                            });
-                          }}
-                        >
-                          <LuFile size={20} />
-                          <TreeView.ItemText fontSize="md">
-                            {node.name}
-                          </TreeView.ItemText>
-                        </TreeView.Item>
-                      )
-                    }
-                  />
-                </TreeView.Tree>
-              </Box>
-            </TreeView.Root>
-          </CardLight>
+          <Flex h="full" direction="column">
+            <CardLight h="full" display="flex" flexDirection="column">
+              <HStack gap={3} mb={4}>
+                <Box
+                  p={2}
+                  borderRadius="lg"
+                  bg="green.500/15"
+                  color="green.400"
+                >
+                  <LuFolder size={20} />
+                </Box>
+                <Box>
+                  <Text fontSize="sm" fontWeight="medium" color="fg.emphasized">
+                    File Tasks
+                  </Text>
+                  <Text fontSize="xs" color="fg.muted">
+                    Browse registered task files
+                  </Text>
+                </Box>
+              </HStack>
+              <TreeView.Root
+                collection={fileTasksCollection}
+                defaultExpandedValue={topLevelFolderIds}
+              >
+                <Box flex={1} overflowY="auto">
+                  <TreeView.Tree>
+                    <TreeView.Node
+                      indentGuide={<TreeView.BranchIndentGuide />}
+                      render={({ node, nodeState }) =>
+                        nodeState.isBranch ? (
+                          <TreeView.BranchControl cursor="pointer">
+                            <LuFolder />
+                            <TreeView.BranchText fontSize="md">
+                              {node.name}
+                            </TreeView.BranchText>
+                          </TreeView.BranchControl>
+                        ) : (
+                          <TreeView.Item
+                            cursor="pointer"
+                            onClick={() => {
+                              navigate({
+                                to: "/tasks/$taskId/details",
+                                params: { taskId: node._id.toString() },
+                              });
+                            }}
+                          >
+                            <LuFile size={20} />
+                            <TreeView.ItemText fontSize="md">
+                              {node.name}
+                            </TreeView.ItemText>
+                          </TreeView.Item>
+                        )
+                      }
+                    />
+                  </TreeView.Tree>
+                </Box>
+              </TreeView.Root>
+            </CardLight>
+          </Flex>
         </GridItem>
 
+        {/* Right Column - Chart (top) + Recent Activity (bottom) */}
         <GridItem>
-          <CardLight>
-            <HStack gap={3} mb={4}>
-              <Box p={2} borderRadius="lg" bg="purple.500/15" color="purple.400">
-                <LuActivity size={20} />
-              </Box>
-              <Box>
-                <Text fontSize="sm" fontWeight="medium" color="fg.emphasized">
-                  Recent Activity
-                </Text>
-                <Text fontSize="xs" color="fg.muted">
-                  Latest task executions
-                </Text>
-              </Box>
-            </HStack>
-            <Stack gap={2} maxH="280px" overflowY="auto">
-              {activity.length === 0 ? (
-                <Text color="fg.muted" fontSize="sm">
-                  No recent activity
-                </Text>
-              ) : (
-                activity.map((item) => (
-                  <Link
-                    key={item.task_run_id}
-                    to="/runs/$runId/details"
-                    params={{ runId: item.task_run_id.toString() }}
+          <Stack gap={6} h="full">
+            {/* Chart Card */}
+            <CardLight>
+              <Flex justify="space-between" align="center" mb={4}>
+                <HStack gap={3}>
+                  <Box
+                    p={2}
+                    borderRadius="lg"
+                    bg="orange.500/15"
+                    color="orange.400"
                   >
-                    <Flex
-                      align="center"
-                      justify="space-between"
-                      px="4"
-                      py="2"
-                      borderRadius="md"
-                      borderWidth={1}
-                      borderStyle="solid"
-                      borderColor="border"
-                      transition="all 0.2s"
-                      _hover={{
-                        background: "bg.glowSubtle",
-                        borderColor: "border.glow",
-                      }}
-                      cursor="pointer"
+                    <LuActivity size={20} />
+                  </Box>
+                  <Box>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="medium"
+                      color="fg.emphasized"
                     >
-                      <HStack gap={4} justify="space-between" w="full">
-                        <HStack gap={2}>
-                          <TaskRunStatusBlip status={item.status} />
-                          <Text
-                            fontSize="sm"
-                            fontWeight="medium"
-                            fontFamily="mono"
-                          >
-                            {item.path}
-                          </Text>
-                        </HStack>
-                        <Text
-                          fontSize="xs"
-                          fontFamily="mono"
-                          color="fg.subtle"
-                          flexShrink={0}
+                      {chartConfig.title}
+                    </Text>
+                    <Text fontSize="xs" color="fg.muted">
+                      Task execution trends over time
+                    </Text>
+                  </Box>
+                </HStack>
+                <Select.Root
+                  collection={timeRangeOptions}
+                  size="sm"
+                  width="180px"
+                  value={[selectedRange]}
+                  onValueChange={handleRangeChange}
+                >
+                  <Select.HiddenSelect />
+                  <Select.Control>
+                    <Select.Trigger>
+                      <Select.ValueText placeholder="Select range" />
+                    </Select.Trigger>
+                    <Select.IndicatorGroup>
+                      <Select.Indicator />
+                    </Select.IndicatorGroup>
+                  </Select.Control>
+                  <Select.Positioner>
+                    <Select.Content>
+                      {timeRangeOptions.items.map((option) => (
+                        <Select.Item item={option} key={option.value}>
+                          {option.label}
+                          <Select.ItemIndicator />
+                        </Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select.Positioner>
+                </Select.Root>
+              </Flex>
+              <Box
+                opacity={isLoadingTrends ? 0.5 : 1}
+                transition="opacity 0.2s"
+              >
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis
+                      dataKey="time"
+                      stroke="#9ca3af"
+                      tick={{ fill: "#9ca3af" }}
+                    />
+                    <YAxis stroke="#9ca3af" tick={{ fill: "#9ca3af" }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "1px solid #374151",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "#fff" }}
+                    />
+                    <Legend wrapperStyle={{ color: "#9ca3af" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="Success"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Skipped"
+                      stroke="#6b7280"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Failed"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardLight>
+
+            {/* Recent Activity Card */}
+            <Box flex={1}>
+              <CardLight>
+                <HStack gap={3} mb={4}>
+                  <Box
+                    p={2}
+                    borderRadius="lg"
+                    bg="purple.500/15"
+                    color="purple.400"
+                  >
+                    <LuActivity size={20} />
+                  </Box>
+                  <Box>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="medium"
+                      color="fg.emphasized"
+                    >
+                      Recent Activity
+                    </Text>
+                    <Text fontSize="xs" color="fg.muted">
+                      Latest task executions
+                    </Text>
+                  </Box>
+                </HStack>
+                <Stack gap={2} maxH="220px" overflowY="auto">
+                  {activity.length === 0 ? (
+                    <Text color="fg.muted" fontSize="sm">
+                      No recent activity
+                    </Text>
+                  ) : (
+                    activity.map((item) => (
+                      <Link
+                        key={item.task_run_id}
+                        to="/runs/$runId/details"
+                        params={{ runId: item.task_run_id.toString() }}
+                      >
+                        <Flex
+                          align="center"
+                          justify="space-between"
+                          px="4"
+                          py="2"
+                          borderRadius="md"
+                          borderWidth={1}
+                          borderStyle="solid"
+                          borderColor="border"
+                          transition="all 0.2s"
+                          _hover={{
+                            background: "bg.glowSubtle",
+                            borderColor: "border.glow",
+                          }}
+                          cursor="pointer"
                         >
-                          {formatDistanceToNow(item.created_at)}
-                        </Text>
-                      </HStack>
-                    </Flex>
-                  </Link>
-                ))
-              )}
-            </Stack>
-          </CardLight>
+                          <HStack gap={4} justify="space-between" w="full">
+                            <HStack gap={2}>
+                              <TaskRunStatusBlip status={item.status} />
+                              <Text
+                                fontSize="sm"
+                                fontWeight="medium"
+                                fontFamily="mono"
+                              >
+                                {item.path}
+                              </Text>
+                            </HStack>
+                            <Text
+                              fontSize="xs"
+                              fontFamily="mono"
+                              color="fg.subtle"
+                              flexShrink={0}
+                            >
+                              {formatDistanceToNow(item.created_at)}
+                            </Text>
+                          </HStack>
+                        </Flex>
+                      </Link>
+                    ))
+                  )}
+                </Stack>
+              </CardLight>
+            </Box>
+          </Stack>
         </GridItem>
       </Grid>
-
-      <CardLight>
-        <Flex justify="space-between" align="center" mb={4}>
-          <HStack gap={3}>
-            <Box p={2} borderRadius="lg" bg="orange.500/15" color="orange.400">
-              <LuActivity size={20} />
-            </Box>
-            <Box>
-              <Text fontSize="sm" fontWeight="medium" color="fg.emphasized">
-                {chartConfig.title}
-              </Text>
-              <Text fontSize="xs" color="fg.muted">
-                Task execution trends over time
-              </Text>
-            </Box>
-          </HStack>
-          <Select.Root
-            collection={timeRangeOptions}
-            size="sm"
-            width="180px"
-            value={[selectedRange]}
-            onValueChange={handleRangeChange}
-          >
-            <Select.HiddenSelect />
-            <Select.Control>
-              <Select.Trigger>
-                <Select.ValueText placeholder="Select range" />
-              </Select.Trigger>
-              <Select.IndicatorGroup>
-                <Select.Indicator />
-              </Select.IndicatorGroup>
-            </Select.Control>
-            <Select.Positioner>
-              <Select.Content>
-                {timeRangeOptions.items.map((option) => (
-                  <Select.Item item={option} key={option.value}>
-                    {option.label}
-                    <Select.ItemIndicator />
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Positioner>
-          </Select.Root>
-        </Flex>
-        <Box opacity={isLoadingTrends ? 0.5 : 1} transition="opacity 0.2s">
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis
-                dataKey="time"
-                stroke="#9ca3af"
-                tick={{ fill: "#9ca3af" }}
-              />
-              <YAxis stroke="#9ca3af" tick={{ fill: "#9ca3af" }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1f2937",
-                  border: "1px solid #374151",
-                  borderRadius: "8px",
-                }}
-                labelStyle={{ color: "#fff" }}
-              />
-              <Legend wrapperStyle={{ color: "#9ca3af" }} />
-              <Line
-                type="monotone"
-                dataKey="Success"
-                stroke="#10b981"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="Skipped"
-                stroke="#6b7280"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="Failed"
-                stroke="#ef4444"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-      </CardLight>
     </PageLayout>
   );
 }

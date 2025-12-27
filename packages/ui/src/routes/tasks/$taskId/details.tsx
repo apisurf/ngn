@@ -24,6 +24,8 @@ import {
 } from "@chakra-ui/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { LuClock, LuFile, LuFileText, LuKey, LuLayers } from "react-icons/lu";
+import { format } from "date-fns";
+import { NotAvailableLabel } from "@/components/labels/notAvailableLabel";
 
 export const Route = createFileRoute("/tasks/$taskId/details")({
   component: RouteComponent,
@@ -109,11 +111,7 @@ function RouteComponent() {
       </CardLight>
 
       {/* Tabs Section */}
-      <Tabs.Root
-        defaultValue="runs"
-        variant="line"
-        colorPalette="blue"
-      >
+      <Tabs.Root defaultValue="runs" variant="line" colorPalette="blue">
         <Tabs.List
           bg="bg.panelLight"
           borderWidth={1}
@@ -233,23 +231,36 @@ function RouteComponent() {
                 css={{
                   "& tbody td": { borderColor: "rgba(255, 255, 255, 0.04)" },
                   "& tbody tr:last-child td": { borderBottom: "none" },
-                  "& th:first-child, & td:first-child": { paddingLeft: "var(--chakra-spacing-4)" },
-                  "& th:last-child, & td:last-child": { paddingRight: "var(--chakra-spacing-4)" },
+                  "& th:first-child, & td:first-child": {
+                    paddingLeft: "var(--chakra-spacing-4)",
+                  },
+                  "& th:last-child, & td:last-child": {
+                    paddingRight: "var(--chakra-spacing-4)",
+                  },
                 }}
               >
                 <Table.Header>
-                  <Table.Row bg="rgba(255, 255, 255, 0.02)" borderBottomWidth="1px" borderColor="rgba(255, 255, 255, 0.06)">
-                    <Table.ColumnHeader color="fg.muted">Version</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Status</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Started</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Ended</Table.ColumnHeader>
+                  <Table.Row
+                    bg="rgba(255, 255, 255, 0.02)"
+                    borderBottomWidth="1px"
+                    borderColor="rgba(255, 255, 255, 0.06)"
+                  >
+                    <Table.ColumnHeader color="fg.muted">
+                      Started
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Status
+                    </Table.ColumnHeader>
                     <Table.ColumnHeader
                       display="flex"
                       alignItems="center"
                       gap={1}
                       color="fg.muted"
                     >
-                      <LuClock size={16} /> Duration
+                      <LuClock size={12} /> Duration
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Version
                     </Table.ColumnHeader>
                   </Table.Row>
                 </Table.Header>
@@ -265,13 +276,24 @@ function RouteComponent() {
                       borderColor="rgba(255, 255, 255, 0.04)"
                       _hover={{ bg: "rgba(255, 255, 255, 0.04)" }}
                     >
-                      <Table.Cell>{run.task_version}</Table.Cell>
+                      <Table.Cell>
+                        {run.started_at ? (
+                          format(run.started_at, "PP pp")
+                        ) : (
+                          <NotAvailableLabel />
+                        )}
+                      </Table.Cell>
                       <Table.Cell>
                         <TaskRunStatusLabel status={run.run_status} />
                       </Table.Cell>
-                      <Table.Cell>{run.started_at}</Table.Cell>
-                      <Table.Cell>{run.ended_at}</Table.Cell>
-                      <Table.Cell>{run.run_duration}</Table.Cell>
+                      <Table.Cell>
+                        {run.run_duration ? (
+                          `${(run.run_duration / 1000).toFixed(2)}s`
+                        ) : (
+                          <NotAvailableLabel />
+                        )}
+                      </Table.Cell>
+                      <Table.Cell>{run.task_version}</Table.Cell>
                     </Table.Row>
                   ))}
                 </Table.Body>
@@ -283,7 +305,12 @@ function RouteComponent() {
         <Tabs.Content value="kv" pt={4}>
           <CardLight>
             <HStack gap={3} mb={4}>
-              <Box p={2} borderRadius="lg" bg="purple.500/15" color="purple.400">
+              <Box
+                p={2}
+                borderRadius="lg"
+                bg="purple.500/15"
+                color="purple.400"
+              >
                 <LuKey size={16} />
               </Box>
               <Box>
@@ -309,14 +336,26 @@ function RouteComponent() {
                 css={{
                   "& tbody td": { borderColor: "rgba(255, 255, 255, 0.04)" },
                   "& tbody tr:last-child td": { borderBottom: "none" },
-                  "& th:first-child, & td:first-child": { paddingLeft: "var(--chakra-spacing-4)" },
-                  "& th:last-child, & td:last-child": { paddingRight: "var(--chakra-spacing-4)" },
+                  "& th:first-child, & td:first-child": {
+                    paddingLeft: "var(--chakra-spacing-4)",
+                  },
+                  "& th:last-child, & td:last-child": {
+                    paddingRight: "var(--chakra-spacing-4)",
+                  },
                 }}
               >
                 <Table.Header>
-                  <Table.Row bg="rgba(255, 255, 255, 0.02)" borderBottomWidth="1px" borderColor="rgba(255, 255, 255, 0.06)">
-                    <Table.ColumnHeader color="fg.muted">Key</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Value</Table.ColumnHeader>
+                  <Table.Row
+                    bg="rgba(255, 255, 255, 0.02)"
+                    borderBottomWidth="1px"
+                    borderColor="rgba(255, 255, 255, 0.06)"
+                  >
+                    <Table.ColumnHeader color="fg.muted">
+                      Key
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Value
+                    </Table.ColumnHeader>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
@@ -341,7 +380,9 @@ function RouteComponent() {
                         </Badge>
                       </Table.Cell>
                       <Table.Cell>
-                        <Text fontFamily="mono" color="fg">{kv.value}</Text>
+                        <Text fontFamily="mono" color="fg">
+                          {kv.value}
+                        </Text>
                       </Table.Cell>
                     </Table.Row>
                   ))}
@@ -354,7 +395,12 @@ function RouteComponent() {
         <Tabs.Content value="logs" pt={4}>
           <CardLight>
             <HStack gap={3} mb={4}>
-              <Box p={2} borderRadius="lg" bg="orange.500/15" color="orange.400">
+              <Box
+                p={2}
+                borderRadius="lg"
+                bg="orange.500/15"
+                color="orange.400"
+              >
                 <LuFileText size={16} />
               </Box>
               <Box>
@@ -380,17 +426,35 @@ function RouteComponent() {
                 css={{
                   "& tbody td": { borderColor: "rgba(255, 255, 255, 0.04)" },
                   "& tbody tr:last-child td": { borderBottom: "none" },
-                  "& th:first-child, & td:first-child": { paddingLeft: "var(--chakra-spacing-4)" },
-                  "& th:last-child, & td:last-child": { paddingRight: "var(--chakra-spacing-4)" },
+                  "& th:first-child, & td:first-child": {
+                    paddingLeft: "var(--chakra-spacing-4)",
+                  },
+                  "& th:last-child, & td:last-child": {
+                    paddingRight: "var(--chakra-spacing-4)",
+                  },
                 }}
               >
                 <Table.Header>
-                  <Table.Row bg="rgba(255, 255, 255, 0.02)" borderBottomWidth="1px" borderColor="rgba(255, 255, 255, 0.06)">
-                    <Table.ColumnHeader color="fg.muted">Status</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Message</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">File Path</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Run ID</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Timestamp</Table.ColumnHeader>
+                  <Table.Row
+                    bg="rgba(255, 255, 255, 0.02)"
+                    borderBottomWidth="1px"
+                    borderColor="rgba(255, 255, 255, 0.06)"
+                  >
+                    <Table.ColumnHeader color="fg.muted">
+                      Status
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Message
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      File Path
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Run ID
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Timestamp
+                    </Table.ColumnHeader>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
@@ -468,12 +532,20 @@ function RouteComponent() {
                 css={{
                   "& tbody td": { borderColor: "rgba(255, 255, 255, 0.04)" },
                   "& tbody tr:last-child td": { borderBottom: "none" },
-                  "& th:first-child, & td:first-child": { paddingLeft: "var(--chakra-spacing-4)" },
-                  "& th:last-child, & td:last-child": { paddingRight: "var(--chakra-spacing-4)" },
+                  "& th:first-child, & td:first-child": {
+                    paddingLeft: "var(--chakra-spacing-4)",
+                  },
+                  "& th:last-child, & td:last-child": {
+                    paddingRight: "var(--chakra-spacing-4)",
+                  },
                 }}
               >
                 <Table.Header>
-                  <Table.Row bg="rgba(255, 255, 255, 0.02)" borderBottomWidth="1px" borderColor="rgba(255, 255, 255, 0.06)">
+                  <Table.Row
+                    bg="rgba(255, 255, 255, 0.02)"
+                    borderBottomWidth="1px"
+                    borderColor="rgba(255, 255, 255, 0.06)"
+                  >
                     <Table.ColumnHeader
                       textAlign="left"
                       fontWeight="medium"
@@ -514,9 +586,7 @@ function RouteComponent() {
                           {timing.label}
                         </Badge>
                       </Table.Cell>
-                      <Table.Cell fontFamily="mono">
-                        {timing.value}
-                      </Table.Cell>
+                      <Table.Cell fontFamily="mono">{timing.value}</Table.Cell>
                     </Table.Row>
                   ))}
                 </Table.Body>
@@ -554,14 +624,26 @@ function RouteComponent() {
                 css={{
                   "& tbody td": { borderColor: "rgba(255, 255, 255, 0.04)" },
                   "& tbody tr:last-child td": { borderBottom: "none" },
-                  "& th:first-child, & td:first-child": { paddingLeft: "var(--chakra-spacing-4)" },
-                  "& th:last-child, & td:last-child": { paddingRight: "var(--chakra-spacing-4)" },
+                  "& th:first-child, & td:first-child": {
+                    paddingLeft: "var(--chakra-spacing-4)",
+                  },
+                  "& th:last-child, & td:last-child": {
+                    paddingRight: "var(--chakra-spacing-4)",
+                  },
                 }}
               >
                 <Table.Header>
-                  <Table.Row bg="rgba(255, 255, 255, 0.02)" borderBottomWidth="1px" borderColor="rgba(255, 255, 255, 0.06)">
-                    <Table.ColumnHeader color="fg.muted">Version</Table.ColumnHeader>
-                    <Table.ColumnHeader color="fg.muted">Created at</Table.ColumnHeader>
+                  <Table.Row
+                    bg="rgba(255, 255, 255, 0.02)"
+                    borderBottomWidth="1px"
+                    borderColor="rgba(255, 255, 255, 0.06)"
+                  >
+                    <Table.ColumnHeader color="fg.muted">
+                      Version
+                    </Table.ColumnHeader>
+                    <Table.ColumnHeader color="fg.muted">
+                      Created at
+                    </Table.ColumnHeader>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
@@ -586,7 +668,9 @@ function RouteComponent() {
                         </Badge>
                       </Table.Cell>
                       <Table.Cell>
-                        <Text fontFamily="mono" color="fg.muted">{version.created_at}</Text>
+                        <Text fontFamily="mono" color="fg.muted">
+                          {version.created_at}
+                        </Text>
                       </Table.Cell>
                     </Table.Row>
                   ))}

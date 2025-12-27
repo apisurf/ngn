@@ -37,6 +37,7 @@ function RouteComponent() {
     "typescript"
   );
   const [output, setOutput] = useState<string>("");
+  const [isRunning, setIsRunning] = useState(false);
   const handleRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const handleEditorChange = (value: string | undefined) => {
@@ -46,6 +47,7 @@ function RouteComponent() {
   };
 
   const handleRun = async () => {
+    setIsRunning(true);
     setOutput("Running...");
     try {
       const result = await executeLiveTask({ code, language });
@@ -56,6 +58,8 @@ function RouteComponent() {
         explanation: "An error occurred while executing the live task.",
       };
       setOutput(JSON.stringify(response, null, 2));
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -134,6 +138,15 @@ declare module "@op3/cli" {
           </HStack>
 
           <HStack gap={2}>
+            <Button
+              onClick={handleRun}
+              color="fg.emphasized"
+              size="sm"
+              disabled={isRunning}
+            >
+              <LuPlay size={14} />
+              {isRunning ? "Running..." : "Run"}
+            </Button>
             <Button onClick={toggleLanguage} variant="outline" size="sm">
               {language === "typescript" ? "TypeScript" : "JavaScript"}
             </Button>
@@ -147,10 +160,6 @@ declare module "@op3/cli" {
               size="sm"
             >
               Reset
-            </Button>
-            <Button onClick={handleRun} colorPalette="blue" size="sm">
-              <LuPlay size={14} />
-              Run
             </Button>
           </HStack>
         </Flex>

@@ -1,6 +1,7 @@
 import { CardLight } from "@/components/cards/cardLight";
 import { PageHeader } from "@/components/headers/pageHeader";
 import { LogStatusLabel } from "@/components/labels/logStatusLabel";
+import { NotAvailableLabel } from "@/components/labels/notAvailableLabel";
 import { TaskRunStatusLabel } from "@/components/labels/taskRunStatusLabel";
 import { PageLayout } from "@/components/layout/pageLayout";
 import { LoaderOverlay } from "@/components/loaders/loaderOverlay";
@@ -344,19 +345,16 @@ function RouteComponent() {
                         File Path
                       </Table.ColumnHeader>
                       <Table.ColumnHeader color="fg.muted">
-                        Version
-                      </Table.ColumnHeader>
-                      <Table.ColumnHeader color="fg.muted">
                         Status
                       </Table.ColumnHeader>
                       <Table.ColumnHeader color="fg.muted">
                         Started
                       </Table.ColumnHeader>
                       <Table.ColumnHeader color="fg.muted">
-                        Ended
+                        Duration
                       </Table.ColumnHeader>
                       <Table.ColumnHeader color="fg.muted">
-                        Duration
+                        Version
                       </Table.ColumnHeader>
                     </Table.Row>
                   </Table.Header>
@@ -376,7 +374,6 @@ function RouteComponent() {
                         _hover={{ bg: "rgba(255, 255, 255, 0.04)" }}
                       >
                         <Table.Cell>{runDetails.path}</Table.Cell>
-                        <Table.Cell>{runDetails.version}</Table.Cell>
                         <Table.Cell>
                           <TaskRunStatusLabel status={runDetails.status} />
                         </Table.Cell>
@@ -385,10 +382,13 @@ function RouteComponent() {
                             format(runDetails.started_at, "PP pp")}
                         </Table.Cell>
                         <Table.Cell>
-                          {runDetails.ended_at &&
-                            format(runDetails.ended_at, "PP pp")}
+                          {runDetails.duration ? (
+                            `${(runDetails.duration / 1000).toFixed(2)}s`
+                          ) : (
+                            <NotAvailableLabel />
+                          )}
                         </Table.Cell>
-                        <Table.Cell>{runDetails.duration}</Table.Cell>
+                        <Table.Cell>{runDetails.version}</Table.Cell>
                       </Table.Row>
                     ))}
                   </Table.Body>
