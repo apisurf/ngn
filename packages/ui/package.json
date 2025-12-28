@@ -1,6 +1,5 @@
 {
   "name": "op3-ui",
-  "private": true,
   "type": "module",
   "version": "0.1.0",
   "scripts": {
@@ -51,5 +50,8 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
