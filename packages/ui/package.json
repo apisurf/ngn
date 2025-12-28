@@ -1,5 +1,6 @@
 {
   "name": "op3-ui",
+  "private": true,
   "type": "module",
   "version": "0.1.1",
   "scripts": {
