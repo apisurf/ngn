@@ -1,6 +1,6 @@
 {
   "name": "@op3/cli",
-  "version": "1.0.3",
+  "version": "0.1.0",
   "bin": {
     "op3": "dist/cli.js"
   },
@@ -35,11 +35,11 @@
   "devDependencies": {
     "@types/node": "^22.8.1",
     "@types/node-cron": "^3.0.11",
-    "op3-core": "workspace:^1.0.0",
-    "op3-api": "workspace:^1.0.0",
-    "op3-os": "workspace:^1.0.0",
-    "op3-persistence": "workspace:^1.0.0",
-    "op3-ui": "workspace:^1.0.0",
+    "op3-core": "workspace:*",
+    "op3-api": "workspace:*",
+    "op3-os": "workspace:*",
+    "op3-persistence": "workspace:*",
+    "op3-ui": "workspace:*",
     "typescript": "^5.7.2"
   },
   "exports": {

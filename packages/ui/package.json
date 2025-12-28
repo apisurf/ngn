@@ -2,7 +2,7 @@
   "name": "op3-ui",
   "private": true,
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "scripts": {
     "dev": "OP3_UI_PORT=3000 VITE_OP3_API_URL='http://localhost:8787/api' vite",
     "build": "vite build --base=/ui/ && tsc",
@@ -19,7 +19,7 @@
     "@emotion/react": "^11.14.0",
     "@faker-js/faker": "^9.6.0",
     "@monaco-editor/react": "^4.7.0",
-    "op3-schema": "workspace:1.0.0",
+    "op3-schema": "workspace:*",
     "@tanstack/match-sorter-utils": "^8.19.4",
     "@tanstack/react-query": "^5.66.5",
     "@tanstack/react-query-devtools": "^5.66.5",

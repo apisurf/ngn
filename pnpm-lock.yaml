@@ -24,7 +24,7 @@ importers:
         specifier: ^4.8.12
         version: 4.8.12
       op3-persistence:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../persistence
       tiny-invariant:
         specifier: ^1.3.3
@@ -86,19 +86,19 @@ importers:
         specifier: ^3.0.11
         version: 3.0.11
       op3-api:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../api
       op3-core:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../core
       op3-os:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../os
       op3-persistence:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../persistence
       op3-ui:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../ui
 
   packages/core:
@@ -110,13 +110,13 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       op3-os:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../os
       op3-persistence:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../persistence
       op3-schema:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../schema
       tiny-invariant:
         specifier: ^1.3.3
@@ -166,7 +166,7 @@ importers:
         specifier: ^0.14.0
         version: 0.14.0
       op3-os:
-        specifier: workspace:^1.0.0
+        specifier: workspace:*
         version: link:../os
       tiny-invariant:
         specifier: ^1.3.3
@@ -240,7 +240,7 @@ importers:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       op3-schema:
-        specifier: workspace:1.0.0
+        specifier: workspace:*
         version: link:../schema
       react:
         specifier: ^19.0.0
