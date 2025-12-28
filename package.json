@@ -7,9 +7,9 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
-    "changeset": "changeset",
-    "version": "changeset version",
-    "release": "pnpm build && pnpm --filter @op3/cli inject-deps && changeset publish"
+    "version:changeset": "changeset",
+    "version:bump": "changeset version",
+    "version:release": "pnpm build && pnpm --filter @op3/cli inject-deps && changeset publish"
   },
   "keywords": [],
   "author": "apisurf.dev",
