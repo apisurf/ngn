@@ -13,9 +13,9 @@ export const Route = createFileRoute("/live")({
 });
 
 const defaultTsCode = `// Write your TypeScript code here
-import { EntryContext } from "@op3/cli";
+import { TaskContext } from "@op3/cli";
 
-export const task = async (ctx: EntryContext) => {
+export const task = async (ctx: TaskContext) => {
   console.log("This is a console log from the live task!");
   const result = await fetch("https://example.com").then(res => res.text());
   return result;
@@ -67,24 +67,33 @@ function RouteComponent() {
   handleRunRef.current = handleRun;
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
-    // Add type definitions for EntryContext
+    // Add type definitions for TaskContext
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
       `
 declare module "@op3/cli" {
-  export interface EntryContext {
-    env: Record<string, string> | null;
+  export interface TaskContext {
+    /** Metadata about the task execution */
     meta: {
       fileTaskId: number;
       fileTaskVersionId: number;
     };
-    $: {
-      setItem(key: string, value: string): Promise<void>;
-      getItem(key: string): Promise<string | null>;
-      deleteItem(key: string): Promise<void>;
-      logInfo(value: string): Promise<void>;
-      logError(value: string): Promise<void>;
-      logWarning(value: string): Promise<void>;
-      startTimer(label: string): () => Promise<void>;
+    /** Environment variables passed to the task */
+    env: Record<string, string> | null;
+    /** Key-value store for task */
+    kv: {
+      set(key: string, value: string): Promise<void>;
+      get(key: string): Promise<string | null>;
+      delete(key: string): Promise<void>;
+    };
+    /** Logging functions for task */
+    log: {
+      info(value: string): Promise<void>;
+      error(value: string): Promise<void>;
+      warning(value: string): Promise<void>;
+    };
+    /** Timing functions for task */
+    timing: {
+      start(label: string): () => Promise<void>;
     };
   }
 }

@@ -6,4 +6,4 @@ export { TaskOnceRunner } from "./runtime/taskOnceRunner.js";
 export { setupDbClient, getDbClient } from "./db/db.js";
 export { initDbFileIfNotExists } from "./db/db.js";
 export { createControlsGenerator } from "./runtime/generateControls.js";
-export { EntryContext } from "./source/types.js";
+export { TaskContext } from "./source/types.js";

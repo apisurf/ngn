@@ -11,32 +11,35 @@ export type DbSourceParams = {
 };
 
 export type EntryParams = LiveSourceParams | DbSourceParams;
-
-export interface EntryContext {
-  env: Record<string, string> | null;
+export interface TaskContext {
   meta: {
     fileTaskId: number;
     fileTaskVersionId: number;
   };
-  $: {
-    setItem(key: string, value: string): Promise<void>;
-    getItem(key: string): Promise<string | null>;
-    deleteItem(key: string): Promise<void>;
-    logInfo(value: string): Promise<void>;
-    logError(value: string): Promise<void>;
-    logWarning(value: string): Promise<void>;
-    startTimer(label: string): () => Promise<void>;
+  env: Record<string, string> | null;
+  kv: {
+    set(key: string, value: string): Promise<void>;
+    get(key: string): Promise<string | null>;
+    delete(key: string): Promise<void>;
+  };
+  log: {
+    info(value: string): Promise<void>;
+    error(value: string): Promise<void>;
+    warning(value: string): Promise<void>;
+  };
+  timing: {
+    start(label: string): () => Promise<void>;
   };
 }
 
 export interface EntryExports {
   timing?: string;
-  task: (deps: EntryContext) => Promise<void>;
-  shouldSkip?: (deps: EntryContext) => Promise<boolean>;
-  shouldRetry?: (deps: EntryContext) => Promise<boolean>;
-  onSuccess?: (deps: EntryContext) => Promise<void>;
-  onError?: (err: Error, deps: EntryContext) => Promise<void>;
-  onComplete?: (deps: EntryContext) => Promise<void>;
+  task: (deps: TaskContext) => Promise<void>;
+  shouldSkip?: (deps: TaskContext) => Promise<boolean>;
+  shouldRetry?: (deps: TaskContext) => Promise<boolean>;
+  onSuccess?: (deps: TaskContext) => Promise<void>;
+  onError?: (err: Error, deps: TaskContext) => Promise<void>;
+  onComplete?: (deps: TaskContext) => Promise<void>;
 }
 
 export interface OnTaskCodeLoaded {

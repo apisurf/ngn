@@ -1,4 +1,4 @@
-import { EntryContext } from "../source/types.js";
+import { TaskContext } from "../source/types.js";
 
 export interface CompiledTaskCallbacks {
   onTaskLoadComplete?: ({
@@ -43,6 +43,8 @@ export type BuildCompiledTaskConfigFn = ({
   sourcePath: string;
   taskCallbacks: CompiledTaskCallbacks;
   runtimeCallbacks: TaskRuntimeCallbacks;
-  env: EntryContext["env"];
-  $: EntryContext["$"];
+  env: TaskContext["env"];
+  kv: TaskContext["kv"];
+  log: TaskContext["log"];
+  timing: TaskContext["timing"];
 };

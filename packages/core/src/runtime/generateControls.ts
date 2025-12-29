@@ -11,7 +11,7 @@ import {
   CompiledTaskCallbacks,
   TaskRuntimeCallbacks,
 } from "./types.js";
-import { EntryContext } from "../source/types.js";
+import { TaskContext } from "../source/types.js";
 import { registerFileTask } from "../db/services/registerTask.js";
 import { TaskRunService } from "../db/services/taskRun.js";
 import { LogService } from "../db/services/log.js";
@@ -24,7 +24,7 @@ export function createControlsGenerator({
   env,
 }: {
   dbClient: Client;
-  env: EntryContext["env"];
+  env: TaskContext["env"];
 }) {
   const taskRunService = new TaskRunService(dbClient);
   const logService = new LogService(dbClient);
@@ -121,32 +121,33 @@ export function createControlsGenerator({
       taskCallbacks: taskCallbacks,
       runtimeCallbacks: runtimeCallbacks,
       env,
-      $: {
-        // Logging
-        async logInfo(value) {
+      kv: {
+        async set(key: string, value: string) {
+          await kvService.setValue(fileTaskId, key, value);
+        },
+        async get(key: string) {
+          return kvService.getValue(fileTaskId, key);
+        },
+        async delete(key: string) {
+          await kvService.deleteValue(fileTaskId, key);
+        },
+      },
+      log: {
+        async info(value: string) {
           logTaskConsoleInfo(value);
           await logService.logInfo(fileTaskId, fileTaskRunId, value);
         },
-        async logError(value) {
+        async error(value: string) {
           logTaskConsoleError(value);
           await logService.logError(fileTaskId, fileTaskRunId, value);
         },
-        async logWarning(value) {
+        async warning(value: string) {
           logTaskConsoleWarn(value);
           await logService.logWarning(fileTaskId, fileTaskRunId, value);
         },
-        // KV
-        async setItem(key, value) {
-          await kvService.setValue(fileTaskId, key, value);
-        },
-        async getItem(key) {
-          return kvService.getValue(fileTaskId, key);
-        },
-        async deleteItem(key) {
-          await kvService.deleteValue(fileTaskId, key);
-        },
-        // Timing
-        startTimer(label) {
+      },
+      timing: {
+        start(label) {
           return timingService.start(fileTaskId, fileTaskRunId, label);
         },
       },

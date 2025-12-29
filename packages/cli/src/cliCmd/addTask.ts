@@ -15,43 +15,43 @@ const createInitialTask = async (initialTaskPath: string, cwd: string) => {
   }
 
   const _initialTaskContent = `
-import { EntryContext } from "@op3/cli";
+import { TaskContext } from "@op3/cli";
 
 // Run every 5 seconds
 export const timing = "*/5 * * * * *";
 
-export const task = async (ctx: EntryContext) => {
+export const task = async (ctx: TaskContext) => {
   console.log("Example task executed every 5 seconds. Time:", new Date().toISOString());
 };
 
 
 // Optional hooks
 
-// export const shouldSkip = async (ctx: EntryContext) => {
+// export const shouldSkip = async (ctx: TaskContext) => {
 //   return false; // Change to true to skip execution
 // };
 
-// export const onSuccess = async (ctx: EntryContext) => {
+// export const onSuccess = async (ctx: TaskContext) => {
 //   console.log("Task completed successfully");
 // };
 
-// export const onError = (error: Error, ctx: EntryContext) => {
+// export const onError = (error: Error, ctx: TaskContext) => {
 //   console.error("Task failed with error:", error);
 // };
 
-// export const onComplete = async (ctx: EntryContext) => {
+// export const onComplete = async (ctx: TaskContext) => {
 //   console.log("Task execution completed");
 // };
 `;
 
   const initialTaskContent = `
 // Write your TypeScript code here
-import { EntryContext } from "@op3/cli";
+import { TaskContext } from "@op3/cli";
 
 // Run every 5 seconds
 export const timing = "*/5 * * * * *";
 
-export const task = async (ctx: EntryContext) => {
+export const task = async (ctx: TaskContext) => {
   console.log("Test task");
 
   const result = await fetch("https://example.com").then(res => res.text());

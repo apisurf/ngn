@@ -4,16 +4,18 @@ import {
   TaskRuntimeCallbacks,
   BuildCompiledTaskConfigFn,
 } from "./types.js";
-import { EntryContext, EntryExports } from "../source/types.js";
+import { TaskContext, EntryExports } from "../source/types.js";
 import { Entry } from "../source/entry.js";
 import { EntryParams } from "../source/types.js";
 
 export class Task {
   private taskCallbacks: CompiledTaskCallbacks | undefined;
   private runtimeCallbacks: TaskRuntimeCallbacks | undefined;
-  private env: EntryContext["env"];
-  private $: EntryContext["$"];
-  private meta: EntryContext["meta"];
+  private env: TaskContext["env"];
+  private kv: TaskContext["kv"];
+  private log: TaskContext["log"];
+  private timing: TaskContext["timing"];
+  private meta: TaskContext["meta"];
   private entry: Entry | null = null;
   private entryExports: EntryExports | null = null;
 
@@ -30,18 +32,21 @@ export class Task {
       onTaskCodeLoaded: this.taskCallbacks?.onTaskCodeLoaded,
     });
 
-    const { taskCallbacks, runtimeCallbacks, env, $ } = buildConfigFn({
-      sourcePath: this.entry.paths.source,
-      compiledPath: this.entry.paths.compiled,
-    });
+    const { taskCallbacks, runtimeCallbacks, env, kv, log, timing } =
+      buildConfigFn({
+        sourcePath: this.entry.paths.source,
+        compiledPath: this.entry.paths.compiled,
+      });
     this.taskCallbacks = taskCallbacks;
     this.runtimeCallbacks = runtimeCallbacks;
-    this.env = env;
-    this.$ = $;
     this.meta = {
       fileTaskId: -1,
       fileTaskVersionId: -1,
     };
+    this.env = env;
+    this.kv = kv;
+    this.log = log;
+    this.timing = timing;
   }
 
   get sourcePath() {
@@ -136,13 +141,15 @@ export class Task {
       throw new Error("Task function not found");
     }
 
-    const entryContext: EntryContext = {
+    const taskContext: TaskContext = {
       env: this.env,
       meta: this.meta,
-      $: this.$,
+      kv: this.kv,
+      log: this.log,
+      timing: this.timing,
     };
 
-    if (await shouldSkip?.(entryContext)) {
+    if (await shouldSkip?.(taskContext)) {
       await this.runtimeCallbacks?.onSkip?.({
         path: this.entry.paths.relativeEntry,
       });
@@ -153,20 +160,20 @@ export class Task {
       await this.runtimeCallbacks?.onStart?.({
         path: this.entry.paths.relativeEntry,
       });
-      const taskReturnValue = await task(entryContext);
+      const taskReturnValue = await task(taskContext);
       await this.runtimeCallbacks?.onSuccess?.({
         path: this.entry.paths.relativeEntry,
       });
-      await onSuccess?.(entryContext);
+      await onSuccess?.(taskContext);
       return taskReturnValue;
     } catch (err) {
       await this.runtimeCallbacks?.onFailure?.({
         path: this.entry.paths.relativeEntry,
       });
-      await onError?.(err as Error, entryContext);
+      await onError?.(err as Error, taskContext);
       throw err;
     } finally {
-      await onComplete?.(entryContext);
+      await onComplete?.(taskContext);
     }
   }
 }
