@@ -11,10 +11,18 @@ const commonDefaultGlobals = {
 //   ...commonDefaultGlobals,
 // };
 
-const unrestrictedGlobals = {
-  ...global,
-  ...commonDefaultGlobals,
-};
+// Build globals by evaluating each property on globalThis (preserves correct `this` binding for getters)
+// createContext expects a plain object, so we need to convert the entries to an object
+const unrestrictedGlobals = Object.fromEntries([
+  // add common default globals
+  ...Object.entries(commonDefaultGlobals),
+  // add all properties from globalThis
+  // TODO: check if this can lead to the global namespace pollution(i.e. overriding existing properties)
+  ...Object.getOwnPropertyNames(globalThis).map((key) => [
+    key,
+    (globalThis as any)[key],
+  ]),
+]);
 
 // function executeInRestrictedContext(code: string, contextExtension?: any) {
 //   // last line of code is the return statement; used to collect module exports
