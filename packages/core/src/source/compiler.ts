@@ -1,5 +1,3 @@
-import { builtinModules } from "node:module";
-import { readFileSync } from "node:fs";
 import invariant from "tiny-invariant";
 import * as esbuild from "esbuild";
 
@@ -10,71 +8,74 @@ type CompilerOptions = {
   sourcemap?: boolean;
   /** Suppress output */
   silent?: boolean;
-  /** Path to package.json for resolving externals */
-  packageJsonPath?: string;
   /** Patterns to NOT externalize (will be bundled) */
   noExternal?: (string | RegExp)[];
 };
 
 export class Compiler {
   private options: CompilerOptions;
-  private externals: string[];
+  private externalizePlugin: esbuild.Plugin;
 
   constructor(options: CompilerOptions = {}) {
     this.options = {
       minify: options.minify ?? false,
       sourcemap: options.sourcemap ?? false,
       silent: options.silent ?? true,
-      packageJsonPath: options.packageJsonPath,
-      noExternal: options.noExternal ?? [/op3-(.*)/, /@op3\/(.*)/],
+      // bundle all op3 packages by default
+      noExternal: options.noExternal ?? [/^op3-(.*)/, /^@op3\/(.*)/],
     };
 
-    // Build externals list
-    this.externals = this.buildExternals();
+    // Create the externalize plugin
+    this.externalizePlugin = this.createExternalizePlugin();
   }
 
   /**
-   * Builds the list of externals to be used by esbuild.
-   * This is used in place of tsup which does this by default.
-   * Enables us to define external and internal dependencies that need to be bundled.
-   * @returns List of externals that should not be bundled by esbuild
+   * Creates an esbuild plugin that externalizes all bare package imports
+   * except for those matching the noExternal patterns.
+   * This approach automatically handles all dependencies (including transitive ones)
+   * without needing to maintain a list or read package.json.
+   *
+   * NOTE: There are esbuild config options that can be used to externalize dependencies
+   * but they are not as flexible as this plugin. This plugin is more flexible and
+   * can be used to externalize dependencies that are not in the package.json(alternative approach).
+   * Previous implementations used tsup which did this by default or used a list of
+   * dependencies to externalize. This approach externalizes everything dynamically.
+   * Problematic dependencies were: playwright, playwright-core, chromium-bidi, etc.
    */
-  private buildExternals(): string[] {
-    const externals: string[] = [];
+  private createExternalizePlugin(): esbuild.Plugin {
+    const noExternalPatterns = this.options.noExternal || [];
 
-    // Add Node.js built-in modules
-    externals.push(...builtinModules);
-    externals.push(...builtinModules.map((m) => `node:${m}`));
+    return {
+      name: "externalize-deps",
+      setup(build) {
+        // Match all bare imports (not starting with . or /)
+        // This catches: 'playwright', '@scope/package', 'chromium-bidi/lib/...'
+        build.onResolve({ filter: /^[^./]/ }, (args) => {
+          // Extract the package name from the import path
+          // '@scope/pkg/sub' -> '@scope/pkg', 'pkg/sub' -> 'pkg'
+          const parts = args.path.split("/");
+          const pkgName = args.path.startsWith("@")
+            ? `${parts[0]}/${parts[1]}`
+            : parts[0];
 
-    // Read package.json if path provided
-    if (this.options.packageJsonPath) {
-      try {
-        const pkg = JSON.parse(
-          readFileSync(this.options.packageJsonPath, "utf-8")
-        );
-        const deps = [
-          ...Object.keys(pkg.dependencies || {}),
-          ...Object.keys(pkg.peerDependencies || {}),
-        ];
-
-        // Filter out noExternal patterns
-        const noExternalPatterns = this.options.noExternal || [];
-        const filteredDeps = deps.filter((dep) => {
-          return !noExternalPatterns.some((pattern) => {
+          // Check if this package should be bundled (not externalized)
+          const shouldBundle = noExternalPatterns.some((pattern) => {
             if (typeof pattern === "string") {
-              return dep === pattern;
+              return pkgName === pattern || args.path === pattern;
             }
-            return pattern.test(dep);
+            return pattern.test(pkgName) || pattern.test(args.path);
           });
+
+          if (shouldBundle) {
+            // Let esbuild resolve and bundle it normally
+            return null;
+          }
+
+          // Mark as external - esbuild won't try to bundle it
+          return { path: args.path, external: true };
         });
-
-        externals.push(...filteredDeps);
-      } catch {
-        // Silently ignore if package.json can't be read
-      }
-    }
-
-    return externals;
+      },
+    };
   }
 
   /**
@@ -99,7 +100,7 @@ export class Compiler {
         target: "node20",
         minify: this.options.minify,
         sourcemap: this.options.sourcemap ? "inline" : false,
-        external: this.externals,
+        plugins: [this.externalizePlugin],
         logLevel: this.options.silent ? "silent" : "info",
       });
 
@@ -149,7 +150,7 @@ export class Compiler {
       target: "node20",
       minify: this.options.minify,
       sourcemap: this.options.sourcemap ? "inline" : false,
-      external: this.externals,
+      plugins: [this.externalizePlugin],
       logLevel: this.options.silent ? "silent" : "info",
     });
 
