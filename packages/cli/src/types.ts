@@ -1,13 +1,8 @@
 import { FsNodeFileDescriptor } from "op3-os";
 import { readEnv } from "./config";
+import type { ConfigFileOptions } from "./configSchema";
 
-export interface ConfigFileOptions {
-  $schema: string; // version of the config schema
-  dbPath: ":memory:" | `file:${string}`; // database file path
-  port: number; // port for the API server; 4545 by default
-  match: Array<string>; // glob patterns to match task files; ["tasks/**/*.ts"] by default
-  envFile: string; // path to the environment file; ".env" by default
-}
+export type { ConfigFileOptions };
 
 export interface CliOptions {
   rootDir: string;

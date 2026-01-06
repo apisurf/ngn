@@ -11,7 +11,6 @@ import {
 } from "op3-core";
 import { CliOptions } from "../types";
 import {
-  SCHEMA_URL,
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
   DEFAULT_ENV_FILE,
@@ -37,7 +36,6 @@ async function getSingleTaskConfig(
   return {
     rootDir: rootDir,
     configFileOptions: {
-      schema: SCHEMA_URL,
       match: [DEFAULT_MATCH_PATTERN],
       dbPath: DEFAULT_DB_PATH,
       port: DEFAULT_API_PORT,

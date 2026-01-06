@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   target: "node20",
-  entry: ["src/cli.ts"],
+  entry: ["src/cli.ts", "src/index.ts"],
   // noExternal: ["commander", "op3", "os"],
   // noExternal: [/op3-(.*)/, /@op3\/(.*)/],
   noExternal: [/op3-(.*)/],
@@ -11,4 +11,7 @@ export default defineConfig({
   sourcemap: false,
   minify: false,
   clean: true,
+  dts: {
+    entry: ["src/index.ts"],
+  },
 });
