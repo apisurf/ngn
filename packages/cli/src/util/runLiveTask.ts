@@ -14,7 +14,18 @@ import {
   getDbClient,
 } from "op3-core";
 import { readConfig } from "../config";
-import { OP3_CONFIG_FILENAME, DEFAULT_ENV_FILE } from "../constants";
+import { OP3_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
+import { existsSync } from "node:fs";
+
+function findConfigFile(rootDir: string): string | null {
+  for (const filename of OP3_CONFIG_FILENAMES) {
+    const configPath = join(rootDir, filename);
+    if (existsSync(configPath)) {
+      return configPath;
+    }
+  }
+  return null;
+}
 
 export const runLiveTask = async (options: {
   root: string;
@@ -34,7 +45,12 @@ export const runLiveTask = async (options: {
 
   try {
     // Read config for db path and env file
-    const configFilePath = join(rootDirAbs, OP3_CONFIG_FILENAME);
+    const configFilePath = findConfigFile(rootDirAbs);
+    if (!configFilePath) {
+      throw new Error(
+        `Config file not found. Expected one of: ${OP3_CONFIG_FILENAMES.join(", ")}`
+      );
+    }
     const config = await readConfig(configFilePath);
 
     await setupDbClient(config.dbPath);

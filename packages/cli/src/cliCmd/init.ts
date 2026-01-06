@@ -8,22 +8,37 @@ import {
   stripAbsBasePath,
 } from "op3-os";
 import { writeFileSync } from "node:fs";
-import { ConfigFileOptions } from "../types";
+import type { ConfigFileOptions } from "../configSchema";
 import {
-  SCHEMA_URL,
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
   DEFAULT_ENV_FILE,
   DEFAULT_TASKS_DIR,
   DEFAULT_MATCH_PATTERN,
+  OP3_CONFIG_FILENAME_TS,
 } from "../constants";
+
+const generateConfigFileContents = (options: ConfigFileOptions): string => {
+  const dbPathValue =
+    options.dbPath === ":memory:" ? '":memory:"' : `"${options.dbPath}"`;
+
+  return `import { defineConfig } from "@op3/cli";
+
+export default defineConfig({
+  dbPath: ${dbPathValue},
+  port: ${options.port},
+  match: ${JSON.stringify(options.match)},
+  envFile: "${options.envFile}",
+});
+`;
+};
 
 const createConfigFile = async (
   absConfigFilePath: string,
   cwd: string,
   normalizedOptions: ConfigFileOptions
 ) => {
-  const fileContents = JSON.stringify(normalizedOptions, null, 2);
+  const fileContents = generateConfigFileContents(normalizedOptions);
 
   if (await isFile(absConfigFilePath)) {
     console.log(
@@ -75,12 +90,11 @@ export const init = async (options: {
   envFile?: string;
 }) => {
   const cwd = getCwd(process.cwd(), options.root || process.cwd());
-  const configFilePath = options.configFile || "op3.config.json";
+  const configFilePath = options.configFile || OP3_CONFIG_FILENAME_TS;
   const absConfigFilePath = absOrJoinWithRoot(configFilePath, cwd);
   const normalizedOptions: ConfigFileOptions = {
-    $schema: SCHEMA_URL,
     dbPath: options.dbFile?.startsWith("file:")
-      ? `file:${absOrJoinWithRoot(options.dbFile, cwd)}`
+      ? (options.dbFile as `file:${string}`)
       : DEFAULT_DB_PATH,
     port: options.apiPort || DEFAULT_API_PORT,
     match: [options.match || DEFAULT_MATCH_PATTERN],
