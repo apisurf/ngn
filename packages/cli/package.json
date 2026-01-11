@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "bin": {
     "ngn": "dist/cli.js"
   },
@@ -21,6 +21,11 @@
     "typescript"
   ],
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apisurf/ngn.git",
+    "directory": "packages/cli"
+  },
   "dependencies": {
     "@hono/node-server": "^1.18.1",
     "@libsql/client": "^0.14.0",
@@ -60,6 +65,7 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

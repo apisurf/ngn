@@ -1,5 +1,13 @@
 # ngn-ui
 
+## 0.1.6
+
+### Patch Changes
+
+- Update
+- Updated dependencies
+  - ngn-schema@0.1.6
+
 ## 0.1.5
 
 ### Patch Changes

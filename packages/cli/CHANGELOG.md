@@ -1,5 +1,11 @@
 # @apisurf/ngn
 
+## 0.1.6
+
+### Patch Changes
+
+- Update
+
 ## 0.1.5
 
 ### Patch Changes
