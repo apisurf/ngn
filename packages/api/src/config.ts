@@ -1,4 +1,4 @@
-import { DbPath } from "op3-persistence";
+import { DbPath } from "ngn-persistence";
 import { join, isAbsolute } from "path";
 import { Options, ApiConfig } from "./types.js";
 

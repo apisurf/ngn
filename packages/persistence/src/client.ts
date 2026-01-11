@@ -1,4 +1,4 @@
-import { isFile } from "op3-os";
+import { isFile } from "ngn-os";
 import { type Client, type InValue, createClient } from "@libsql/client";
 import invariant from "tiny-invariant";
 import { migration } from "./migration.js";

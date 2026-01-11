@@ -1,6 +1,6 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import z from "zod";
-import { $kv } from "op3-schema";
+import { $kv } from "ngn-schema";
 
 type KV = z.infer<typeof $kv>;
 

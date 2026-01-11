@@ -1,6 +1,6 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import z from "zod";
-import { $taskRun } from "op3-schema";
+import { $taskRun } from "ngn-schema";
 
 type TaskRun = z.infer<typeof $taskRun>;
 

@@ -1,4 +1,4 @@
-import { FsNodeFileDescriptor } from "op3-os";
+import { FsNodeFileDescriptor } from "ngn-os";
 import { readEnv } from "./config";
 import type { ConfigFileOptions } from "./configSchema";
 

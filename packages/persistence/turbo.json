@@ -1,7 +1,7 @@
 {
   "extends": ["//"],
   "tasks": {
-    "build": { "dependsOn": ["op3-os#build"] },
+    "build": { "dependsOn": ["ngn-os#build"] },
     "dev": { "persistent": true, "cache": false }
   }
 }

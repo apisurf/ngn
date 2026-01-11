@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { get, getSearchQuery } from "../api";
-import { $fileTask, $log } from "op3-schema";
+import { $fileTask, $log } from "ngn-schema";
 
 const logsSchema = z.array(
   z.object({

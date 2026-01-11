@@ -21,8 +21,8 @@ export class Compiler {
       minify: options.minify ?? false,
       sourcemap: options.sourcemap ?? false,
       silent: options.silent ?? true,
-      // bundle all op3 packages by default
-      noExternal: options.noExternal ?? [/^op3-(.*)/, /^@op3\/(.*)/],
+      // bundle all ngn packages by default
+      noExternal: options.noExternal ?? [/^ngn-(.*)/, /^@apisurf\/(.*)/],
     };
 
     // Create the externalize plugin

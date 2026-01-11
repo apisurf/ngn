@@ -5,7 +5,7 @@ import {
   $log,
   $taskRun,
   $timing,
-} from "op3-schema";
+} from "ngn-schema";
 import { z } from "zod";
 import { get, getSearchQuery } from "../api";
 

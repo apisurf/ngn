@@ -8,16 +8,16 @@ import { compile } from "./cliCmd/compile";
 import { initDbFile } from "./cliCmd/initDbFile";
 import { addTask } from "./cliCmd/addTask";
 import { http } from "./cliCmd/http";
-import { TaskContext } from "op3-core";
+import { TaskContext } from "ngn-core";
 
 const DEBUG_MODE = Boolean(process.env.DEBUG);
 const program = new Command();
 
-program.name("cli").description("Run tasks using the op3 CLI").version("1.0.0");
+program.name("cli").description("Run tasks using the ngn CLI").version("1.0.0");
 
 program
   .command("init")
-  .description("Initialize the op3 CLI configuration")
+  .description("Initialize the ngn CLI configuration")
   .option("--dbFile <path>", "Database file path")
   .option("--apiPort <port>", "API port to run the server on")
   .option("--match <path>", "Task paths glob matching pattern")

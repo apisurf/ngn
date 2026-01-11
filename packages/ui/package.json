@@ -1,5 +1,5 @@
 {
-  "name": "op3-ui",
+  "name": "ngn-ui",
   "private": true,
   "type": "module",
   "version": "0.1.3",
@@ -19,7 +19,7 @@
     "@emotion/react": "^11.14.0",
     "@faker-js/faker": "^9.6.0",
     "@monaco-editor/react": "^4.7.0",
-    "op3-schema": "workspace:*",
+    "ngn-schema": "workspace:*",
     "@tanstack/match-sorter-utils": "^8.19.4",
     "@tanstack/react-query": "^5.66.5",
     "@tanstack/react-query-devtools": "^5.66.5",

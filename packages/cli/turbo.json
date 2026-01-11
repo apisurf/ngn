@@ -3,20 +3,20 @@
   "tasks": {
     "build": {
       "dependsOn": [
-        "op3-core#build",
-        "op3-api#build",
-        "op3-os#build",
-        "op3-persistence#build",
-        "op3-ui#build"
+        "ngn-core#build",
+        "ngn-api#build",
+        "ngn-os#build",
+        "ngn-persistence#build",
+        "ngn-ui#build"
       ],
       "outputs": ["dist/**"]
     },
     "dev": {
       "dependsOn": [
-        "op3-core#build",
-        "op3-api#build",
-        "op3-os#build",
-        "op3-persistence#build"
+        "ngn-core#build",
+        "ngn-api#build",
+        "ngn-os#build",
+        "ngn-persistence#build"
       ],
       "persistent": true,
       "cache": false

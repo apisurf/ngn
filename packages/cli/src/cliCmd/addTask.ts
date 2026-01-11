@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { isFile, getCwd, stripAbsBasePath } from "op3-os";
+import { isFile, getCwd, stripAbsBasePath } from "ngn-os";
 import { writeFileSync } from "node:fs";
 const DEFAULT_TASKS_DIR = "tasks";
 
@@ -15,7 +15,7 @@ const createInitialTask = async (initialTaskPath: string, cwd: string) => {
   }
 
   const _initialTaskContent = `
-import { TaskContext } from "@op3/cli";
+import { TaskContext } from "@apisurf/ngn";
 
 // Run every 5 seconds
 export const timing = "*/5 * * * * *";
@@ -46,7 +46,7 @@ export const task = async (ctx: TaskContext) => {
 
   const initialTaskContent = `
 // Write your TypeScript code here
-import { TaskContext } from "@op3/cli";
+import { TaskContext } from "@apisurf/ngn";
 
 // Run every 5 seconds
 export const timing = "*/5 * * * * *";
@@ -74,5 +74,5 @@ export const addTask = async (
   const initialTaskPath = join(cwd, DEFAULT_TASKS_DIR, filePath);
 
   await createInitialTask(initialTaskPath, cwd);
-  console.log(`Initialized!\n\nRun 'op3 run' to start tasks.`);
+  console.log(`Initialized!\n\nRun 'ngn run' to start tasks.`);
 };

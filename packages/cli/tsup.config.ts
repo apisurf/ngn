@@ -3,9 +3,9 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   target: "node20",
   entry: ["src/cli.ts", "src/index.ts"],
-  // noExternal: ["commander", "op3", "os"],
-  // noExternal: [/op3-(.*)/, /@op3\/(.*)/],
-  noExternal: [/op3-(.*)/],
+  // noExternal: ["commander", "ngn", "os"],
+  // noExternal: [/ngn-(.*)/, /@apisurf\/(.*)/],
+  noExternal: [/ngn-(.*)/],
   external: ["esbuild"], // esbuild uses require.resolve() internally and must stay external
   splitting: false,
   sourcemap: false,

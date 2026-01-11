@@ -4,8 +4,8 @@ import {
   readEnv as readEnvFile,
   createFileDescriptor,
   FsNodeFileDescriptor,
-} from "op3-os";
-import { Compiler } from "op3-core";
+} from "ngn-os";
+import { Compiler } from "ngn-core";
 import { ZodError } from "zod";
 import { configSchema, ConfigFileOptions } from "./configSchema";
 import { CliOptions } from "./types";
@@ -90,7 +90,7 @@ export async function getRunConfig(
 
   if (!configFilePath) {
     console.error(
-      `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${OP3_CONFIG_FILENAMES.join(", ")}\n\nRun \`op3 init\` to generate a config file.\n`
+      `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${OP3_CONFIG_FILENAMES.join(", ")}\n\nRun \`ngn init\` to generate a config file.\n`
     );
     process.exit(1);
   }

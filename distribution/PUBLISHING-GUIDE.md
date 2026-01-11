@@ -1,10 +1,10 @@
 # CLI publishing Guide
 
-Publishing the op3 CLI package to npm.
+Publishing the ngn CLI package to npm.
 
 ## Publishing CLI Only
 
-This section covers publishing only the `@op3/cli` package with bundled dependencies.
+This section covers publishing only the `@apisurf/ngn` package with bundled dependencies.
 
 ### Quick Publish Commands
 
@@ -29,15 +29,15 @@ pnpm inject-deps                 # scan workspace modules deps and inject to the
 ```bash
 cd packages/cli
 npm pack
-npm install -g ./op3-cli-1.0.0.tgz
-op3 --version
-op3 --help
+npm install -g ./apisurf-ngn-1.0.0.tgz
+ngn --version
+ngn --help
 ```
 
 3. Test all commands:
 
-- `op3 init`
-- `op3 run ./tasks`
+- `ngn init`
+- `ngn run ./tasks`
 - ...
 
 ### 2. Verify Package Contents
@@ -138,10 +138,10 @@ After publishing, verify:
 - Package appears on npmjs.com with correct version
 - Package page shows correct description and metadata
 - Files tab shows expected files (dist/, not src/)
-- `npm install -g @op3/cli` works
-- `npx @op3/cli` works
-- `op3 --version` shows correct version
-- `op3 --help` displays help
+- `npm install -g @apisurf/ngn` works
+- `npx @apisurf/ngn` works
+- `ngn --version` shows correct version
+- `ngn --help` displays help
 - All commands work: `init`, `run`, `once`, etc.
 - Git is tagged with release version
 - GitHub release created with changelog

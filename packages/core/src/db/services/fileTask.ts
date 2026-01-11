@@ -1,6 +1,6 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import z from "zod";
-import { $fileTask, $fileTaskInsert } from "op3-schema";
+import { $fileTask, $fileTaskInsert } from "ngn-schema";
 
 type FileTask = z.infer<typeof $fileTask>;
 type FileTaskInsert = z.infer<typeof $fileTaskInsert>;

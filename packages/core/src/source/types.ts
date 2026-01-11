@@ -1,4 +1,4 @@
-import { FsNodeFileDescriptor } from "op3-os";
+import { FsNodeFileDescriptor } from "ngn-os";
 
 export type LiveSourceParams = {
   livePath: `live:${string}`;

@@ -3,9 +3,9 @@ import {
   logTaskConsoleError,
   logTaskConsoleInfo,
   logTaskConsoleWarn,
-} from "op3-os";
+} from "ngn-os";
 import invariant from "tiny-invariant";
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import {
   BuildCompiledTaskConfigFn,
   CompiledTaskCallbacks,

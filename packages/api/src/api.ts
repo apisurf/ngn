@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import { getDbClient } from "~/lib/db.js";
 import { createRouter as createDashboardRouter } from "./routers/dashboard.js";
 import { createRouter as createFileTasksRouter } from "./routers/fileTasks.js";

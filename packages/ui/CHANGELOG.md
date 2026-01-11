@@ -1,4 +1,4 @@
-# op3-ui
+# ngn-ui
 
 ## 0.1.3
 
@@ -6,7 +6,7 @@
 
 - Task dependencies structure change
 - Updated dependencies
-  - op3-schema@0.1.3
+  - ngn-schema@0.1.3
 
 ## 0.1.2
 
@@ -14,7 +14,7 @@
 
 - Fix globally exposed Node APIs
 - Updated dependencies
-  - op3-schema@0.1.2
+  - ngn-schema@0.1.2
 
 ## 0.1.1
 
@@ -22,4 +22,4 @@
 
 - Initial changeset
 - Updated dependencies
-  - op3-schema@0.1.1
+  - ngn-schema@0.1.1

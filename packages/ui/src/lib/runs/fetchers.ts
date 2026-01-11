@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { get, getSearchQuery } from "../api";
-import { $fileTask, $taskRun } from "op3-schema";
+import { $fileTask, $taskRun } from "ngn-schema";
 
 const runsSchema = z.array(
   z.object({

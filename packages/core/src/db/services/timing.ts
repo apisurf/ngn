@@ -1,4 +1,4 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 
 export class TimingService {
   constructor(private db: Client) {}

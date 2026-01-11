@@ -1,4 +1,4 @@
-# op3-api
+# ngn-api
 
 ## 0.1.3
 
@@ -6,7 +6,7 @@
 
 - Task dependencies structure change
 - Updated dependencies
-  - op3-persistence@0.1.3
+  - ngn-persistence@0.1.3
 
 ## 0.1.2
 
@@ -14,7 +14,7 @@
 
 - Fix globally exposed Node APIs
 - Updated dependencies
-  - op3-persistence@0.1.2
+  - ngn-persistence@0.1.2
 
 ## 0.1.1
 
@@ -22,4 +22,4 @@
 
 - Initial changeset
 - Updated dependencies
-  - op3-persistence@0.1.1
+  - ngn-persistence@0.1.1

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import { responder } from "~/lib/api.js";
 import { stripUndefinedArgs } from "~/lib/db.js";
 

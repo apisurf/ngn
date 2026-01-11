@@ -1,14 +1,14 @@
 import { isAbsolute } from "node:path";
 import { validate, schedule, ScheduledTask } from "node-cron";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm, createFileDescriptor } from "op3-os";
+import { handleSigInt, handleSigTerm, createFileDescriptor } from "ngn-os";
 import {
   Compiler,
   Task,
   createControlsGenerator,
   setupDbClient,
   getDbClient,
-} from "op3-core";
+} from "ngn-core";
 import { CliOptions } from "../types";
 import {
   DEFAULT_DB_PATH,

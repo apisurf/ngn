@@ -3,7 +3,7 @@ import {
   safeInitDbClient,
   initDbFileIfNotExists,
   isDbPath,
-} from "op3-persistence";
+} from "ngn-persistence";
 import invariant from "tiny-invariant";
 
 let db: Client;

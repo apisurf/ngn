@@ -6,7 +6,7 @@ import {
   absOrJoinWithRoot,
   getCwd,
   stripAbsBasePath,
-} from "op3-os";
+} from "ngn-os";
 import { writeFileSync } from "node:fs";
 import type { ConfigFileOptions } from "../configSchema";
 import {
@@ -22,7 +22,7 @@ const generateConfigFileContents = (options: ConfigFileOptions): string => {
   const dbPathValue =
     options.dbPath === ":memory:" ? '":memory:"' : `"${options.dbPath}"`;
 
-  return `import { defineConfig } from "@op3/cli";
+  return `import { defineConfig } from "@apisurf/ngn";
 
 export default defineConfig({
   dbPath: ${dbPathValue},
@@ -103,5 +103,5 @@ export const init = async (options: {
 
   await createConfigFile(absConfigFilePath, cwd, normalizedOptions);
   await createTasksDir(cwd);
-  console.log(`Initialized!\n\nRun 'op3 add task.ts' to add your first task.`);
+  console.log(`Initialized!\n\nRun 'ngn add task.ts' to add your first task.`);
 };

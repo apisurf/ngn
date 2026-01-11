@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["op3-persistence#build"],
+      "dependsOn": ["ngn-persistence#build"],
       "outputs": ["dist/**"]
     },
     "dev": {

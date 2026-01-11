@@ -1,13 +1,13 @@
 import { isAbsolute } from "node:path";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm } from "op3-os";
+import { handleSigInt, handleSigTerm } from "ngn-os";
 import {
   Compiler,
   Task,
   createControlsGenerator,
   setupDbClient,
   getDbClient,
-} from "op3-core";
+} from "ngn-core";
 import { getRunConfig } from "../config";
 
 export const runOnce = async (filePath: string, options: { root?: string }) => {

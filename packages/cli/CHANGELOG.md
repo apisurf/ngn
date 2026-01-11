@@ -1,4 +1,4 @@
-# @op3/cli
+# @apisurf/ngn
 
 ## 0.1.3
 

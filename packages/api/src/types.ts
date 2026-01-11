@@ -1,4 +1,4 @@
-import { Client, DbPath } from "op3-persistence";
+import { Client, DbPath } from "ngn-persistence";
 
 export type Options =
   | {

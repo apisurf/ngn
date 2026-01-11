@@ -1,4 +1,4 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import { FileTaskService } from "./fileTask.js";
 import { FileTaskVersionService } from "./fileTaskVersion.js";
 

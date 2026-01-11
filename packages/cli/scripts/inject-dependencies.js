@@ -4,7 +4,7 @@
  * This script collects dependencies from workspace packages and injects them
  * into the CLI package.json for npm distribution.
  *
- * Workspace dependencies (op3-*) are not available on npm, so we need to
+ * Workspace dependencies (ngn-*) are not available on npm, so we need to
  * flatten all their dependencies into the main CLI package.
  */
 
@@ -15,13 +15,13 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../..");
 const CLI_PACKAGE_JSON_PATH = path.join(__dirname, "../package.json");
 
 // Workspace packages that need their dependencies extracted
-// Note: op3-ui is excluded because it's pre-built and copied as static files
+// Note: ngn-ui is excluded because it's pre-built and copied as static files
 const WORKSPACE_PACKAGES = [
-  "op3-core",
-  "op3-api",
-  "op3-os",
-  "op3-persistence",
-  "op3-schema",
+  "ngn-core",
+  "ngn-api",
+  "ngn-os",
+  "ngn-persistence",
+  "ngn-schema",
 ];
 
 /**
@@ -31,7 +31,7 @@ function readPackageJson(packageName) {
   const packagePath = path.join(
     WORKSPACE_ROOT,
     "packages",
-    packageName.replace("op3-", ""),
+    packageName.replace("ngn-", ""),
     "package.json"
   );
   try {

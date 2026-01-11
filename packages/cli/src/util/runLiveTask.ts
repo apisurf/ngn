@@ -5,14 +5,14 @@ import {
   handleSigTerm,
   createFileDescriptor,
   readEnv,
-} from "op3-os";
+} from "ngn-os";
 import {
   Compiler,
   Task,
   createControlsGenerator,
   setupDbClient,
   getDbClient,
-} from "op3-core";
+} from "ngn-core";
 import { readConfig } from "../config";
 import { OP3_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
 import { existsSync } from "node:fs";

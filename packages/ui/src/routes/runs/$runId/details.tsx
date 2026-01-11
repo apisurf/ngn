@@ -14,7 +14,7 @@ import {
 } from "@chakra-ui/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { LuClock, LuFileText, LuPlay } from "react-icons/lu";
-import { $taskRun, $log } from "op3-schema";
+import { $taskRun, $log } from "ngn-schema";
 import { z } from "zod";
 import { TaskRunStatusLabel } from "@/components/labels/taskRunStatusLabel";
 import { LogStatusLabel } from "@/components/labels/logStatusLabel";

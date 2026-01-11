@@ -13,7 +13,7 @@ export const Route = createFileRoute("/live")({
 });
 
 const defaultTsCode = `// Write your TypeScript code here
-import { TaskContext } from "@op3/cli";
+import { TaskContext } from "@apisurf/ngn";
 
 export const task = async (ctx: TaskContext) => {
   console.log("This is a console log from the live task!");
@@ -70,7 +70,7 @@ function RouteComponent() {
     // Add type definitions for TaskContext
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
       `
-declare module "@op3/cli" {
+declare module "@apisurf/ngn" {
   export interface TaskContext {
     /** Metadata about the task execution */
     meta: {
@@ -98,7 +98,7 @@ declare module "@op3/cli" {
   }
 }
       `,
-      "@op3/cli"
+      "@apisurf/ngn"
     );
 
     // Add CMD+ENTER (or CTRL+ENTER on Windows/Linux) keyboard shortcut

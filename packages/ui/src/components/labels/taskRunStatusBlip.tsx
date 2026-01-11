@@ -1,5 +1,5 @@
 import { Box } from "@chakra-ui/react";
-import { $taskRun } from "op3-schema";
+import { $taskRun } from "ngn-schema";
 import { z } from "zod";
 import { NotAvailableLabel } from "./notAvailableLabel";
 

@@ -1,4 +1,4 @@
-import { $fileTask } from "op3-schema";
+import { $fileTask } from "ngn-schema";
 import { Box } from "@chakra-ui/react";
 import { z } from "zod";
 

@@ -1,4 +1,4 @@
-import { $taskRun } from "op3-schema";
+import { $taskRun } from "ngn-schema";
 import { Box } from "@chakra-ui/react";
 import { z } from "zod";
 import { NotAvailableLabel } from "./notAvailableLabel";

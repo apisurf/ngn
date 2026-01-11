@@ -1,4 +1,4 @@
-# op3 task scheduler
+# ngn task scheduler
 
 CLI scheduler for Node tasks.
 Automate, monitor and orchestrate Javascript and Typescript tasks by single CLI command.
@@ -8,23 +8,23 @@ Automate, monitor and orchestrate Javascript and Typescript tasks by single CLI 
 Global installation
 
 ```bash
-npm install -g @op3/cli
-op3 <command>
+npm install -g @apisurf/ngn
+ngn <command>
 ```
 
 Or use without installing
 
 ```bash
-npx @op3/cli <command>
+npx @apisurf/ngn <command>
 ```
 
 Cheat sheet:
 
 ```bash
-op3 --version # check current version
-op3 init # initialize op3 inside current folder
-op3 add test.ts # add a task file
-op3 run # start running all tasks
-op3 run test.ts # start running tasks by glob match
-op3 once test.ts # run once by glob match
+ngn --version # check current version
+ngn init # initialize ngn inside current folder
+ngn add test.ts # add a task file
+ngn run # start running all tasks
+ngn run test.ts # start running tasks by glob match
+ngn once test.ts # run once by glob match
 ```

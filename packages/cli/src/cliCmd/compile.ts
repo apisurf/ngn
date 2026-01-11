@@ -1,4 +1,4 @@
-import { Compiler } from "op3-core";
+import { Compiler } from "ngn-core";
 import { getRunConfig } from "../config";
 import { isAbsolute } from "node:path";
 

@@ -1,5 +1,5 @@
 {
-  "name": "op3-root",
+  "name": "ngn-root",
   "version": "0.1.0",
   "description": "",
   "private": true,
@@ -9,12 +9,12 @@
     "lint": "turbo run lint",
     "version:changeset": "changeset",
     "version:bump": "changeset version",
-    "version:release": "pnpm build && pnpm --filter @op3/cli inject-deps && changeset publish"
+    "version:release": "pnpm build && pnpm --filter @apisurf/ngn inject-deps && changeset publish"
   },
   "keywords": [],
   "author": "apisurf.dev",
   "license": "ISC",
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@10.28.0",
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
     "turbo": "^2.5.6"

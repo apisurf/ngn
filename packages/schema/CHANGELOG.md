@@ -1,4 +1,4 @@
-# op3-schema
+# ngn-schema
 
 ## 0.1.3
 

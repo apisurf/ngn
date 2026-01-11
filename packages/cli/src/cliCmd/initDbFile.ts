@@ -1,6 +1,6 @@
 import invariant from "tiny-invariant";
-import { DbPath } from "op3-persistence";
-import { initDbFileIfNotExists } from "op3-core";
+import { DbPath } from "ngn-persistence";
+import { initDbFileIfNotExists } from "ngn-core";
 
 export const initDbFile = async (dbPath: DbPath) => {
   invariant(dbPath, "dbPath is required");

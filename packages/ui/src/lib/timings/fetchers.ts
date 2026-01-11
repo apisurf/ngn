@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { get, getSearchQuery } from "../api";
-import { $fileTask, $timing } from "op3-schema";
+import { $fileTask, $timing } from "ngn-schema";
 
 const timingsSchema = z.array(
   z.object({

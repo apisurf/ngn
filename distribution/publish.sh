@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# OP3 Publishing Script
+# NGN Publishing Script
 # This script publishes all packages in the correct order
 
 set -e  # Exit on any error
 
-echo "🚀 Starting OP3 package publishing process..."
+echo "🚀 Starting NGN package publishing process..."
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -43,24 +43,24 @@ pnpm build
 
 # Publish packages in dependency order
 # 1. Packages with no internal dependencies
-publish_package "op3-schema" "$REPO_ROOT/packages/schema"
-publish_package "op3-os" "$REPO_ROOT/packages/os"
+publish_package "ngn-schema" "$REPO_ROOT/packages/schema"
+publish_package "ngn-os" "$REPO_ROOT/packages/os"
 
 # 2. Packages depending on os
-publish_package "op3-persistence" "$REPO_ROOT/packages/persistence"
+publish_package "ngn-persistence" "$REPO_ROOT/packages/persistence"
 
 # 3. Packages depending on persistence
-publish_package "op3-api" "$REPO_ROOT/packages/api"
+publish_package "ngn-api" "$REPO_ROOT/packages/api"
 
 # 4. Core package (depends on os, persistence, schema)
-publish_package "op3-core" "$REPO_ROOT/packages/core"
+publish_package "ngn-core" "$REPO_ROOT/packages/core"
 
 # 5. CLI package (depends on everything)
-publish_package "@op3/cli" "$REPO_ROOT/packages/cli"
+publish_package "@apisurf/ngn" "$REPO_ROOT/packages/cli"
 
 echo -e "\n${GREEN}🎉 All packages published successfully!${NC}"
 echo -e "\n${BLUE}You can now install with:${NC}"
-echo -e "  npm install -g @op3/cli"
+echo -e "  npm install -g @apisurf/ngn"
 echo -e "  or"
-echo -e "  npx @op3/cli"
+echo -e "  npx @apisurf/ngn"
 

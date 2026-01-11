@@ -1,7 +1,7 @@
 import { LuClock, LuInfo, LuX } from "react-icons/lu";
 import { Badge } from "@chakra-ui/react";
 import { z } from "zod";
-import { $log } from "op3-schema";
+import { $log } from "ngn-schema";
 import { NotAvailableLabel } from "./notAvailableLabel";
 
 type LogStatus = z.infer<typeof $log>["status"];

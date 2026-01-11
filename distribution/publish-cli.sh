@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simple OP3 CLI Publishing Script
+# Simple NGN CLI Publishing Script
 # Since CLI bundles all dependencies, we only need to publish this one package
 
 set -e  # Exit on any error
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Publishing @op3/cli...${NC}\n"
+echo -e "${BLUE}🚀 Publishing @apisurf/ngn...${NC}\n"
 
 # Ensure we're in the repo root (navigate up from distribution folder)
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,7 +38,7 @@ cd packages/cli
 npm pack --dry-run
 
 # Ask for confirmation
-echo -e "\n${YELLOW}Ready to publish @op3/cli@${CURRENT_VERSION}${NC}"
+echo -e "\n${YELLOW}Ready to publish @apisurf/ngn@${CURRENT_VERSION}${NC}"
 read -p "Continue? (y/N): " -n 1 -r
 echo
 
@@ -51,11 +51,11 @@ fi
 echo -e "\n${BLUE}📤 Publishing to npm...${NC}"
 npm publish
 
-echo -e "\n${GREEN}✅ Successfully published @op3/cli@${CURRENT_VERSION}!${NC}"
+echo -e "\n${GREEN}✅ Successfully published @apisurf/ngn@${CURRENT_VERSION}!${NC}"
 echo -e "\n${BLUE}Installation:${NC}"
-echo -e "  npm install -g @op3/cli"
+echo -e "  npm install -g @apisurf/ngn"
 echo -e "\n${BLUE}Or use without installing:${NC}"
-echo -e "  npx @op3/cli"
+echo -e "  npx @apisurf/ngn"
 echo -e "\n${BLUE}Verify on npm:${NC}"
-echo -e "  https://www.npmjs.com/package/@op3/cli"
+echo -e "  https://www.npmjs.com/package/@apisurf/ngn"
 

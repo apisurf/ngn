@@ -4,13 +4,13 @@
   "commit": false,
   "fixed": [
     [
-      "@op3/cli",
-      "op3-core",
-      "op3-api",
-      "op3-os",
-      "op3-persistence",
-      "op3-schema",
-      "op3-ui"
+      "@apisurf/ngn",
+      "ngn-core",
+      "ngn-api",
+      "ngn-os",
+      "ngn-persistence",
+      "ngn-schema",
+      "ngn-ui"
     ]
   ],
   "linked": [],

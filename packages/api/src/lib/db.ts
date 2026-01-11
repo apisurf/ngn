@@ -1,9 +1,9 @@
-import type { Client, InValue } from "op3-persistence";
-import type { DbPath } from "op3-persistence";
+import type { Client, InValue } from "ngn-persistence";
+import type { DbPath } from "ngn-persistence";
 import {
   safeInitDbClient,
   strictInitDbClientFromFilePath,
-} from "op3-persistence";
+} from "ngn-persistence";
 
 let db: Client;
 

@@ -1,8 +1,8 @@
 import { isAbsolute, join } from "node:path";
 import invariant from "tiny-invariant";
-import { runApi } from "op3-api";
-import { handleSigInt, handleSigTerm } from "op3-os";
-import { setupDbClient, getDbClient } from "op3-core";
+import { runApi } from "ngn-api";
+import { handleSigInt, handleSigTerm } from "ngn-os";
+import { setupDbClient, getDbClient } from "ngn-core";
 import { getRunConfig } from "../config";
 
 export const http = async (options: { root?: string; match?: string }) => {

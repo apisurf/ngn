@@ -1,6 +1,6 @@
-import { Client } from "op3-persistence";
+import { Client } from "ngn-persistence";
 import z from "zod";
-import { $fileTaskVersion } from "op3-schema";
+import { $fileTaskVersion } from "ngn-schema";
 
 const $fileTaskVersionInsert = $fileTaskVersion.omit({
   id: true,

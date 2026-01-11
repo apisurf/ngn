@@ -1,6 +1,6 @@
 import { validate, schedule, ScheduledTask } from "node-cron";
 import invariant from "tiny-invariant";
-import { logTaskLibraryScheduler, logTaskLibrarySchedulerError } from "op3-os";
+import { logTaskLibraryScheduler, logTaskLibrarySchedulerError } from "ngn-os";
 import { Task } from "./task.js";
 import { TaskLibrary } from "./taskLibrary.js";
 
