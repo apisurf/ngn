@@ -7,9 +7,8 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
-    "version:changeset": "changeset",
-    "version:bump": "changeset version",
-    "version:release": "pnpm build && pnpm --filter @apisurf/ngn inject-deps && changeset publish"
+    "version:bump": "./distribution/with-github-token.sh sh -c 'changeset && changeset version'",
+    "version:release": "./distribution/with-github-token.sh ./distribution/release.sh"
   },
   "keywords": [],
   "author": "apisurf.dev",

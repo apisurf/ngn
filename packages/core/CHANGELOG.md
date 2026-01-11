@@ -1,5 +1,15 @@
 # ngn-core
 
+## 0.1.7
+
+### Patch Changes
+
+- Relase updates
+- Updated dependencies
+  - ngn-persistence@0.1.7
+  - ngn-schema@0.1.7
+  - ngn-os@0.1.7
+
 ## 0.1.6
 
 ### Patch Changes

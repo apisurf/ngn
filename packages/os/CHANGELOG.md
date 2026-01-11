@@ -1,5 +1,11 @@
 # ngn-os
 
+## 0.1.7
+
+### Patch Changes
+
+- Relase updates
+
 ## 0.1.6
 
 ### Patch Changes

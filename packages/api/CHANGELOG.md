@@ -1,5 +1,13 @@
 # ngn-api
 
+## 0.1.7
+
+### Patch Changes
+
+- Relase updates
+- Updated dependencies
+  - ngn-persistence@0.1.7
+
 ## 0.1.6
 
 ### Patch Changes
