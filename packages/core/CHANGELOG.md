@@ -1,5 +1,15 @@
 # ngn-core
 
+## 0.1.8
+
+### Patch Changes
+
+- Ouput correct package version
+- Updated dependencies
+  - ngn-persistence@0.1.8
+  - ngn-schema@0.1.8
+  - ngn-os@0.1.8
+
 ## 0.1.7
 
 ### Patch Changes

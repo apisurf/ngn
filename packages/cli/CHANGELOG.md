@@ -1,5 +1,11 @@
 # @apisurf/ngn
 
+## 0.1.8
+
+### Patch Changes
+
+- Ouput correct package version
+
 ## 0.1.7
 
 ### Patch Changes
