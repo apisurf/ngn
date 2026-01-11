@@ -10,7 +10,7 @@ import { ZodError } from "zod";
 import { configSchema, ConfigFileOptions } from "./configSchema";
 import { CliOptions } from "./types";
 import {
-  OP3_CONFIG_FILENAMES,
+  NGN_CONFIG_FILENAMES,
   DEFAULT_ENV_FILENAME,
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
@@ -28,7 +28,7 @@ const defaults: ConfigFileOptions = {
 };
 
 function findConfigFile(rootDir: string): string | null {
-  for (const filename of OP3_CONFIG_FILENAMES) {
+  for (const filename of NGN_CONFIG_FILENAMES) {
     const configPath = join(rootDir, filename);
     if (existsSync(configPath)) {
       return configPath;
@@ -90,7 +90,9 @@ export async function getRunConfig(
 
   if (!configFilePath) {
     console.error(
-      `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${OP3_CONFIG_FILENAMES.join(", ")}\n\nRun \`ngn init\` to generate a config file.\n`
+      `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${NGN_CONFIG_FILENAMES.join(
+        ", "
+      )}\n\nRun \`ngn init\` to generate a config file.\n`
     );
     process.exit(1);
   }

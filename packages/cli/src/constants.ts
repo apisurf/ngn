@@ -1,8 +1,8 @@
-export const OP3_CONFIG_FILENAME_TS = "op3.config.ts";
-export const OP3_CONFIG_FILENAME_JS = "op3.config.js";
-export const OP3_CONFIG_FILENAMES = [
-  OP3_CONFIG_FILENAME_TS,
-  OP3_CONFIG_FILENAME_JS,
+export const NGN_CONFIG_FILENAME_TS = "ngn.config.ts";
+export const NGN_CONFIG_FILENAME_JS = "ngn.config.js";
+export const NGN_CONFIG_FILENAMES = [
+  NGN_CONFIG_FILENAME_TS,
+  NGN_CONFIG_FILENAME_JS,
 ];
 export const DEFAULT_ENV_FILENAME = ".env";
 

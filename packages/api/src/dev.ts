@@ -1,8 +1,8 @@
 import { getConfig } from "./config.js";
 import { runApi } from "./api.js";
 
-const dbPath = process.env.OP3_API_DB_PATH || ":memory:";
-const port = Number(process.env.OP3_API_PORT) || 8787;
+const dbPath = process.env.NGN_API_DB_PATH || ":memory:";
+const port = Number(process.env.NGN_API_PORT) || 8787;
 
 const apiConfig = getConfig({
   dbPath,

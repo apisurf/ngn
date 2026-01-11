@@ -1,5 +1,5 @@
 /**
- * Configuration options for op3
+ * Configuration options for ngn
  */
 export interface ConfigFileOptions {
   /** Database file path - use ":memory:" for in-memory or "file:path" for file-based */

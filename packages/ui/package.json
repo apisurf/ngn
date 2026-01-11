@@ -4,7 +4,7 @@
   "type": "module",
   "version": "0.1.8",
   "scripts": {
-    "dev": "OP3_UI_PORT=3000 VITE_OP3_API_URL='http://localhost:8787/api' vite",
+    "dev": "NGN_UI_PORT=3000 VITE_NGN_API_URL='http://localhost:8787/api' vite",
     "build": "vite build --base=/ui/ && tsc",
     "serve": "vite preview",
     "test": "vitest run",

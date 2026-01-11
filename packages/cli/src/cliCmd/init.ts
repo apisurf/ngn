@@ -15,7 +15,7 @@ import {
   DEFAULT_ENV_FILE,
   DEFAULT_TASKS_DIR,
   DEFAULT_MATCH_PATTERN,
-  OP3_CONFIG_FILENAME_TS,
+  NGN_CONFIG_FILENAME_TS,
 } from "../constants";
 
 const generateConfigFileContents = (options: ConfigFileOptions): string => {
@@ -90,7 +90,7 @@ export const init = async (options: {
   envFile?: string;
 }) => {
   const cwd = getCwd(process.cwd(), options.root || process.cwd());
-  const configFilePath = options.configFile || OP3_CONFIG_FILENAME_TS;
+  const configFilePath = options.configFile || NGN_CONFIG_FILENAME_TS;
   const absConfigFilePath = absOrJoinWithRoot(configFilePath, cwd);
   const normalizedOptions: ConfigFileOptions = {
     dbPath: options.dbFile?.startsWith("file:")

@@ -21,7 +21,7 @@ export const Navbar = (props: ContainerProps) => {
     >
       <HStack justify="space-between">
         <Heading as="span" size="md" color="tan.500">
-          op3
+          ngn
         </Heading>
         <Drawer.Root placement="start">
           <Drawer.Trigger asChild>

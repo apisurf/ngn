@@ -1,5 +1,5 @@
-# op3 CLI tool monorepo
+# ngn CLI tool monorepo
 
-![op3 logo](./logo/op3-logo.png)
+![ngn logo](./logo/ngn-logo.png)
 
 See packages/cli readme for more info.

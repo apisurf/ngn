@@ -5,7 +5,7 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "dev": "OP3_API_DB_PATH=:memory: OP3_API_PORT=8787 tsx watch src/dev.ts",
+    "dev": "NGN_API_DB_PATH=:memory: NGN_API_PORT=8787 tsx watch src/dev.ts",
     "dev:types": "tsup src/api.ts --dts --out-dir dist --format esm --watch",
     "build": "tsup src/api.ts --dts --out-dir dist --format esm"
   },

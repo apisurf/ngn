@@ -14,11 +14,11 @@ import {
   getDbClient,
 } from "ngn-core";
 import { readConfig } from "../config";
-import { OP3_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
+import { NGN_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
 import { existsSync } from "node:fs";
 
 function findConfigFile(rootDir: string): string | null {
-  for (const filename of OP3_CONFIG_FILENAMES) {
+  for (const filename of NGN_CONFIG_FILENAMES) {
     const configPath = join(rootDir, filename);
     if (existsSync(configPath)) {
       return configPath;
@@ -48,7 +48,9 @@ export const runLiveTask = async (options: {
     const configFilePath = findConfigFile(rootDirAbs);
     if (!configFilePath) {
       throw new Error(
-        `Config file not found. Expected one of: ${OP3_CONFIG_FILENAMES.join(", ")}`
+        `Config file not found. Expected one of: ${NGN_CONFIG_FILENAMES.join(
+          ", "
+        )}`
       );
     }
     const config = await readConfig(configFilePath);

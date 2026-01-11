@@ -42,8 +42,8 @@ program
   .description("Run tasks")
   .option("--root <path>", "root directory path")
   // without this option, it will run all tasks in the tasks directory
-  // to run a single task inside the tasks directory => op3 run --match "tasks/single-task.ts" or op3 run --match "single-task.ts"
-  // to glob match tasks inside the tasks directory => op3 run --match "group/**/*.ts" or op3 run --match "group/{auth,user}/*.ts" (use parenthesis to escape CLI expansion)
+  // to run a single task inside the tasks directory => ngn run --match "tasks/single-task.ts" or ngn run --match "single-task.ts"
+  // to glob match tasks inside the tasks directory => ngn run --match "group/**/*.ts" or ngn run --match "group/{auth,user}/*.ts" (use parenthesis to escape CLI expansion)
   .option("--match <path>", "Only run tasks matching the partial path")
   .action(run);
 

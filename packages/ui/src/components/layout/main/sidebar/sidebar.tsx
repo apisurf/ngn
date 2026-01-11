@@ -38,7 +38,7 @@ export const Sidebar = (props: StackProps) => {
                 fontWeight="bold"
                 letterSpacing="tight"
               >
-                op3
+                ngn
               </Heading>
               <Box as="p" fontSize="2xs" color="gray.600" fontFamily="mono">
                 {APP_VERSION}

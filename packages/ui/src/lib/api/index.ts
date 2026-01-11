@@ -1,7 +1,7 @@
-import { OP3_API_URL } from "@/config";
+import { NGN_API_URL } from "@/config";
 
 export const getApiUrl = () => {
-  return OP3_API_URL;
+  return NGN_API_URL;
 };
 
 export const get = async (endpoint: `/${string}`) => {
