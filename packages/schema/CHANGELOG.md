@@ -1,5 +1,11 @@
 # ngn-schema
 
+## 0.1.4
+
+### Patch Changes
+
+- Name revert; prep for github release
+
 ## 0.1.3
 
 ### Patch Changes

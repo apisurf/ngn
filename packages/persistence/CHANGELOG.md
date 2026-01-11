@@ -1,5 +1,13 @@
 # ngn-persistence
 
+## 0.1.4
+
+### Patch Changes
+
+- Name revert; prep for github release
+- Updated dependencies
+  - ngn-os@0.1.4
+
 ## 0.1.3
 
 ### Patch Changes
