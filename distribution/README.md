@@ -1,62 +1,41 @@
-# op3 Distribution
+# NGN Distribution
 
-This folder contains documentation and scripts for publishing the op3 CLI package to npm.
+Publishing `@apisurf/ngn` CLI to GitHub Packages using changesets.
 
-## 📖 Documentation
-
-**[PUBLISHING-GUIDE.md](PUBLISHING-GUIDE.md)** ⭐ - Complete publishing guide
-
-## 🛠️ Publishing Scripts
-
-### `publish-cli.sh` ⭐ Recommended
-
-Publishes only the CLI package (with bundled dependencies):
+## Publishing Workflow
 
 ```bash
-./distribution/publish-cli.sh
+# 1. Create changesets during development
+pnpm version:changeset
+
+# 2. Bump versions when ready to release
+pnpm version:bump
+
+# 3. Build, inject deps, and publish
+pnpm version:release
 ```
 
-**What it does:**
-
-- Checks npm login status
-- Builds all packages
-- Tests package contents
-- Asks for confirmation
-- Publishes `@op3/cli` to npm
-
-### Updating & Republishing
+## Local Testing (Before Publishing)
 
 ```bash
-# 1. Update version
-cd packages/cli && npm version patch && cd ../..
+# Build and pack
+pnpm build
+cd packages/cli
+npm pack
 
-# 2. Build and publish
-pnpm build && ./distribution/publish-cli.sh
-
-# 3. Tag release
-git add . && git commit -m "Release v1.0.1" && git tag v1.0.1 && git push --tags
+# Install and test locally
+npm install -g ./apisurf-ngn-*.tgz
+ngn --version
+ngn --help
 ```
 
-## 🎯 What Users Get
-
-After you publish, users can install with:
+## Verify Package Contents
 
 ```bash
-# Global installation
-npm install -g @op3/cli
-
-# Or use without installing
-npx @op3/cli
+cd packages/cli
+npm pack --dry-run
 ```
 
-Then they can use commands like:
+**Should include:** `dist/cli.js`, `dist/ui/`, `package.json`
 
-```bash
-op3 --version
-op3 init
-op3 add test.ts
-op3 run # run all
-op3 run test.ts # run by glob match
-op3 once test.ts # run once
-op3 http # run only UI + API
-```
+**Should NOT include:** `src/`, `node_modules/`, `*.ts` files

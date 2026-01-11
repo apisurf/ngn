@@ -54,15 +54,33 @@ importers:
 
   packages/cli:
     dependencies:
+      '@hono/node-server':
+        specifier: ^1.18.1
+        version: 1.18.1(hono@4.8.12)
       '@libsql/client':
         specifier: ^0.14.0
         version: 0.14.0
+      chokidar:
+        specifier: ^4.0.1
+        version: 4.0.1
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      debug:
+        specifier: ^4.4.1
+        version: 4.4.1
+      dotenv:
+        specifier: ^17.2.1
+        version: 17.2.1
+      esbuild:
+        specifier: ^0.27.1
+        version: 0.27.1
       glob:
         specifier: ^11.0.3
         version: 11.0.3
+      hono:
+        specifier: ^4.8.12
+        version: 4.8.12
       node-cron:
         specifier: ^3.0.3
         version: 3.0.3

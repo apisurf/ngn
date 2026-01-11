@@ -14,7 +14,7 @@
     ]
   ],
   "linked": [],
-  "access": "public",
+  "access": "private",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": []

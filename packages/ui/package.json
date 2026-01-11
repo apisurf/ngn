@@ -2,7 +2,7 @@
   "name": "ngn-ui",
   "private": true,
   "type": "module",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "scripts": {
     "dev": "OP3_UI_PORT=3000 VITE_OP3_API_URL='http://localhost:8787/api' vite",
     "build": "vite build --base=/ui/ && tsc",

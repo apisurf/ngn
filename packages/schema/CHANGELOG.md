@@ -1,5 +1,11 @@
 # ngn-schema
 
+## 0.1.5
+
+### Patch Changes
+
+- Small release updates
+
 ## 0.1.4
 
 ### Patch Changes
