@@ -13,7 +13,10 @@ import { TaskContext } from "ngn-core";
 const DEBUG_MODE = Boolean(process.env.DEBUG);
 const program = new Command();
 
-program.name("cli").description("Run tasks using the ngn CLI").version("1.0.0");
+program
+  .name("cli")
+  .description("Run tasks using the ngn CLI")
+  .version(require("../package.json").version);
 
 program
   .command("init")
