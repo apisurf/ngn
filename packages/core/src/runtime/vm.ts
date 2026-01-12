@@ -1,50 +1,34 @@
-import { createRequire } from "node:module";
-import { Script, createContext } from "node:vm";
+/**
+ * Execute ESM code using dynamic import with data URLs
+ * This allows running ESM modules in-memory without writing to disk
+ */
+export async function executeUnrestricted(
+  code: string,
+  customGlobals?: any
+): Promise<any> {
+  // Inject custom globals into the code if provided
+  let modifiedCode = code;
+  if (customGlobals) {
+    const globalsInjection = Object.entries(customGlobals)
+      .map(([key, value]) => {
+        // Convert the value to a string representation
+        const valueStr =
+          typeof value === "function"
+            ? value.toString()
+            : JSON.stringify(value);
+        return `globalThis.${key} = ${valueStr};`;
+      })
+      .join("\n");
+    modifiedCode = `${globalsInjection}\n${code}`;
+  }
 
-const commonDefaultGlobals = {
-  // for CJS exports coming from the user script
-  module: { exports: {} },
-  exports: {},
-};
+  // Create a data URL for the ESM module
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(modifiedCode).toString("base64")}`;
 
-// const restrictedGlobals = {
-//   ...commonDefaultGlobals,
-// };
+  // Use dynamic import to load and execute the ESM module
+  // Add cache busting to ensure fresh imports
+  const moduleUrl = `${dataUrl}#${Date.now()}`;
+  const moduleExports = await import(moduleUrl);
 
-// Build globals by evaluating each property on globalThis (preserves correct `this` binding for getters)
-// createContext expects a plain object, so we need to convert the entries to an object
-const unrestrictedGlobals = Object.fromEntries([
-  // add common default globals
-  ...Object.entries(commonDefaultGlobals),
-  // add all properties from globalThis
-  // TODO: check if this can lead to the global namespace pollution(i.e. overriding existing properties)
-  ...Object.getOwnPropertyNames(globalThis).map((key) => [
-    key,
-    (globalThis as any)[key],
-  ]),
-]);
-
-// function executeInRestrictedContext(code: string, contextExtension?: any) {
-//   // last line of code is the return statement; used to collect module exports
-//   const returnStatement = `module.exports`;
-//   const script = new vm.Script(`${code};${returnStatement};`);
-//   const sandbox = vm.createContext({
-//     ...restrictedGlobals,
-//     ...contextExtension,
-//   });
-//   return script.runInContext(sandbox);
-// }
-
-export function executeUnrestricted(code: string, customGlobals?: any) {
-  const requireResolutionRoot = `${process.cwd()}/`;
-  // last line of code is the return statement; used to collect module exports(as return value)
-  const returnStatement = `module.exports`;
-  const script = new Script(`${code};\n${returnStatement};`);
-  const sandbox = createContext({
-    ...unrestrictedGlobals,
-    ...customGlobals,
-    console,
-    require: createRequire(requireResolutionRoot),
-  });
-  return script.runInContext(sandbox);
+  return moduleExports;
 }

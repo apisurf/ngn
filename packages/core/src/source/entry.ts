@@ -40,14 +40,14 @@ export class Entry {
     return this.entry.isLoaded();
   }
 
-  getExports(): EntryExports | null {
+  async getExports(): Promise<EntryExports | null> {
     invariant(this.entry.code, "Entry code not loaded. Load entry first.");
 
     try {
-      const taskExports = executeUnrestricted(this.entry.code);
+      const taskExports = await executeUnrestricted(this.entry.code);
       this.callbacks.onTaskCodeLoaded?.(this.entry.codeHash!);
 
-      // Handle both named exports and default export (for ES modules compiled to CommonJS)
+      // Handle both named exports and default export in ESM
       // Support three cases:
       // 1. Default export is a function directly (export default async function task() {})
       // 2. Default export is an object with a task property (export default { task: ... })
@@ -64,14 +64,16 @@ export class Entry {
         taskFunction = taskExports.task;
       }
 
+      // For other exports, prefer named exports over default export properties
       return {
         task: taskFunction,
-        timing: taskExports.timing,
-        shouldSkip: taskExports.shouldSkip,
-        shouldRetry: taskExports.shouldRetry,
-        onSuccess: taskExports.onSuccess,
-        onError: taskExports.onError,
-        onComplete: taskExports.onComplete,
+        timing: taskExports.timing ?? taskExports.default?.timing,
+        shouldSkip: taskExports.shouldSkip ?? taskExports.default?.shouldSkip,
+        shouldRetry:
+          taskExports.shouldRetry ?? taskExports.default?.shouldRetry,
+        onSuccess: taskExports.onSuccess ?? taskExports.default?.onSuccess,
+        onError: taskExports.onError ?? taskExports.default?.onError,
+        onComplete: taskExports.onComplete ?? taskExports.default?.onComplete,
       };
     } catch (error) {
       console.error("Error getting task exports:", error);

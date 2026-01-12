@@ -90,7 +90,7 @@ export class Task {
     // load entry code
     await this.entry.load();
     // get entry exports
-    this.entryExports = this.entry.getExports();
+    this.entryExports = await this.entry.getExports();
   }
 
   async execute() {

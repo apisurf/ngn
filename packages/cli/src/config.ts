@@ -46,12 +46,13 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
     throw new Error(`Failed to compile config file: ${configPath}`);
   }
 
-  // Execute compiled code to get default export
-  const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
-  const fn = new Function("module", "exports", code);
-  fn(moduleObj, moduleObj.exports);
+  // Execute compiled ESM code using dynamic import with data URL
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+  const moduleUrl = `${dataUrl}#${Date.now()}`;
+  const moduleExports = await import(moduleUrl);
 
-  const rawConfig = moduleObj.exports.default ?? moduleObj.exports;
+  // Get the config from exports (try default export first, then named exports)
+  const rawConfig = moduleExports.default ?? moduleExports;
 
   try {
     return configSchema.parse(rawConfig);
