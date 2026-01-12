@@ -1,50 +1,35 @@
-import { createRequire } from "node:module";
 import { Script, createContext } from "node:vm";
+import { createRequire } from "node:module";
 
-const commonDefaultGlobals = {
-  // for CJS exports coming from the user script
-  module: { exports: {} },
-  exports: {},
-};
+// Build globals dynamically from globalThis
+const buildGlobals = () =>
+  Object.fromEntries(
+    Object.getOwnPropertyNames(globalThis).map((key) => [
+      key,
+      (globalThis as Record<string, unknown>)[key],
+    ])
+  );
 
-// const restrictedGlobals = {
-//   ...commonDefaultGlobals,
-// };
-
-// Build globals by evaluating each property on globalThis (preserves correct `this` binding for getters)
-// createContext expects a plain object, so we need to convert the entries to an object
-const unrestrictedGlobals = Object.fromEntries([
-  // add common default globals
-  ...Object.entries(commonDefaultGlobals),
-  // add all properties from globalThis
-  // TODO: check if this can lead to the global namespace pollution(i.e. overriding existing properties)
-  ...Object.getOwnPropertyNames(globalThis).map((key) => [
-    key,
-    (globalThis as any)[key],
-  ]),
-]);
-
-// function executeInRestrictedContext(code: string, contextExtension?: any) {
-//   // last line of code is the return statement; used to collect module exports
-//   const returnStatement = `module.exports`;
-//   const script = new vm.Script(`${code};${returnStatement};`);
-//   const sandbox = vm.createContext({
-//     ...restrictedGlobals,
-//     ...contextExtension,
-//   });
-//   return script.runInContext(sandbox);
-// }
-
-export function executeUnrestricted(code: string, customGlobals?: any) {
+/**
+ * Executes IIFE-compiled code in an isolated VM context.
+ * The code should be compiled with esbuild's iife format and globalName: "__exports".
+ *
+ * @param code - The IIFE code string to execute
+ * @returns The module's exports object
+ */
+export async function executeEsm(
+  code: string
+): Promise<Record<string, unknown>> {
   const requireResolutionRoot = `${process.cwd()}/`;
-  // last line of code is the return statement; used to collect module exports(as return value)
-  const returnStatement = `module.exports`;
-  const script = new Script(`${code};\n${returnStatement};`);
+
+  // The compiled IIFE code assigns exports to __exports global
+  // We run it in a sandbox and extract the exports
+  const script = new Script(`${code}\n__exports;`);
+
   const sandbox = createContext({
-    ...unrestrictedGlobals,
-    ...customGlobals,
-    console,
+    ...buildGlobals(),
     require: createRequire(requireResolutionRoot),
   });
+
   return script.runInContext(sandbox);
 }

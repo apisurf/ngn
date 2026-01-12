@@ -5,7 +5,7 @@ import {
   createFileDescriptor,
   FsNodeFileDescriptor,
 } from "ngn-os";
-import { Compiler } from "ngn-core";
+import { Compiler, executeEsm } from "ngn-core";
 import { ZodError } from "zod";
 import { configSchema, ConfigFileOptions } from "./configSchema";
 import { CliOptions } from "./types";
@@ -46,12 +46,8 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
     throw new Error(`Failed to compile config file: ${configPath}`);
   }
 
-  // Execute compiled code to get default export
-  const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
-  const fn = new Function("module", "exports", code);
-  fn(moduleObj, moduleObj.exports);
-
-  const rawConfig = moduleObj.exports.default ?? moduleObj.exports;
+  const moduleExports = await executeEsm(code);
+  const rawConfig = moduleExports.default ?? moduleExports;
 
   try {
     return configSchema.parse(rawConfig);

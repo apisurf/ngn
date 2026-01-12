@@ -95,7 +95,11 @@ export class Compiler {
         entryPoints: [entryFile],
         bundle: true,
         write: false,
-        format: "cjs",
+        // Output as IIFE (Immediately Invoked Function Expression) so it can be
+        // executed with vm.Script in a sandboxed context. The globalName specifies
+        // which variable the exports are assigned to: var __exports = (() => { ... })();
+        format: "iife",
+        globalName: "__exports",
         platform: "node",
         target: "node20",
         minify: this.options.minify,
@@ -145,7 +149,11 @@ export class Compiler {
       },
       bundle: true,
       write: false,
-      format: "cjs",
+      // Output as IIFE (Immediately Invoked Function Expression) so it can be
+      // executed with vm.Script in a sandboxed context. The globalName specifies
+      // which variable the exports are assigned to: var __exports = (() => { ... })();
+      format: "iife",
+      globalName: "__exports",
       platform: "node",
       target: "node20",
       minify: this.options.minify,
