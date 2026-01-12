@@ -1,13 +1,11 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { Script, createContext } from "node:vm";
-import { createRequire } from "node:module";
 import {
   readEnv as readEnvFile,
   createFileDescriptor,
   FsNodeFileDescriptor,
 } from "ngn-os";
-import { Compiler } from "ngn-core";
+import { Compiler, executeEsm } from "ngn-core";
 import { ZodError } from "zod";
 import { configSchema, ConfigFileOptions } from "./configSchema";
 import { CliOptions } from "./types";
@@ -21,15 +19,6 @@ import {
 } from "./constants";
 import { glob } from "glob";
 import outmatch from "outmatch";
-
-// Build globals dynamically from globalThis
-const buildGlobals = () =>
-  Object.fromEntries(
-    Object.getOwnPropertyNames(globalThis).map((key) => [
-      key,
-      (globalThis as Record<string, unknown>)[key],
-    ])
-  );
 
 const defaults: ConfigFileOptions = {
   dbPath: DEFAULT_DB_PATH,
@@ -57,14 +46,7 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
     throw new Error(`Failed to compile config file: ${configPath}`);
   }
 
-  // Execute compiled IIFE code in VM sandbox
-  const script = new Script(`${code}\n__exports;`);
-  const sandbox = createContext({
-    ...buildGlobals(),
-    require: createRequire(`${process.cwd()}/`),
-  });
-  const moduleExports = script.runInContext(sandbox);
-
+  const moduleExports = await executeEsm(code);
   const rawConfig = moduleExports.default ?? moduleExports;
 
   try {

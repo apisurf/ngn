@@ -1,4 +1,5 @@
 export { Compiler } from "./source/compiler.js";
+export { executeEsm } from "./runtime/vm.js";
 export { Task } from "./runtime/task.js";
 export { TaskLibrary } from "./runtime/taskLibrary.js";
 export { TaskLibraryScheduler } from "./runtime/taskLibraryScheduler.js";
