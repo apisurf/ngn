@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { Script, createContext } from "node:vm";
+import { createRequire } from "node:module";
 import {
   readEnv as readEnvFile,
   createFileDescriptor,
@@ -19,6 +21,15 @@ import {
 } from "./constants";
 import { glob } from "glob";
 import outmatch from "outmatch";
+
+// Build globals dynamically from globalThis
+const buildGlobals = () =>
+  Object.fromEntries(
+    Object.getOwnPropertyNames(globalThis).map((key) => [
+      key,
+      (globalThis as Record<string, unknown>)[key],
+    ])
+  );
 
 const defaults: ConfigFileOptions = {
   dbPath: DEFAULT_DB_PATH,
@@ -46,12 +57,15 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
     throw new Error(`Failed to compile config file: ${configPath}`);
   }
 
-  // Execute compiled code to get default export
-  const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
-  const fn = new Function("module", "exports", code);
-  fn(moduleObj, moduleObj.exports);
+  // Execute compiled IIFE code in VM sandbox
+  const script = new Script(`${code}\n__exports;`);
+  const sandbox = createContext({
+    ...buildGlobals(),
+    require: createRequire(`${process.cwd()}/`),
+  });
+  const moduleExports = script.runInContext(sandbox);
 
-  const rawConfig = moduleObj.exports.default ?? moduleObj.exports;
+  const rawConfig = moduleExports.default ?? moduleExports;
 
   try {
     return configSchema.parse(rawConfig);

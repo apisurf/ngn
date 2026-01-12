@@ -89,8 +89,8 @@ export class Task {
     invariant(this.entry, "Entry not initialized.");
     // load entry code
     await this.entry.load();
-    // get entry exports
-    this.entryExports = this.entry.getExports();
+    // get entry exports (now async for ESM execution)
+    this.entryExports = await this.entry.getExports();
   }
 
   async execute() {

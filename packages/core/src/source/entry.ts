@@ -5,7 +5,7 @@ import { EntryDbSource } from "./entryDbSource.js";
 import { isLiveSourceParams, isDbSourceParams } from "./util.js";
 import { EntryExports } from "./types.js";
 
-import { executeUnrestricted } from "../runtime/vm.js";
+import { executeEsm } from "../runtime/vm.js";
 
 export class Entry {
   private entry: EntryLiveSource | EntryDbSource;
@@ -40,14 +40,14 @@ export class Entry {
     return this.entry.isLoaded();
   }
 
-  getExports(): EntryExports | null {
+  async getExports(): Promise<EntryExports | null> {
     invariant(this.entry.code, "Entry code not loaded. Load entry first.");
 
     try {
-      const taskExports = executeUnrestricted(this.entry.code);
+      const taskExports = await executeEsm(this.entry.code);
       this.callbacks.onTaskCodeLoaded?.(this.entry.codeHash!);
 
-      // Handle both named exports and default export (for ES modules compiled to CommonJS)
+      // Handle both named exports and default export for ESM modules
       // Support three cases:
       // 1. Default export is a function directly (export default async function task() {})
       // 2. Default export is an object with a task property (export default { task: ... })
@@ -56,22 +56,26 @@ export class Entry {
       if (typeof taskExports.default === "function") {
         // Default export is a function, treat it as the task
         taskFunction = taskExports.default;
-      } else if (taskExports.default?.task) {
+      } else if (
+        taskExports.default &&
+        typeof taskExports.default === "object" &&
+        "task" in taskExports.default
+      ) {
         // Default export is an object with a task property
-        taskFunction = taskExports.default.task;
+        taskFunction = (taskExports.default as Record<string, unknown>).task;
       } else {
         // Use named exports
         taskFunction = taskExports.task;
       }
 
       return {
-        task: taskFunction,
-        timing: taskExports.timing,
-        shouldSkip: taskExports.shouldSkip,
-        shouldRetry: taskExports.shouldRetry,
-        onSuccess: taskExports.onSuccess,
-        onError: taskExports.onError,
-        onComplete: taskExports.onComplete,
+        task: taskFunction as EntryExports["task"],
+        timing: taskExports.timing as EntryExports["timing"],
+        shouldSkip: taskExports.shouldSkip as EntryExports["shouldSkip"],
+        shouldRetry: taskExports.shouldRetry as EntryExports["shouldRetry"],
+        onSuccess: taskExports.onSuccess as EntryExports["onSuccess"],
+        onError: taskExports.onError as EntryExports["onError"],
+        onComplete: taskExports.onComplete as EntryExports["onComplete"],
       };
     } catch (error) {
       console.error("Error getting task exports:", error);
