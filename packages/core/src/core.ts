@@ -11,5 +11,5 @@ export { TaskContext, BaseTaskContext } from "./source/types.js";
 
 // Plugin system exports
 export { PluginManager } from "./plugin/manager.js";
-export { definePlugin } from "./plugin/types.js";
+export { definePlugin, pluginSchema } from "./plugin/definePlugin.js";
 export type { Plugin, PluginApi, PluginsToApiMap } from "./plugin/types.js";

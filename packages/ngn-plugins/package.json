@@ -1,24 +1,42 @@
 {
-  "name": "@apisurf/ngn-plugins",
-  "private": true,
-  "version": "0.1.0",
-  "description": "Official plugins for @apisurf/ngn",
+  "name": "@apisurf/ngn-plugin",
+  "version": "0.1.10",
+  "description": "Official plugin library for @apisurf/ngn",
+  "author": "Luka Vidakovic",
+  "keywords": [
+    "ngn",
+    "plugin",
+    "sqlite",
+    "alerting",
+    "automation"
+  ],
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apisurf/ngn.git",
+    "directory": "packages/ngn-plugins"
+  },
   "type": "module",
   "scripts": {
-    "build": "tsup src/index.ts --dts --out-dir dist --format esm",
-    "dev": "tsup src/index.ts --dts --out-dir dist --format esm --watch"
+    "build": "tsup",
+    "dev": "tsup --watch"
   },
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+    "./sqlite": {
+      "import": "./dist/sqlite.js",
+      "types": "./dist/sqlite.d.ts"
+    },
+    "./alerting": {
+      "import": "./dist/alerting.js",
+      "types": "./dist/alerting.d.ts"
     }
   },
   "files": [
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0"

@@ -49,12 +49,3 @@ export type PluginName<P> = P extends Plugin<infer TName, unknown, unknown>
 export type PluginsToApiMap<T extends readonly Plugin[]> = {
   [P in T[number] as PluginName<P>]: PluginApi<P>;
 };
-
-/**
- * Plugin definition helper for better type inference
- */
-export function definePlugin<TName extends string, TConfig, TApi>(
-  plugin: Plugin<TName, TConfig, TApi>
-): Plugin<TName, TConfig, TApi> {
-  return plugin;
-}

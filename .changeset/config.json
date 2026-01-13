@@ -10,7 +10,8 @@
       "ngn-os",
       "ngn-persistence",
       "ngn-schema",
-      "ngn-ui"
+      "ngn-ui",
+      "@apisurf/ngn-plugin"
     ]
   ],
   "linked": [],

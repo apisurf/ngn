@@ -1,5 +1,15 @@
 # ngn-core
 
+## 0.1.10
+
+### Patch Changes
+
+- Plugin system
+- Updated dependencies
+  - ngn-persistence@0.1.10
+  - ngn-schema@0.1.10
+  - ngn-os@0.1.10
+
 ## 0.1.9
 
 ### Patch Changes

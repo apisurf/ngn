@@ -2,7 +2,7 @@
   "name": "ngn-ui",
   "private": true,
   "type": "module",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "scripts": {
     "dev": "NGN_UI_PORT=3000 VITE_NGN_API_URL='http://localhost:8787/api' vite",
     "build": "vite build --base=/ui/ && tsc",

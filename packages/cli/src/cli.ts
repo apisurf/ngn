@@ -8,8 +8,6 @@ import { compile } from "./cliCmd/compile";
 import { initDbFile } from "./cliCmd/initDbFile";
 import { addTask } from "./cliCmd/addTask";
 import { http } from "./cliCmd/http";
-import { TaskContext } from "ngn-core";
-
 const DEBUG_MODE = Boolean(process.env.DEBUG);
 const program = new Command();
 
@@ -89,5 +87,3 @@ if (DEBUG_MODE) {
 }
 
 program.parse(process.argv);
-
-export { TaskContext };

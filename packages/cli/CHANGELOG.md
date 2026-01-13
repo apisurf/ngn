@@ -1,5 +1,11 @@
 # @apisurf/ngn
 
+## 0.1.10
+
+### Patch Changes
+
+- Plugin system
+
 ## 0.1.9
 
 ### Patch Changes
