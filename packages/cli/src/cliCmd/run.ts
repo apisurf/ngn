@@ -15,6 +15,7 @@ import {
   createControlsGenerator,
   setupDbClient,
   getDbClient,
+  PluginManager,
 } from "ngn-core";
 import { getRunConfig } from "../config";
 import { runLiveTask } from "../util/runLiveTask";
@@ -49,7 +50,15 @@ export const run = async (options: { root?: string; match?: string }) => {
   let apiServer: Awaited<ReturnType<typeof runApi>>;
   let scheduler: TaskLibraryScheduler;
 
+  // Create plugin manager from config
+  const pluginManager = new PluginManager({
+    plugins: config.configFileOptions.plugins ?? [],
+  });
+
   try {
+    // Initialize plugins first (before DB and other services)
+    await pluginManager.init();
+
     await setupDbClient(config.configFileOptions.dbPath);
     const dbClient = getDbClient();
     invariant(dbClient, "DB client not initialized");
@@ -60,6 +69,7 @@ export const run = async (options: { root?: string; match?: string }) => {
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
+      plugins: pluginManager.getPluginsApi(),
     });
 
     // Add tasks from in-memory compiled code
@@ -107,16 +117,20 @@ export const run = async (options: { root?: string; match?: string }) => {
   } catch (error) {
     console.error("Error while running.");
     console.error(error);
+    // Cleanup plugins on error
+    await pluginManager.destroy();
   }
 
   handleSigInt(async () => {
     await scheduler?.stop();
     apiServer?.close();
+    await pluginManager.destroy();
     process.exit(0);
   });
   handleSigTerm(async () => {
     await scheduler?.stop();
     apiServer?.close();
+    await pluginManager.destroy();
     process.exit(0);
   });
 };

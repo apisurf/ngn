@@ -7,4 +7,9 @@ export { TaskOnceRunner } from "./runtime/taskOnceRunner.js";
 export { setupDbClient, getDbClient } from "./db/db.js";
 export { initDbFileIfNotExists } from "./db/db.js";
 export { createControlsGenerator } from "./runtime/generateControls.js";
-export { TaskContext } from "./source/types.js";
+export { TaskContext, BaseTaskContext } from "./source/types.js";
+
+// Plugin system exports
+export { PluginManager } from "./plugin/manager.js";
+export { definePlugin } from "./plugin/types.js";
+export type { Plugin, PluginApi, PluginsToApiMap } from "./plugin/types.js";

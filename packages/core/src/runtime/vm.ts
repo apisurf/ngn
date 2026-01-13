@@ -29,6 +29,10 @@ export async function executeEsm(
   const sandbox = createContext({
     ...buildGlobals(),
     require: createRequire(requireResolutionRoot),
+    // Provide CommonJS-style globals for bundled dependencies that expect them
+    // (e.g., node-cron uses __dirname for its daemon path)
+    __dirname: process.cwd(),
+    __filename: `${process.cwd()}/vm-script.js`,
   });
 
   return script.runInContext(sandbox);

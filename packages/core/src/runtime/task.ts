@@ -15,6 +15,7 @@ export class Task {
   private kv: TaskContext["kv"];
   private log: TaskContext["log"];
   private timing: TaskContext["timing"];
+  private plugins: Record<string, unknown>;
   private meta: TaskContext["meta"];
   private entry: Entry | null = null;
   private entryExports: EntryExports | null = null;
@@ -32,13 +33,14 @@ export class Task {
       onTaskCodeLoaded: this.taskCallbacks?.onTaskCodeLoaded,
     });
 
-    const { taskCallbacks, runtimeCallbacks, env, kv, log, timing } =
+    const { taskCallbacks, runtimeCallbacks, env, kv, log, timing, plugins } =
       buildConfigFn({
         sourcePath: this.entry.paths.source,
         compiledPath: this.entry.paths.compiled,
       });
     this.taskCallbacks = taskCallbacks;
     this.runtimeCallbacks = runtimeCallbacks;
+    this.plugins = plugins;
     this.meta = {
       fileTaskId: -1,
       fileTaskVersionId: -1,
@@ -147,6 +149,7 @@ export class Task {
       kv: this.kv,
       log: this.log,
       timing: this.timing,
+      plugins: this.plugins,
     };
 
     if (await shouldSkip?.(taskContext)) {

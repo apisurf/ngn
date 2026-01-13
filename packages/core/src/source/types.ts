@@ -11,7 +11,10 @@ export type DbSourceParams = {
 };
 
 export type EntryParams = LiveSourceParams | DbSourceParams;
-export interface TaskContext {
+/**
+ * Base TaskContext without plugins (internal use)
+ */
+export interface BaseTaskContext {
   meta: {
     fileTaskId: number;
     fileTaskVersionId: number;
@@ -30,6 +33,16 @@ export interface TaskContext {
   timing: {
     start(label: string): () => Promise<void>;
   };
+}
+
+/**
+ * TaskContext with plugins namespace
+ * @template TPlugins - Map of plugin name to plugin API
+ */
+export interface TaskContext<
+  TPlugins extends Record<string, unknown> = Record<string, unknown>
+> extends BaseTaskContext {
+  plugins: TPlugins;
 }
 
 export interface EntryExports {
