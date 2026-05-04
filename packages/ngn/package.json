@@ -22,8 +22,12 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/apisurf/ngn.git",
-    "directory": "packages/cli"
+    "url": "git+https://github.com/apisurf/ngn.git",
+    "directory": "packages/ngn"
+  },
+  "homepage": "https://github.com/apisurf/ngn#readme",
+  "bugs": {
+    "url": "https://github.com/apisurf/ngn/issues"
   },
   "dependencies": {
     "@hono/node-server": "^1.18.1",
@@ -63,7 +67,7 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

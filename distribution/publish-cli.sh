@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Simple NGN CLI Publishing Script
-# Since CLI bundles all dependencies, we only need to publish this one package
+# Standalone publish script for @apisurf/ngn
+# Use this when you only want to publish the CLI package without changesets.
+# For the full multi-package release, use ./distribution/release.sh instead.
 
 set -e  # Exit on any error
 
@@ -12,7 +13,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Publishing @apisurf/ngn...${NC}\n"
+echo -e "${BLUE}🚀 Publishing @apisurf/ngn to public npm...${NC}\n"
 
 # Ensure we're in the repo root (navigate up from distribution folder)
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,6 +33,10 @@ echo -e "${BLUE}Current version: ${CURRENT_VERSION}${NC}"
 echo -e "\n${YELLOW}🔨 Building all packages...${NC}"
 pnpm build
 
+# Inject workspace deps so the published package is self-contained
+echo -e "\n${YELLOW}📥 Injecting workspace dependencies into @apisurf/ngn...${NC}"
+pnpm --filter @apisurf/ngn inject-deps
+
 # Test pack (optional but recommended)
 echo -e "\n${YELLOW}📦 Testing package contents...${NC}"
 cd packages/ngn
@@ -47,7 +52,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Publish
+# Publish (publishConfig in package.json sets access=public and the public registry)
 echo -e "\n${BLUE}📤 Publishing to npm...${NC}"
 npm publish
 
@@ -58,4 +63,3 @@ echo -e "\n${BLUE}Or use without installing:${NC}"
 echo -e "  npx @apisurf/ngn"
 echo -e "\n${BLUE}Verify on npm:${NC}"
 echo -e "  https://www.npmjs.com/package/@apisurf/ngn"
-
