@@ -1,0 +1,24 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "ngn-core#build",
+        "ngn-api#build",
+        "ngn-os#build",
+        "ngn-persistence#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": [
+        "ngn-core#build",
+        "ngn-api#build",
+        "ngn-os#build",
+        "ngn-persistence#build"
+      ],
+      "persistent": true,
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": { "dependsOn": ["ngn-os#build"] },
+    "dev": { "persistent": true, "cache": false }
+  }
+}

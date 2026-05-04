@@ -1,0 +1,40 @@
+{
+  "name": "ngn-core",
+  "private": true,
+  "version": "0.1.16",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/core.ts --dts --out-dir dist --format esm",
+    "dev": "tsup src/core.ts --dts --out-dir dist --format esm --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "exports": {
+    ".": {
+      "import": "./dist/core.js",
+      "types": "./dist/core.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.1",
+    "@types/node-cron": "^3.0.11",
+    "tsup": "^8.3.5"
+  },
+  "dependencies": {
+    "esbuild": "^0.27.1",
+    "ngn-os": "workspace:*",
+    "ngn-persistence": "workspace:*",
+    "ngn-schema": "workspace:*",
+    "node-cron": "^3.0.3",
+    "tiny-invariant": "^1.3.3",
+    "zod": "^3.24.2"
+  }
+}
