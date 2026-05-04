@@ -7,8 +7,8 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
-    "version:bump": "./distribution/with-github-token.sh sh -c 'changeset && changeset version'",
-    "version:release": "./distribution/with-github-token.sh ./distribution/release.sh"
+    "version:bump": "changeset && changeset version",
+    "version:release": "./distribution/release.sh"
   },
   "keywords": [],
   "author": "apisurf.dev",

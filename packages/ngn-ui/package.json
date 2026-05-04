@@ -2,6 +2,18 @@
   "name": "@apisurf/ngn-ui",
   "type": "module",
   "version": "0.1.16",
+  "description": "Web UI for the @apisurf/ngn task scheduler.",
+  "author": "Luka Vidakovic",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apisurf/ngn.git",
+    "directory": "packages/ngn-ui"
+  },
+  "homepage": "https://github.com/apisurf/ngn#readme",
+  "bugs": {
+    "url": "https://github.com/apisurf/ngn/issues"
+  },
   "bin": {
     "ngn-ui": "dist/serve.js"
   },
@@ -59,6 +71,6 @@
   ],
   "publishConfig": {
     "access": "public",
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org/"
   }
 }

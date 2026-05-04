@@ -1,6 +1,21 @@
 # NGN Distribution
 
-Publishing `@apisurf/ngn` CLI to GitHub Packages using changesets.
+Publishing `@apisurf/ngn` (and sibling `@apisurf/*` packages) to the public **npm registry** using changesets.
+
+## Prerequisites
+
+1. An npm account with publish rights to the `@apisurf` scope.
+2. Sign in once on your machine:
+   ```bash
+   npm login
+   ```
+   Verify with `npm whoami`.
+3. The `@apisurf` scope must exist on npm and be configured for **public** scoped publishing. The first publish of a brand-new scoped package needs `--access public`; this repo's `publishConfig.access = "public"` and `.changeset` config already set that.
+
+For CI, export `NPM_TOKEN` and let an `.npmrc` like the following authenticate non-interactively:
+```
+//registry.npmjs.org/:_authToken=${NPM_TOKEN}
+```
 
 ## Publishing Workflow
 
@@ -8,21 +23,16 @@ Publishing `@apisurf/ngn` CLI to GitHub Packages using changesets.
 # 1. Create changesets during development & bump versions
 pnpm version:bump
 
-# 3. Build, inject deps, and publish
+# 2. Build, inject deps, and publish
 pnpm version:release
 ```
 
-### Token Handling
+`version:release` runs `distribution/release.sh`, which:
 
-Both commands use `with-github-token.sh` which:
-
-- **Securely prompts** for your GitHub token (hidden input, not saved to shell history)
-- Sets the token only for child processes (won't persist after script exits)
-- Reuses existing `GITHUB_AUTH_TOKEN` if already set in your environment
-
-**Token requirements:** GitHub PAT with `write:packages` scope.
-
-The token is never written to disk or shell history - it's only held in memory for the duration of the command.
+1. Verifies `npm whoami` (or `NPM_TOKEN` in CI).
+2. Builds every workspace package.
+3. Flattens workspace deps into `@apisurf/ngn` via `inject-deps`.
+4. Calls `changeset publish`, which pushes each public package to https://registry.npmjs.org/.
 
 ## Local Testing (Before Publishing)
 
@@ -30,6 +40,7 @@ The token is never written to disk or shell history - it's only held in memory f
 # Build and pack
 pnpm build
 cd packages/ngn
+pnpm inject-deps
 npm pack
 
 # Install and test locally
@@ -45,6 +56,6 @@ cd packages/ngn
 npm pack --dry-run
 ```
 
-**Should include:** `dist/cli.js`, `dist/ui/`, `package.json`
+**Should include:** `dist/cli.js`, `dist/ui/`, `LICENSE`, `README.md`, `package.json`
 
-**Should NOT include:** `src/`, `node_modules/`, `*.ts` files
+**Should NOT include:** `src/`, `node_modules/`, `*.ts` source files
