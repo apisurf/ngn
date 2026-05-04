@@ -1,7 +1,7 @@
 {
   "name": "@apisurf/ngn-ui",
   "type": "module",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Web UI for the @apisurf/ngn task scheduler.",
   "author": "Luka Vidakovic",
   "license": "ISC",

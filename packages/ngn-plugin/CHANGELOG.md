@@ -1,5 +1,13 @@
 # @apisurf/ngn-plugin
 
+## 0.1.17
+
+### Patch Changes
+
+- Init package release
+- Updated dependencies
+  - @apisurf/ngn@0.1.17
+
 ## 0.1.16
 
 ### Patch Changes

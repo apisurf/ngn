@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn-plugin",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Official plugin library for @apisurf/ngn",
   "author": "Luka Vidakovic",
   "keywords": [
@@ -62,7 +62,7 @@
     "resend": "^6.7.0"
   },
   "peerDependencies": {
-    "@apisurf/ngn": ">=0.1.16"
+    "@apisurf/ngn": ">=0.1.17"
   },
   "devDependencies": {
     "@apisurf/ngn": "workspace:*",
