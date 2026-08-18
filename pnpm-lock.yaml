@@ -12,10 +12,10 @@ importers:
         specifier: ^2.29.8
         version: 2.29.8(@types/node@22.8.1)
       oxfmt:
-        specifier: ^0.62.0
+        specifier: 0.62.0
         version: 0.62.0
       oxlint:
-        specifier: ^1.77.0
+        specifier: 1.77.0
         version: 1.77.0
       turbo:
         specifier: ^2.5.6
