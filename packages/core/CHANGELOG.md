@@ -1,5 +1,13 @@
 # ngn-core
 
+## 0.2.0
+
+### Patch Changes
+
+- ngn-os@0.2.0
+- ngn-persistence@0.2.0
+- ngn-schema@0.2.0
+
 ## 0.1.17
 
 ### Patch Changes

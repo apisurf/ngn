@@ -1,5 +1,11 @@
 # ngn-persistence
 
+## 0.2.0
+
+### Patch Changes
+
+- ngn-os@0.2.0
+
 ## 0.1.17
 
 ### Patch Changes
