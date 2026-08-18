@@ -49,7 +49,7 @@ export interface ConnectionPragmaOptions {
  */
 export function applyConnectionPragmas(
   client: Client,
-  { wal = true, busyTimeoutMs = BUSY_TIMEOUT_MS }: ConnectionPragmaOptions = {}
+  { wal = true, busyTimeoutMs = BUSY_TIMEOUT_MS }: ConnectionPragmaOptions = {},
 ) {
   const pragmas = [`PRAGMA busy_timeout = ${busyTimeoutMs}`];
 
@@ -72,10 +72,7 @@ export function applyConnectionPragmas(
  * Everything in ngn that opens a SQLite file should come through here, so
  * there is one place that decides how a connection behaves under contention.
  */
-export function openDbClient(
-  url: string,
-  options?: ConnectionPragmaOptions
-): Client {
+export function openDbClient(url: string, options?: ConnectionPragmaOptions): Client {
   const client = createClient({ url });
 
   applyConnectionPragmas(client, options);
@@ -139,23 +136,16 @@ export async function initDbFileIfNotExists(dbPath: DbPath) {
  * @param sqliteUrl SQLite database file path, must start with 'file:'
  * @returns DB Client
  */
-export async function strictInitDbClientFromFilePath(
-  sqliteUrl: `file:${string}`
-): Promise<Client> {
+export async function strictInitDbClientFromFilePath(sqliteUrl: `file:${string}`): Promise<Client> {
   invariant(sqliteUrl, "sqliteUrl is required");
 
   if (!isDbPath(sqliteUrl)) {
-    throw new Error(
-      "Invalid sqliteUrl. It must be a string starting with 'file:'"
-    );
+    throw new Error("Invalid sqliteUrl. It must be a string starting with 'file:'");
   }
 
   const normalizedDbPath = normalizeDbPath(sqliteUrl);
   const dbFileExists = await checkDbFileExists(normalizedDbPath);
-  invariant(
-    dbFileExists,
-    `Database file does not exist at path: ${normalizedDbPath}`
-  );
+  invariant(dbFileExists, `Database file does not exist at path: ${normalizedDbPath}`);
   return openDbClient(normalizedDbPath);
 }
 
@@ -169,10 +159,7 @@ export async function strictInitDbClientFromFilePath(
  */
 export async function safeInitDbClient(sqliteUrl: DbPath) {
   invariant(sqliteUrl, "sqliteUrl is required");
-  invariant(
-    sqliteUrl,
-    "sqliteUrl must be a string starting with 'file:' or equal to ':memory:'"
-  );
+  invariant(sqliteUrl, "sqliteUrl must be a string starting with 'file:' or equal to ':memory:'");
 
   let dbClient: Client;
 

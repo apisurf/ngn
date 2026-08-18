@@ -22,9 +22,7 @@ export function cell(value: unknown): string {
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number") {
     // Keep floats readable without lying about integers.
-    return Number.isInteger(value)
-      ? String(value)
-      : String(Number(value.toFixed(3)));
+    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
   }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -50,21 +48,15 @@ function truncate(text: string, max: number): string {
 const pad = (text: string, width: number, right: boolean): string =>
   right ? text.padStart(width) : text.padEnd(width);
 
-export function renderTable(
-  rows: Row[],
-  columns: string[],
-  options: TableOptions = {}
-): string {
+export function renderTable(rows: Row[], columns: string[], options: TableOptions = {}): string {
   if (rows.length === 0) return "";
 
   const max = options.maxColumnWidth ?? 60;
   const numeric = new Set(columns.filter((c) => isNumericColumn(rows, c)));
 
-  const cells = rows.map((row) =>
-    columns.map((c) => truncate(cell(row[c]), max))
-  );
+  const cells = rows.map((row) => columns.map((c) => truncate(cell(row[c]), max)));
   const widths = columns.map((c, i) =>
-    Math.max(c.length, ...cells.map((r) => (r[i] ?? "").length))
+    Math.max(c.length, ...cells.map((r) => (r[i] ?? "").length)),
   );
 
   const lines: string[] = [];
@@ -72,7 +64,7 @@ export function renderTable(
     columns
       .map((c, i) => pad(c, widths[i] ?? 0, numeric.has(c)))
       .join("  ")
-      .trimEnd()
+      .trimEnd(),
   );
   lines.push(widths.map((w) => "─".repeat(w)).join("  "));
   for (const row of cells) {
@@ -80,7 +72,7 @@ export function renderTable(
       row
         .map((v, i) => pad(v, widths[i] ?? 0, numeric.has(columns[i] ?? "")))
         .join("  ")
-        .trimEnd()
+        .trimEnd(),
     );
   }
   return lines.join("\n");
@@ -101,9 +93,8 @@ export function renderCsv(rows: Row[], columns: string[]): string {
 export function renderJson(rows: Row[]): string {
   return JSON.stringify(
     rows,
-    (_key, value) =>
-      value instanceof Uint8Array ? `<blob ${value.byteLength} B>` : value,
-    2
+    (_key, value) => (value instanceof Uint8Array ? `<blob ${value.byteLength} B>` : value),
+    2,
   );
 }
 

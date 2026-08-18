@@ -1,9 +1,6 @@
 export const NGN_CONFIG_FILENAME_TS = "ngn.config.ts";
 export const NGN_CONFIG_FILENAME_JS = "ngn.config.js";
-export const NGN_CONFIG_FILENAMES = [
-  NGN_CONFIG_FILENAME_TS,
-  NGN_CONFIG_FILENAME_JS,
-];
+export const NGN_CONFIG_FILENAMES = [NGN_CONFIG_FILENAME_TS, NGN_CONFIG_FILENAME_JS];
 export const DEFAULT_ENV_FILENAME = ".env";
 
 // Default config values

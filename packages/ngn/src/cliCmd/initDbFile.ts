@@ -4,10 +4,7 @@ import { initDbFileIfNotExists } from "@apisurf/ngn-core";
 
 export const initDbFile = async (dbPath: DbPath) => {
   invariant(dbPath, "dbPath is required");
-  invariant(
-    dbPath !== ":memory:",
-    "dbPath must be file path and not ':memory:'"
-  );
+  invariant(dbPath !== ":memory:", "dbPath must be file path and not ':memory:'");
 
   if (!dbPath.startsWith("file:")) {
     dbPath = `file:${dbPath}`;

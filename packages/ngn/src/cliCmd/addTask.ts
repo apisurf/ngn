@@ -6,10 +6,7 @@ const DEFAULT_TASKS_DIR = "tasks";
 const createInitialTask = async (initialTaskPath: string, cwd: string) => {
   if (await isFile(initialTaskPath)) {
     console.log(
-      `Initial task already exists at ${stripAbsBasePath(
-        initialTaskPath,
-        cwd
-      )}. Skipping...`
+      `Initial task already exists at ${stripAbsBasePath(initialTaskPath, cwd)}. Skipping...`,
     );
     return;
   }
@@ -46,7 +43,7 @@ export const addTask = async (
   filePath: string,
   options: {
     root?: string;
-  }
+  },
 ) => {
   const cwd = getCwd(process.cwd(), options.root || process.cwd());
   const initialTaskPath = join(cwd, DEFAULT_TASKS_DIR, filePath);

@@ -6,11 +6,7 @@ import {
 } from "@apisurf/ngn-os";
 import invariant from "tiny-invariant";
 import { Client } from "@apisurf/ngn-persistence";
-import {
-  BuildCompiledTaskConfigFn,
-  CompiledTaskCallbacks,
-  TaskRuntimeCallbacks,
-} from "./types.js";
+import { BuildCompiledTaskConfigFn, CompiledTaskCallbacks, TaskRuntimeCallbacks } from "./types.js";
 import { TaskContext } from "../source/types.js";
 import { createTaskSqlite } from "./taskSqlite.js";
 import { registerFileTask } from "../db/services/registerTask.js";
@@ -33,10 +29,7 @@ export function createControlsGenerator({
   const timingService = new TimingService(dbClient);
 
   // wrap in a function to allow for partial application of dbClient
-  const generateControls: BuildCompiledTaskConfigFn = ({
-    sourcePath,
-    compiledPath,
-  }) => {
+  const generateControls: BuildCompiledTaskConfigFn = ({ sourcePath, compiledPath }) => {
     let fileTaskId: number;
     let fileTaskVersionId: number;
     let fileTaskRunId: number;
@@ -80,25 +73,19 @@ export function createControlsGenerator({
       async onNotFound() {
         assertMandatoryIds();
         await logService.logError(fileTaskId, fileTaskRunId, "Task not found");
-        logTaskCallback(
-          `Task not found: ${fileTaskId}, run ID: ${fileTaskRunId}`
-        );
+        logTaskCallback(`Task not found: ${fileTaskId}, run ID: ${fileTaskRunId}`);
       },
       async onSkip() {
         assertMandatoryIds();
         await taskRunService.skipTaskRun(fileTaskRunId);
         await logService.logInfo(fileTaskId, fileTaskRunId, "Task skipped");
-        logTaskCallback(
-          `Task skipped: ${fileTaskId}, run ID: ${fileTaskRunId}`
-        );
+        logTaskCallback(`Task skipped: ${fileTaskId}, run ID: ${fileTaskRunId}`);
       },
       async onStart() {
         assertMandatoryIds();
         await taskRunService.startTaskRun(fileTaskRunId);
         await logService.logInfo(fileTaskId, fileTaskRunId, "Task started");
-        logTaskCallback(
-          `Task started: ${fileTaskId}, run ID: ${fileTaskRunId}`
-        );
+        logTaskCallback(`Task started: ${fileTaskId}, run ID: ${fileTaskRunId}`);
       },
       async onFailure() {
         assertMandatoryIds();
@@ -110,9 +97,7 @@ export function createControlsGenerator({
         assertMandatoryIds();
         await taskRunService.endTaskRun(fileTaskRunId, "success");
         await logService.logInfo(fileTaskId, fileTaskRunId, "Task succeeded");
-        logTaskCallback(
-          `Task succeeded: ${fileTaskId}, run ID: ${fileTaskRunId}`
-        );
+        logTaskCallback(`Task succeeded: ${fileTaskId}, run ID: ${fileTaskRunId}`);
       },
     };
 

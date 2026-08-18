@@ -18,10 +18,7 @@ export interface DescribedDbPath {
   url: string;
 }
 
-export function describeDbPath(
-  dbPath: string,
-  cwd: string = process.cwd()
-): DescribedDbPath {
+export function describeDbPath(dbPath: string, cwd: string = process.cwd()): DescribedDbPath {
   if (dbPath === ":memory:") {
     return { isMemory: true, absolute: null, url: ":memory:" };
   }

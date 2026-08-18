@@ -63,9 +63,7 @@ Reading results
 
 program
   .name("ngn")
-  .description(
-    "Schedule TypeScript and JavaScript task files with cron and record every run"
-  )
+  .description("Schedule TypeScript and JavaScript task files with cron and record every run")
   .version(VERSION)
   .addHelpText("after", INTRO);
 
@@ -105,10 +103,7 @@ program
   .command("run:single")
   .description("Run a single task with a custom cron pattern")
   .argument("<filePath>", "File path of the task")
-  .option(
-    "-t, --timing <pattern>",
-    "Cron pattern for scheduling (e.g., '*/2 * * * * *')"
-  )
+  .option("-t, --timing <pattern>", "Cron pattern for scheduling (e.g., '*/2 * * * * *')")
   .option("--root <path>", "root directory path")
   .action(runSingle);
 
@@ -150,7 +145,7 @@ Examples
            FROM task_runs r JOIN file_tasks t ON t.id = r.file_task_id
            ORDER BY r.id DESC LIMIT 20"
   ngn sql "SELECT * FROM logs WHERE status = 'error' ORDER BY id DESC" --json
-`
+`,
   )
   .action(sql);
 

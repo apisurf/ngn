@@ -22,10 +22,7 @@ import {
  * Creates a simple config for running a single task file without requiring a config file.
  * Uses defaults for all configuration options and an in-memory database.
  */
-async function getSingleTaskConfig(
-  rootDir: string,
-  filePath: string
-): Promise<CliOptions> {
+async function getSingleTaskConfig(rootDir: string, filePath: string): Promise<CliOptions> {
   // Create file descriptor for the single task file
   const descriptor = createFileDescriptor({
     rootDir,
@@ -53,22 +50,12 @@ async function getSingleTaskConfig(
   };
 }
 
-export const runSingle = async (
-  filePath: string,
-  options: { root?: string; timing?: string }
-) => {
-  const rootDirAbs =
-    options.root && isAbsolute(options.root) ? options.root : process.cwd();
+export const runSingle = async (filePath: string, options: { root?: string; timing?: string }) => {
+  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
 
   // Validate cron pattern
-  invariant(
-    options.timing,
-    "Timing pattern is required. Use -t flag to provide a cron pattern"
-  );
-  invariant(
-    validate(options.timing),
-    `Invalid cron pattern: ${options.timing}`
-  );
+  invariant(options.timing, "Timing pattern is required. Use -t flag to provide a cron pattern");
+  invariant(validate(options.timing), `Invalid cron pattern: ${options.timing}`);
 
   const config = await getSingleTaskConfig(rootDirAbs, filePath);
   let scheduledTask: ScheduledTask | null = null;
@@ -119,9 +106,7 @@ export const runSingle = async (
     // Schedule the task with the provided cron pattern
     scheduledTask = schedule(options.timing, wrappedUserTask);
 
-    console.log(
-      `Task scheduled successfully. Running on schedule: ${options.timing}`
-    );
+    console.log(`Task scheduled successfully. Running on schedule: ${options.timing}`);
     console.log("Press Ctrl+C to stop...");
   } catch (error) {
     console.error("Error scheduling task.");

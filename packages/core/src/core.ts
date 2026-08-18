@@ -11,9 +11,4 @@ export { TaskContext } from "./source/types.js";
 
 // Per-task SQLite, injected as ctx.sqlite
 export { closeTaskDatabases } from "./runtime/taskSqlite.js";
-export type {
-  TaskSqlite,
-  DBInstance,
-  InitDBOptions,
-  Migration,
-} from "./runtime/taskSqlite.js";
+export type { TaskSqlite, DBInstance, InitDBOptions, Migration } from "./runtime/taskSqlite.js";

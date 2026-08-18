@@ -19,7 +19,7 @@ export const LIVE_HOST = "127.0.0.1";
 
 export type ExecuteLiveTask = (
   code: string,
-  language: "typescript" | "javascript"
+  language: "typescript" | "javascript",
 ) => Promise<unknown>;
 
 const liveTaskSchema = z.object({
@@ -38,9 +38,7 @@ export async function runLiveServer(options: LiveServerOptions) {
   const api = new Hono();
 
   // ngnui probes this to decide whether to enable its live editor.
-  api.get("/meta", (c) =>
-    c.json({ runtime: "ngn", version: options.version, live: true })
-  );
+  api.get("/meta", (c) => c.json({ runtime: "ngn", version: options.version, live: true }));
 
   api.post("/live", async (c) => {
     const parsed = liveTaskSchema.safeParse(await c.req.json());
@@ -48,10 +46,7 @@ export async function runLiveServer(options: LiveServerOptions) {
       return c.json({ error: "expected { code, language }" }, 400);
     }
 
-    const result = await options.executeLiveTask(
-      parsed.data.code,
-      parsed.data.language
-    );
+    const result = await options.executeLiveTask(parsed.data.code, parsed.data.language);
 
     try {
       return c.json({ result: result ?? null });
@@ -72,7 +67,7 @@ export async function runLiveServer(options: LiveServerOptions) {
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
       console.error(
-        `❌ Port ${options.port} is already in use. Set \`port\` in ngn.config.ts to a free one.`
+        `❌ Port ${options.port} is already in use. Set \`port\` in ngn.config.ts to a free one.`,
       );
       process.exit(1);
     }

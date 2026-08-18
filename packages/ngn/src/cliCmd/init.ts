@@ -1,12 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  isDirectory,
-  isFile,
-  absOrJoinWithRoot,
-  getCwd,
-  stripAbsBasePath,
-} from "@apisurf/ngn-os";
+import { isDirectory, isFile, absOrJoinWithRoot, getCwd, stripAbsBasePath } from "@apisurf/ngn-os";
 import { writeFileSync } from "node:fs";
 import type { ConfigFileOptions } from "../configSchema.js";
 import {
@@ -19,8 +13,7 @@ import {
 } from "../constants.js";
 
 const generateConfigFileContents = (options: ConfigFileOptions): string => {
-  const dbPathValue =
-    options.dbPath === ":memory:" ? '":memory:"' : `"${options.dbPath}"`;
+  const dbPathValue = options.dbPath === ":memory:" ? '":memory:"' : `"${options.dbPath}"`;
 
   return `import { defineConfig } from "@apisurf/ngn";
 
@@ -36,16 +29,13 @@ export default defineConfig({
 const createConfigFile = async (
   absConfigFilePath: string,
   cwd: string,
-  normalizedOptions: ConfigFileOptions
+  normalizedOptions: ConfigFileOptions,
 ) => {
   const fileContents = generateConfigFileContents(normalizedOptions);
 
   if (await isFile(absConfigFilePath)) {
     console.log(
-      `Config file already exists at ${stripAbsBasePath(
-        absConfigFilePath,
-        cwd
-      )}. Skipping...`
+      `Config file already exists at ${stripAbsBasePath(absConfigFilePath, cwd)}. Skipping...`,
     );
     return;
   }
@@ -66,10 +56,7 @@ const createTasksDir = async (cwd: string) => {
 
     if (dirExists) {
       console.log(
-        `Tasks directory already exists at ${stripAbsBasePath(
-          tasksDir,
-          cwd
-        )}. Skipping...`
+        `Tasks directory already exists at ${stripAbsBasePath(tasksDir, cwd)}. Skipping...`,
       );
       return;
     }

@@ -7,7 +7,7 @@ const buildGlobals = () =>
     Object.getOwnPropertyNames(globalThis).map((key) => [
       key,
       (globalThis as Record<string, unknown>)[key],
-    ])
+    ]),
   );
 
 /**
@@ -17,9 +17,7 @@ const buildGlobals = () =>
  * @param code - The IIFE code string to execute
  * @returns The module's exports object
  */
-export async function executeEsm(
-  code: string
-): Promise<Record<string, unknown>> {
+export async function executeEsm(code: string): Promise<Record<string, unknown>> {
   const requireResolutionRoot = `${process.cwd()}/`;
 
   // The compiled IIFE code assigns exports to __exports global

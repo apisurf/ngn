@@ -86,10 +86,7 @@ const openClients = new Map<string, Client>();
 /**
  * Run migrations on a database client
  */
-async function runMigrations(
-  client: Client,
-  migrations: Migration[]
-): Promise<void> {
+async function runMigrations(client: Client, migrations: Migration[]): Promise<void> {
   if (!migrations.length) return;
 
   // Create migrations tracking table
@@ -137,7 +134,7 @@ function resolveTaskDbPath(taskDir: string, file: string): string {
 
   if (isAbsolute(relativePath)) {
     throw new Error(
-      `Database file must be relative to the task folder, got an absolute path: "${file}"`
+      `Database file must be relative to the task folder, got an absolute path: "${file}"`,
     );
   }
 
@@ -147,7 +144,7 @@ function resolveTaskDbPath(taskDir: string, file: string): string {
   if (!resolved.startsWith(taskDirRoot)) {
     throw new Error(
       `Database file "${file}" resolves outside the task folder (${taskDir}). ` +
-        `A task can only manage databases in its own folder.`
+        `A task can only manage databases in its own folder.`,
     );
   }
 
@@ -196,10 +193,7 @@ function closeClient(absolutePath: string): void {
 export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
   const taskDir = dirname(taskSourcePath);
   // tasks/scrape.ts keeps its data in tasks/scrape.db
-  const defaultDbPath = join(
-    taskDir,
-    `${basename(taskSourcePath, extname(taskSourcePath))}.db`
-  );
+  const defaultDbPath = join(taskDir, `${basename(taskSourcePath, extname(taskSourcePath))}.db`);
 
   // The file is only created once a task actually touches it, so tasks that
   // never use ctx.sqlite leave no database behind.
@@ -214,8 +208,7 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
       return defaultDbPath;
     },
 
-    execute: (sql: string, args?: InArgs) =>
-      defaultClient().execute(args ? { sql, args } : sql),
+    execute: (sql: string, args?: InArgs) => defaultClient().execute(args ? { sql, args } : sql),
 
     batch: (statements: InStatement[]) => defaultClient().batch(statements),
 
@@ -230,8 +223,7 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
       return {
         client,
         path: dbPath,
-        execute: (sql: string, args?: InArgs) =>
-          client.execute(args ? { sql, args } : sql),
+        execute: (sql: string, args?: InArgs) => client.execute(args ? { sql, args } : sql),
         batch: (statements: InStatement[]) => client.batch(statements),
         close: () => closeClient(dbPath),
       };

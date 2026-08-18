@@ -19,7 +19,7 @@ export class LogService {
     fileTaskId: number,
     taskRunId: number,
     status: "info" | "warning" | "error",
-    value: string
+    value: string,
   ) {
     const { rows } = await this.db.execute({
       sql: "INSERT INTO logs (file_task_id, task_run_id, status, value) VALUES (:fileTaskId, :taskRunId, :status, :value) RETURNING id",

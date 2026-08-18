@@ -21,7 +21,7 @@ export class EntryLiveSource implements EntryBase {
     options: LiveSourceParams,
     config: {
       onTaskCodeLoaded?: OnTaskCodeLoaded;
-    }
+    },
   ) {
     invariant(options.livePath, "Live task path not provided");
     invariant(options.code, "Code not provided");
@@ -78,9 +78,7 @@ export class EntryLiveSource implements EntryBase {
     }
 
     this.codeMd5Hash = createHash("md5").update(this.code).digest("hex");
-    console.log(
-      `Loading live task from: ${this.paths.compiled}, hash: ${this.codeMd5Hash}`
-    );
+    console.log(`Loading live task from: ${this.paths.compiled}, hash: ${this.codeMd5Hash}`);
     console.log("Code hash:", this.codeMd5Hash);
 
     this.onTaskCodeLoaded?.(this.codeMd5Hash);
@@ -91,4 +89,3 @@ export class EntryLiveSource implements EntryBase {
     return Boolean(this.code && this.codeMd5Hash);
   }
 }
-

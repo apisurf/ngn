@@ -9,8 +9,6 @@ import type { ConfigFileOptions } from "./configSchema.js";
  *   match: ["tasks/**\/*.ts"],
  * });
  */
-export function defineConfig(
-  config: Partial<ConfigFileOptions>
-): Partial<ConfigFileOptions> {
+export function defineConfig(config: Partial<ConfigFileOptions>): Partial<ConfigFileOptions> {
   return config;
 }

@@ -1,9 +1,5 @@
 import invariant from "tiny-invariant";
-import {
-  CompiledTaskCallbacks,
-  TaskRuntimeCallbacks,
-  BuildCompiledTaskConfigFn,
-} from "./types.js";
+import { CompiledTaskCallbacks, TaskRuntimeCallbacks, BuildCompiledTaskConfigFn } from "./types.js";
 import { TaskContext, EntryExports } from "../source/types.js";
 import { Entry } from "../source/entry.js";
 import { EntryParams } from "../source/types.js";
@@ -33,11 +29,10 @@ export class Task {
       onTaskCodeLoaded: this.taskCallbacks?.onTaskCodeLoaded,
     });
 
-    const { taskCallbacks, runtimeCallbacks, env, kv, log, timing, sqlite } =
-      buildConfigFn({
-        sourcePath: this.entry.paths.source,
-        compiledPath: this.entry.paths.compiled,
-      });
+    const { taskCallbacks, runtimeCallbacks, env, kv, log, timing, sqlite } = buildConfigFn({
+      sourcePath: this.entry.paths.source,
+      compiledPath: this.entry.paths.compiled,
+    });
     this.taskCallbacks = taskCallbacks;
     this.runtimeCallbacks = runtimeCallbacks;
     this.sqlite = sqlite;

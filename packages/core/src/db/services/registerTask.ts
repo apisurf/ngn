@@ -9,7 +9,7 @@ export async function registerFileTask(
   paths: {
     relativeEntry: string;
     relativeParent: string;
-  }
+  },
 ) {
   const fileTaskVersionService = new FileTaskVersionService(dbClient);
   const fileTaskService = new FileTaskService(dbClient);
@@ -32,9 +32,7 @@ export async function registerFileTask(
     throw new Error("Could not create file task in DB.");
   }
 
-  const lastVersionNumber = await fileTaskVersionService.getLastVersion(
-    fileTask.id
-  );
+  const lastVersionNumber = await fileTaskVersionService.getLastVersion(fileTask.id);
 
   if (!lastVersionNumber) {
     // add new version
@@ -46,10 +44,7 @@ export async function registerFileTask(
     });
     await fileTaskService.bumpUpdatedAt(fileTask.id);
   } else {
-    const lastVersion = await fileTaskVersionService.getByVersion(
-      lastVersionNumber,
-      fileTask.id
-    );
+    const lastVersion = await fileTaskVersionService.getByVersion(lastVersionNumber, fileTask.id);
 
     if (lastVersion!.md5_hash !== md5Hash) {
       const nextVersionNumber = lastVersionNumber + 1;

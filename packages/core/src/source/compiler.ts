@@ -54,9 +54,7 @@ export class Compiler {
           // Extract the package name from the import path
           // '@scope/pkg/sub' -> '@scope/pkg', 'pkg/sub' -> 'pkg'
           const parts = args.path.split("/");
-          const pkgName = args.path.startsWith("@")
-            ? `${parts[0]}/${parts[1]}`
-            : parts[0];
+          const pkgName = args.path.startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
 
           // Check if this package should be bundled (not externalized)
           const shouldBundle = noExternalPatterns.some((pattern) => {
@@ -122,23 +120,14 @@ export class Compiler {
    * @param virtualPath - A virtual file path for the source (used for resolve directory and loader detection)
    * @returns The compiled code string
    */
-  async compileFromSource(
-    sourceCode: string,
-    virtualPath: string
-  ): Promise<string> {
+  async compileFromSource(sourceCode: string, virtualPath: string): Promise<string> {
     invariant(sourceCode, "Source code not provided");
     invariant(virtualPath, "Virtual path not provided");
 
     // Determine loader from file extension
     const ext = virtualPath.split(".").pop()?.toLowerCase();
     const loader: esbuild.Loader =
-      ext === "ts"
-        ? "ts"
-        : ext === "tsx"
-        ? "tsx"
-        : ext === "jsx"
-        ? "jsx"
-        : "js";
+      ext === "ts" ? "ts" : ext === "tsx" ? "tsx" : ext === "jsx" ? "jsx" : "js";
 
     const result = await esbuild.build({
       stdin: {

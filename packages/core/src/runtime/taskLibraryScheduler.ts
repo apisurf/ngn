@@ -46,21 +46,13 @@ export class TaskLibraryScheduler {
     // load the task exports to get the timing pattern
     await task.loadEntry();
 
-    logTaskLibraryScheduler(
-      `Scheduling: ${task.taskPath} with pattern: ${task.timingPattern}`
-    );
+    logTaskLibraryScheduler(`Scheduling: ${task.taskPath} with pattern: ${task.timingPattern}`);
 
-    invariant(
-      task.hasTimingExport(),
-      `timing pattern is missing for ${task.taskPath}`
-    );
-    invariant(
-      task.hasTaskExport(),
-      `task function is missing for ${task.taskPath}`
-    );
+    invariant(task.hasTimingExport(), `timing pattern is missing for ${task.taskPath}`);
+    invariant(task.hasTaskExport(), `task function is missing for ${task.taskPath}`);
     invariant(
       task.timingPattern && this.isCronPatternValid(task.timingPattern),
-      `Invalid cron pattern: ${task.timingPattern} for ${task.taskPath}`
+      `Invalid cron pattern: ${task.timingPattern} for ${task.taskPath}`,
     );
 
     const wrappedUserTask = async () => task.execute();

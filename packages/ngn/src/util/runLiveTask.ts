@@ -1,11 +1,6 @@
 import { isAbsolute, join } from "node:path";
 import invariant from "tiny-invariant";
-import {
-  handleSigInt,
-  handleSigTerm,
-  createFileDescriptor,
-  readEnv,
-} from "@apisurf/ngn-os";
+import { handleSigInt, handleSigTerm, createFileDescriptor, readEnv } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -23,8 +18,7 @@ export const runLiveTask = async (options: {
   code: string;
   language: "typescript" | "javascript";
 }) => {
-  const rootDirAbs =
-    options.root && isAbsolute(options.root) ? options.root : process.cwd();
+  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
 
   handleSigInt(async () => {
     process.exit(0);
@@ -37,11 +31,7 @@ export const runLiveTask = async (options: {
     // Read config for db path and env file
     const configFilePath = findConfigFile(rootDirAbs);
     if (!configFilePath) {
-      throw new Error(
-        `Config file not found. Expected one of: ${NGN_CONFIG_FILENAMES.join(
-          ", "
-        )}`
-      );
+      throw new Error(`Config file not found. Expected one of: ${NGN_CONFIG_FILENAMES.join(", ")}`);
     }
     const config = await readConfig(configFilePath);
 
@@ -52,10 +42,7 @@ export const runLiveTask = async (options: {
     // Compile source code directly from memory
     const compiler = new Compiler({ minify: false, silent: true });
     const virtualPath = join(rootDirAbs, options.filePath);
-    const compiledCode = await compiler.compileFromSource(
-      options.code,
-      virtualPath
-    );
+    const compiledCode = await compiler.compileFromSource(options.code, virtualPath);
 
     // Create file descriptor for the virtual file
     const descriptor = createFileDescriptor({

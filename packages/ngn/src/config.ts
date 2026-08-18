@@ -62,9 +62,7 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
   }
 }
 
-function normalizeConfig(
-  configObj: Partial<ConfigFileOptions>
-): ConfigFileOptions {
+function normalizeConfig(configObj: Partial<ConfigFileOptions>): ConfigFileOptions {
   return {
     dbPath: configObj.dbPath ?? defaults.dbPath,
     port: configObj.port ?? defaults.port,
@@ -78,17 +76,14 @@ export async function readConfig(path: string): Promise<ConfigFileOptions> {
   return normalizeConfig(config);
 }
 
-export async function getRunConfig(
-  rootDir: string,
-  filePathMatch?: string
-): Promise<CliOptions> {
+export async function getRunConfig(rootDir: string, filePathMatch?: string): Promise<CliOptions> {
   const configFilePath = findConfigFile(rootDir);
 
   if (!configFilePath) {
     console.error(
       `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${NGN_CONFIG_FILENAMES.join(
-        ", "
-      )}\n\nRun \`ngn init\` to generate a config file.\n`
+        ", ",
+      )}\n\nRun \`ngn init\` to generate a config file.\n`,
     );
     process.exit(1);
   }
@@ -105,7 +100,7 @@ export async function getRunConfig(
 
   const envFileAbsPath = join(rootDir, configuration.envFile);
   const fileDescriptors = filteredEntryFiles.map((file) =>
-    createFileDescriptor({ rootDir, path: file })
+    createFileDescriptor({ rootDir, path: file }),
   );
 
   // Build sourcePaths and descriptors keyed by source path

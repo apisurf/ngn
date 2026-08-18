@@ -1,10 +1,5 @@
 import { isAbsolute, normalize } from "node:path";
-import {
-  readFile,
-  stat,
-  access,
-  constants as fsConstants,
-} from "node:fs/promises";
+import { readFile, stat, access, constants as fsConstants } from "node:fs/promises";
 import { parse } from "dotenv";
 
 export async function isDirectory(path: string) {

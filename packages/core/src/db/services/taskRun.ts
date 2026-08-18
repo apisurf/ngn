@@ -7,10 +7,7 @@ type TaskRun = z.infer<typeof $taskRun>;
 export class TaskRunService {
   constructor(private db: Client) {}
 
-  async initTaskRun(data: {
-    file_task_id: number;
-    file_task_version_id: number;
-  }) {
+  async initTaskRun(data: { file_task_id: number; file_task_version_id: number }) {
     const { rows } = await this.db.execute({
       sql: "INSERT INTO task_runs (file_task_id, file_task_version_id, status) VALUES (:file_task_id, :file_task_version_id, 'pending') RETURNING id",
       args: {

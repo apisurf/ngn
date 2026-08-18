@@ -13,13 +13,7 @@ import { existsSync } from "node:fs";
 import { openDbClient } from "@apisurf/ngn-persistence";
 import { findConfigFile, readConfig } from "../config.js";
 import { describeDbPath } from "../util/dbPath.js";
-import {
-  type Row,
-  formatMs,
-  renderCsv,
-  renderJson,
-  renderTable,
-} from "../util/format.js";
+import { type Row, formatMs, renderCsv, renderJson, renderTable } from "../util/format.js";
 
 export interface SqlOptions {
   db?: string;
@@ -46,17 +40,13 @@ export const sql = async (query: string, options: SqlOptions) => {
     // read, and the interesting number is what it changed.
     if (result.columns.length === 0) {
       const n = result.rowsAffected;
-      process.stderr.write(
-        `${n} row${n === 1 ? "" : "s"} changed (${formatMs(elapsed)})\n`
-      );
+      process.stderr.write(`${n} row${n === 1 ? "" : "s"} changed (${formatMs(elapsed)})\n`);
       return;
     }
 
     const columns = [...result.columns];
     const rows: Row[] = result.rows.map((row) =>
-      Object.fromEntries(
-        columns.map((column, index) => [column, normalize(row[index])])
-      )
+      Object.fromEntries(columns.map((column, index) => [column, normalize(row[index])])),
     );
 
     if (options.json) {
@@ -74,20 +64,17 @@ export const sql = async (query: string, options: SqlOptions) => {
       return;
     }
 
-    const maxColumnWidth =
-      options.maxWidth === undefined ? 60 : Number(options.maxWidth);
+    const maxColumnWidth = options.maxWidth === undefined ? 60 : Number(options.maxWidth);
     if (!Number.isFinite(maxColumnWidth) || maxColumnWidth < 0) {
       process.stderr.write(
-        `ngn: --max-width expects a non-negative number (got "${options.maxWidth}")\n`
+        `ngn: --max-width expects a non-negative number (got "${options.maxWidth}")\n`,
       );
       return fail();
     }
 
     process.stdout.write(`${renderTable(rows, columns, { maxColumnWidth })}\n`);
     process.stderr.write(
-      `\n${rows.length} row${rows.length === 1 ? "" : "s"} (${formatMs(
-        elapsed
-      )})\n`
+      `\n${rows.length} row${rows.length === 1 ? "" : "s"} (${formatMs(elapsed)})\n`,
     );
   } catch (error) {
     // Multi-statement input: execute() rejects it, executeMultiple() accepts
@@ -96,9 +83,7 @@ export const sql = async (query: string, options: SqlOptions) => {
     if (isMultiStatement(error)) {
       try {
         await client.executeMultiple(query);
-        process.stderr.write(
-          `ok (${formatMs(performance.now() - started)})\n`
-        );
+        process.stderr.write(`ok (${formatMs(performance.now() - started)})\n`);
         return;
       } catch (multiError) {
         report(multiError);
@@ -140,7 +125,7 @@ async function resolveDbPath(options: SqlOptions): Promise<string | null> {
   const configPath = findConfigFile(rootDir);
   if (!configPath) {
     process.stderr.write(
-      `ngn: no ngn.config.ts in ${rootDir}. Pass --db <path> to query a database directly.\n`
+      `ngn: no ngn.config.ts in ${rootDir}. Pass --db <path> to query a database directly.\n`,
     );
     return null;
   }
@@ -151,14 +136,14 @@ async function resolveDbPath(options: SqlOptions): Promise<string | null> {
   if (described.isMemory) {
     process.stderr.write(
       "ngn: dbPath is :memory: in ngn.config.ts, so no run has left anything to query.\n" +
-        "     Set it to a file: URL, or pass --db <path>.\n"
+        "     Set it to a file: URL, or pass --db <path>.\n",
     );
     return null;
   }
 
   if (!existsSync(described.absolute as string)) {
     process.stderr.write(
-      `ngn: no database at ${described.absolute} yet — it is created by the first \`ngn run\`.\n`
+      `ngn: no database at ${described.absolute} yet — it is created by the first \`ngn run\`.\n`,
     );
     return null;
   }

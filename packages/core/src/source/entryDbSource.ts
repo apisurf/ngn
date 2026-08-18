@@ -21,7 +21,7 @@ export class EntryDbSource implements EntryBase {
     options: DbSourceParams,
     config: {
       onTaskCodeLoaded?: OnTaskCodeLoaded;
-    }
+    },
   ) {
     invariant(options.compiledCode, "Compiled code not provided");
     invariant(options.descriptor, "File descriptor not provided");
@@ -76,4 +76,3 @@ export class EntryDbSource implements EntryBase {
     return Boolean(this._code && this.codeMd5Hash);
   }
 }
-

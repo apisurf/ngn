@@ -12,8 +12,7 @@ import {
 import { getRunConfig } from "../config.js";
 
 export const runOnce = async (filePath: string, options: { root?: string }) => {
-  const rootDirAbs =
-    options.root && isAbsolute(options.root) ? options.root : process.cwd();
+  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
 
   const config = await getRunConfig(rootDirAbs, filePath); // filePath is the path of the task to run
 

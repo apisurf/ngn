@@ -12,9 +12,7 @@ const loggers = {
 } as const;
 
 export const logTaskLibraryScheduler = debug(loggers.TASK_LIBRARY_SCHEDULER);
-export const logTaskLibrarySchedulerError = debug(
-  loggers.TASK_LIBRARY_SCHEDULER_ERROR
-);
+export const logTaskLibrarySchedulerError = debug(loggers.TASK_LIBRARY_SCHEDULER_ERROR);
 export const logTaskCallback = debug(loggers.TASK_CALLBACK);
 export const logTaskConsoleInfo = debug(loggers.TASK_CONSOLE_INFO);
 export const logTaskOnceRunner = debug(loggers.TASK_ONCE_RUNNER);

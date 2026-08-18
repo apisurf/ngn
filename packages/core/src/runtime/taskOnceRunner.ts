@@ -21,10 +21,7 @@ export class TaskOnceRunner {
 
     logTaskOnceRunner(`Loaded task code: ${this.task.taskPath}`);
 
-    invariant(
-      this.task.hasTaskExport(),
-      `task function is missing for ${this.task.taskPath}`
-    );
+    invariant(this.task.hasTaskExport(), `task function is missing for ${this.task.taskPath}`);
 
     logTaskOnceRunner(`Running task: ${this.task.taskPath}`);
 

@@ -44,7 +44,7 @@ function printReadout(dbPath: string, port: number) {
     lines.push(
       `  database   :memory: — nothing is persisted, and there is nothing to browse`,
       ``,
-      `  Set dbPath in ngn.config.ts to a file: URL to keep runs.`
+      `  Set dbPath in ngn.config.ts to a file: URL to keep runs.`,
     );
   } else {
     lines.push(
@@ -53,7 +53,7 @@ function printReadout(dbPath: string, port: number) {
       `  browse     ngnui --db ${db.absolute} --live ${live}`,
       `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`,
       ``,
-      `  ngnui is a paid module; ngn sql ships with ngn.`
+      `  ngnui is a paid module; ngn sql ships with ngn.`,
     );
   }
 
@@ -82,8 +82,7 @@ function printReadout(dbPath: string, port: number) {
 // }
 
 export const run = async (options: { root?: string; match?: string }) => {
-  const rootDirAbs =
-    options.root && isAbsolute(options.root) ? options.root : process.cwd();
+  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
 
   const config = await getRunConfig(rootDirAbs, options.match);
   const taskLibrary = new TaskLibrary();
@@ -127,15 +126,10 @@ export const run = async (options: { root?: string; match?: string }) => {
     liveServer = await runLiveServer({
       port,
       version: VERSION,
-      executeLiveTask: async (
-        code: string,
-        language: "typescript" | "javascript"
-      ) => {
+      executeLiveTask: async (code: string, language: "typescript" | "javascript") => {
         return runLiveTask({
           root: rootDirAbs,
-          filePath: `live-task-${Date.now()}-${Math.random()
-            .toString(36)
-            .substring(2, 15)}.ts`,
+          filePath: `live-task-${Date.now()}-${Math.random().toString(36).substring(2, 15)}.ts`,
           code: code,
           language: language,
         });

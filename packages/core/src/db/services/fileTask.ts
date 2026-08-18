@@ -39,9 +39,7 @@ export class FileTaskService {
   }
 
   async list() {
-    const { rows } = await this.db.execute(
-      "SELECT * FROM file_tasks LIMIT 1000"
-    );
+    const { rows } = await this.db.execute("SELECT * FROM file_tasks LIMIT 1000");
 
     return rows as unknown as FileTask[];
   }

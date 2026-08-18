@@ -39,11 +39,7 @@ export function getFilename(path: string, extToStrip?: string) {
   return basename(path, extToStrip);
 }
 
-export function replaceExtension(
-  path: string,
-  oldExtension: string,
-  newExtension: string
-) {
+export function replaceExtension(path: string, oldExtension: string, newExtension: string) {
   const old = sanitizeUnsafeRegExp(oldExtension);
 
   return path.replace(new RegExp(`${old}$`), newExtension);
@@ -52,15 +48,10 @@ export function replaceExtension(
 export function getCwd(cwd: string, rootDir?: string): string {
   const normalizedPath = rootDir ?? cwd;
 
-  return isAbsolute(normalizedPath)
-    ? normalizedPath
-    : join(cwd, normalizedPath);
+  return isAbsolute(normalizedPath) ? normalizedPath : join(cwd, normalizedPath);
 }
 
-export function absOrJoinWithRoot(
-  path: string,
-  rootDirAbsPath: string
-): string {
+export function absOrJoinWithRoot(path: string, rootDirAbsPath: string): string {
   return isAbsolute(path) ? path : join(rootDirAbsPath, path);
 }
 
@@ -79,9 +70,7 @@ export function stripAbsBasePath(path: string, absBasePath: string): string {
     return path;
   }
 
-  const normalizedBasePath = absBasePath.endsWith("/")
-    ? absBasePath.slice(0, -1)
-    : absBasePath;
+  const normalizedBasePath = absBasePath.endsWith("/") ? absBasePath.slice(0, -1) : absBasePath;
 
   return path.replace(normalizedBasePath + "/", "");
 }

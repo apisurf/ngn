@@ -17,7 +17,7 @@ export class Entry {
     options: EntryParams,
     config: {
       onTaskCodeLoaded?: OnTaskCodeLoaded;
-    }
+    },
   ) {
     this.callbacks = {
       onTaskCodeLoaded: config.onTaskCodeLoaded ?? undefined,
