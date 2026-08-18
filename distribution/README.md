@@ -1,61 +1,52 @@
 # NGN Distribution
 
-Publishing `@apisurf/ngn` (and sibling `@apisurf/*` packages) to the public **npm registry** using changesets.
+Publishing `@apisurf/ngn` and its sibling `@apisurf/*` packages to the public
+**npm registry** using changesets.
 
 ## Prerequisites
 
-1. An npm account with publish rights to the `@apisurf` scope.
-2. Sign in once on your machine:
-   ```bash
-   npm login
-   ```
-   Verify with `npm whoami`.
-3. The `@apisurf` scope must exist on npm and be configured for **public** scoped publishing. The first publish of a brand-new scoped package needs `--access public`; this repo's `publishConfig.access = "public"` and `.changeset` config already set that.
+A **granular access token** from https://www.npmjs.com/settings/~/tokens with:
 
-For CI, export `NPM_TOKEN` and let an `.npmrc` like the following authenticate non-interactively:
-```
-//registry.npmjs.org/:_authToken=${NPM_TOKEN}
-```
+- **Read and write** on the entire `@apisurf` scope. Restricting the token to
+  selected packages lets it update those but not create new ones.
+- **Bypass two-factor authentication** checked. It is unchecked by default, and
+  without it the registry rejects every publish with `EOTP`.
+
+`release.sh` prompts for the token and keeps it in the process environment —
+nothing is written to `~/.npmrc` or the repo. Export `NPM_TOKEN` to skip the
+prompt in CI.
+
+Two quirks, both consequences of this account's `auth-and-writes` 2FA:
+`release.sh` sets `CI=true` because changesets decides to prompt for an OTP from
+the account's 2FA mode alone, then reuses that one code across every parallel
+publish and trips `E429 rate limited otp`; and a Bypass-2FA token cannot run
+`npm whoami`, so a failed check there is only a warning.
 
 ## Publishing Workflow
 
 ```bash
-# 1. Create changesets during development & bump versions
-pnpm version:bump
-
-# 2. Build, inject deps, and publish
-pnpm version:release
+pnpm version:bump     # write a changeset, then bump versions
+pnpm version:release  # build and publish
+git push --follow-tags
 ```
 
-`version:release` runs `distribution/release.sh`, which:
+`version:release` runs `distribution/release.sh`: prompt for the token, build
+every workspace package, then `changeset publish` — which rewrites each
+`workspace:*` range to the version it just published.
 
-1. Verifies `npm whoami` (or `NPM_TOKEN` in CI).
-2. Builds every workspace package.
-3. Flattens workspace deps into `@apisurf/ngn` via `inject-deps`.
-4. Calls `changeset publish`, which pushes each public package to https://registry.npmjs.org/.
+Publishing is per package and not atomic. Changesets skips whatever is already
+on the registry, so re-running `pnpm version:release` after a partial failure
+publishes only what is missing. Note that it tags all five packages regardless,
+so the tags alone are not proof a release landed — check the registry.
 
 ## Local Testing (Before Publishing)
 
 ```bash
-# Build and pack
 pnpm build
 cd packages/ngn
-pnpm inject-deps
-npm pack
-
-# Install and test locally
-npm install -g ./apisurf-ngn-*.tgz
-ngn --version
-ngn --help
+npm pack --dry-run          # inspect contents
+npm install -g ./apisurf-ngn-*.tgz && ngn --version
 ```
 
-## Verify Package Contents
-
-```bash
-cd packages/ngn
-npm pack --dry-run
-```
-
-**Should include:** `dist/cli.js`, `dist/ui/`, `LICENSE`, `README.md`, `package.json`
-
+**Should include:** `dist/`, `LICENSE`, `README.md`, `package.json`
 **Should NOT include:** `src/`, `node_modules/`, `*.ts` source files

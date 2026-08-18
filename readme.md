@@ -39,8 +39,27 @@ to find one.
 pnpm install
 pnpm build          # turbo, in dependency order
 pnpm lint
-pnpm version:bump   # write a changeset and apply it
-pnpm version:release
 ```
 
 See `packages/ngn/README.md` for usage.
+
+## Releasing
+
+All five packages go out together on one version.
+
+```bash
+pnpm version:bump     # write a changeset, apply it to every package
+pnpm version:release  # build, then publish via changesets
+git push --follow-tags
+```
+
+`version:release` asks for an npm **granular access token**, held in memory only.
+It needs **read and write on the whole `@apisurf` scope** — a token limited to
+selected packages cannot create new ones — and **Bypass 2FA** checked, or the
+registry rejects the publish with `EOTP`.
+
+Publishing is per package and not atomic, while the git tags are written either
+way. Confirm on npm rather than trusting the tags; re-running `version:release`
+publishes only what is missing.
+
+See [`distribution/README.md`](./distribution/README.md) for the details.
