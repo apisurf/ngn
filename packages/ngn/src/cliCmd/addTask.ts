@@ -15,20 +15,28 @@ const createInitialTask = async (initialTaskPath: string, cwd: string) => {
   }
 
   const initialTaskContent = `
-// Write your TypeScript code here
+// Write your TypeScript code here.
+// Need a library? npm install it and import it — only this file is bundled.
 import { TaskContext } from "@apisurf/ngn";
 
 // Run every 5 seconds
 export const timing = "*/5 * * * * *";
 
 export const task = async (ctx: TaskContext) => {
-  console.log("Test task");
-
   const result = await fetch("https://example.com").then(res => res.text());
 
-  console.log('result:', result);
+  // ctx.sqlite is this task's own database, kept next to this file
+  await ctx.sqlite.execute(
+    "CREATE TABLE IF NOT EXISTS results (length INTEGER, seen TEXT)"
+  );
+  await ctx.sqlite.execute("INSERT INTO results (length, seen) VALUES (?, ?)", [
+    result.length,
+    new Date().toISOString(),
+  ]);
 
-  return { result };
+  await ctx.log.info(\`fetched \${result.length} bytes\`);
+
+  return { length: result.length };
 };`;
 
   writeFileSync(initialTaskPath, initialTaskContent, "utf-8");

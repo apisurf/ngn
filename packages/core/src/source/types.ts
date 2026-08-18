@@ -1,4 +1,5 @@
 import { FsNodeFileDescriptor } from "ngn-os";
+import { TaskSqlite } from "../runtime/taskSqlite.js";
 
 export type LiveSourceParams = {
   livePath: `live:${string}`;
@@ -12,10 +13,11 @@ export type DbSourceParams = {
 };
 
 export type EntryParams = LiveSourceParams | DbSourceParams;
+
 /**
- * Base TaskContext without plugins (internal use)
+ * The single argument every task export receives.
  */
-export interface BaseTaskContext {
+export interface TaskContext {
   meta: {
     fileTaskId: number;
     fileTaskVersionId: number;
@@ -36,16 +38,11 @@ export interface BaseTaskContext {
   timing: {
     start(label: string): () => Promise<void>;
   };
-}
-
-/**
- * TaskContext with plugins namespace
- * @template TPlugins - Map of plugin name to plugin API
- */
-export interface TaskContext<
-  TPlugins extends Record<string, unknown> = Record<string, unknown>
-> extends BaseTaskContext {
-  plugins: TPlugins;
+  /**
+   * SQLite scoped to the folder this task file lives in. Always present — no
+   * configuration required.
+   */
+  sqlite: TaskSqlite;
 }
 
 export interface EntryExports {

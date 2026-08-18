@@ -31,8 +31,11 @@ Inputs
                  match (default ${DEFAULT_MATCH_PATTERN}), envFile (default .env)
   a task file    export const timing = "*/5 * * * * *"  // cron, seconds first
                  export const task = async (ctx) => { ... }
-                 ctx has log.info/error/warning, kv.get/set, timing.start, env
+                 ctx has log.info/error/warning, kv.get/set, timing.start, env,
+                 and sqlite — its own database, no setup, kept next to the task
                  optional: shouldSkip, onSuccess, onError, onComplete
+                 anything else, import it: only your code is bundled, imports
+                 resolve from your node_modules
 
 Interactive vs one-shot
   \`run\` and \`run:single\` do not exit — they hold the terminal until Ctrl-C.
@@ -46,6 +49,11 @@ Examples
   ngn run --match "api/**/*.ts"     schedule a subset — quote the glob
   ngn run:once tasks/scrape.ts      run one task now, then exit
   ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"
+
+Task data
+  ctx.sqlite is a database per task file — tasks/scrape.ts uses tasks/scrape.db.
+  execute(sql, args), batch(stmts), initDB({file, migrations}), destroyDB(file).
+  A task can only open databases in its own folder, never a parent's.
 
 Reading results
   \`ngn sql\` prints rows and exits — \`ngn sql --help\` lists the tables.
@@ -85,7 +93,9 @@ program
   .description("Run tasks")
   .option("--root <path>", "root directory path")
   // without this option, it will run all tasks in the tasks directory
-  // to run a single task inside the tasks directory => ngn run --match "tasks/single-task.ts" or ngn run --match "single-task.ts"
+  // the pattern is matched against the task path relative to the root, so it
+  // has to cover the directory too: "tasks/single-task.ts" or "**/single-task.ts"
+  // matches, a bare "single-task.ts" matches nothing
   // to glob match tasks inside the tasks directory => ngn run --match "group/**/*.ts" or ngn run --match "group/{auth,user}/*.ts" (use parenthesis to escape CLI expansion)
   .option("--match <path>", "Only run tasks matching the partial path")
   .action(run);

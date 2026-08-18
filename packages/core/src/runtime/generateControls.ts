@@ -11,7 +11,8 @@ import {
   CompiledTaskCallbacks,
   TaskRuntimeCallbacks,
 } from "./types.js";
-import { BaseTaskContext } from "../source/types.js";
+import { TaskContext } from "../source/types.js";
+import { createTaskSqlite } from "./taskSqlite.js";
 import { registerFileTask } from "../db/services/registerTask.js";
 import { TaskRunService } from "../db/services/taskRun.js";
 import { LogService } from "../db/services/log.js";
@@ -22,11 +23,9 @@ import { TimingService } from "../db/services/timing.js";
 export function createControlsGenerator({
   dbClient,
   env,
-  plugins,
 }: {
   dbClient: Client;
-  env: BaseTaskContext["env"];
-  plugins: Record<string, unknown>;
+  env: TaskContext["env"];
 }) {
   const taskRunService = new TaskRunService(dbClient);
   const logService = new LogService(dbClient);
@@ -123,7 +122,8 @@ export function createControlsGenerator({
       taskCallbacks: taskCallbacks,
       runtimeCallbacks: runtimeCallbacks,
       env,
-      plugins,
+      // Scoped to this task's own folder — see createTaskSqlite
+      sqlite: createTaskSqlite(sourcePath),
       kv: {
         async set(key: string, value: string) {
           await kvService.setValue(fileTaskId, key, value);

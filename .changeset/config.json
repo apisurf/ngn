@@ -6,7 +6,6 @@
     [
       "@apisurf/ngn",
       "@apisurf/ngnui",
-      "@apisurf/ngn-plugin",
       "ngn-core",
       "ngn-os",
       "ngn-persistence",

@@ -1,36 +1,16 @@
-import type { BaseTaskContext } from "ngn-core";
-
 export { defineConfig } from "./defineConfig";
-export type { ConfigFileOptions, TypedConfigFileOptions } from "./configSchema";
-
-// Plugin types for user convenience
-export type { Plugin, PluginsToApiMap } from "./pluginTypes";
-
-// Re-export types from core
-export type { BaseTaskContext } from "ngn-core";
-
-// Re-export file descriptor type from os (aliased for cleaner API)
-export type { FsNodeFileDescriptor as FileDescriptor } from "ngn-os";
-
-/**
- * Plugin registry interface for module augmentation.
- * Augment this interface to add your plugin types:
- *
- * @example
- * // In ngn.d.ts
- * declare module "@apisurf/ngn" {
- *   interface PluginRegistry {
- *     sqlite: SqlitePluginApi;
- *   }
- * }
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface PluginRegistry {}
+export type { ConfigFileOptions } from "./configSchema";
 
 /**
  * Context object provided to task functions.
- * Extends BaseTaskContext from core with typed plugin registry.
+ *
+ * Everything a task gets is on here — env, kv, log, timing, meta and sqlite.
+ * Anything else a task needs, it imports itself from its own node_modules.
  */
-export interface TaskContext extends BaseTaskContext {
-  plugins: PluginRegistry;
-}
+export type { TaskContext } from "ngn-core";
+
+// SQLite types, for tasks that want to name what ctx.sqlite hands back
+export type { TaskSqlite, DBInstance, InitDBOptions, Migration } from "ngn-core";
+
+// Re-export file descriptor type from os (aliased for cleaner API)
+export type { FsNodeFileDescriptor as FileDescriptor } from "ngn-os";

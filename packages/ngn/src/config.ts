@@ -25,7 +25,6 @@ const defaults: ConfigFileOptions = {
   port: DEFAULT_API_PORT,
   match: [DEFAULT_MATCH_PATTERN],
   envFile: DEFAULT_ENV_FILE,
-  plugins: [],
 };
 
 export function findConfigFile(rootDir: string): string | null {
@@ -71,7 +70,6 @@ function normalizeConfig(
     port: configObj.port ?? defaults.port,
     match: configObj.match ?? defaults.match,
     envFile: configObj.envFile ?? defaults.envFile,
-    plugins: configObj.plugins ?? [],
   };
 }
 
