@@ -3,8 +3,8 @@
  *
  * Reading a database needs no scheduler — `ngn sql` opens the file, and so
  * does `ngnui`, which serves the whole web UI out of it. What neither can do
- * is run a task: that needs this project's compiler, config, env and plugins,
- * which exist only inside a live `ngn run`. So this endpoint stays here, next
+ * is run a task: that needs this project's compiler, config and env, which
+ * exist only inside a live `ngn run`. So this endpoint stays here, next
  * to the runtime that can honour it, and ngnui forwards to it.
  *
  * It binds to the loopback interface. The payload is arbitrary code, executed

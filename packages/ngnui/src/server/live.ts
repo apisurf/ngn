@@ -2,8 +2,8 @@
  * Forwarding live executions to a running `ngn`.
  *
  * The viewer can read a database from anywhere, but it cannot run a task:
- * compiling and executing one needs the project's config, env and plugins,
- * which exist only inside an `ngn run` process. So `ngn run` keeps a small
+ * compiling and executing one needs the project's config and env, which
+ * exist only inside an `ngn run` process. So `ngn run` keeps a small
  * live endpoint of its own and this forwards to it, which also keeps the
  * execution on the machine that owns the project rather than the one browsing.
  *

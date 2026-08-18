@@ -1,20 +1,16 @@
-import type { Plugin, PluginsToApiMap } from "./pluginTypes";
-import type { TypedConfigFileOptions } from "./configSchema";
+import type { ConfigFileOptions } from "./configSchema";
 
 /**
- * Define NGN configuration with full type inference for plugins.
+ * Define NGN configuration.
  *
  * @example
  * export default defineConfig({
- *   plugins: [dbPlugin({ connectionString: '...' })],
+ *   dbPath: "file:ngn.db",
+ *   match: ["tasks/**\/*.ts"],
  * });
- *
- * // In task files, ctx.plugins.db will be fully typed
  */
-export function defineConfig<const TPlugins extends readonly Plugin[] = []>(
-  config: TypedConfigFileOptions<TPlugins>
-): TypedConfigFileOptions<TPlugins> & {
-  __pluginTypes?: PluginsToApiMap<TPlugins>;
-} {
+export function defineConfig(
+  config: Partial<ConfigFileOptions>
+): Partial<ConfigFileOptions> {
   return config;
 }

@@ -75,5 +75,4 @@ pnpm changeset publish
 echo -e "\n${GREEN}✅ Release complete!${NC}"
 echo -e "\n${BLUE}Verify on npm:${NC}"
 echo -e "  https://www.npmjs.com/package/@apisurf/ngn"
-echo -e "  https://www.npmjs.com/package/@apisurf/ngn-plugin"
 echo -e "  https://www.npmjs.com/package/@apisurf/ngnui"

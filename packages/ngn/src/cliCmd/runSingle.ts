@@ -8,6 +8,7 @@ import {
   createControlsGenerator,
   setupDbClient,
   getDbClient,
+  closeTaskDatabases,
 } from "ngn-core";
 import { CliOptions } from "../types";
 import {
@@ -40,7 +41,6 @@ async function getSingleTaskConfig(
       dbPath: DEFAULT_DB_PATH,
       port: DEFAULT_API_PORT,
       envFile: DEFAULT_ENV_FILE,
-      plugins: [],
     },
     sourcePaths: [sourcePath],
     descriptors: { [sourcePath]: descriptor },
@@ -84,7 +84,6 @@ export const runSingle = async (
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
-      plugins: {},
     });
 
     // Get the first (and only) compiled entry
@@ -133,11 +132,13 @@ export const runSingle = async (
   handleSigInt(async () => {
     console.log("\nStopping scheduled task...");
     scheduledTask?.stop();
+    closeTaskDatabases();
     process.exit(0);
   });
   handleSigTerm(async () => {
     console.log("\nStopping scheduled task...");
     scheduledTask?.stop();
+    closeTaskDatabases();
     process.exit(0);
   });
 

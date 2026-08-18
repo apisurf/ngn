@@ -7,6 +7,7 @@ import {
   createControlsGenerator,
   setupDbClient,
   getDbClient,
+  closeTaskDatabases,
 } from "ngn-core";
 import { getRunConfig } from "../config";
 
@@ -34,7 +35,6 @@ export const runOnce = async (filePath: string, options: { root?: string }) => {
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
-      plugins: {},
     });
 
     // Get the first (and only) compiled entry
@@ -55,5 +55,7 @@ export const runOnce = async (filePath: string, options: { root?: string }) => {
   } catch (error) {
     console.error("Error running task.");
     console.error(error);
+  } finally {
+    closeTaskDatabases();
   }
 };

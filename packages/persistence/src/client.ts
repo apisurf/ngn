@@ -1,10 +1,21 @@
 import { isFile } from "ngn-os";
-import { type Client, type InValue, createClient } from "@libsql/client";
+import {
+  type Client,
+  type InArgs,
+  type InStatement,
+  type InValue,
+  type ResultSet,
+  createClient,
+} from "@libsql/client";
 import invariant from "tiny-invariant";
 import { migration } from "./migration.js";
 
 export type DbPath = `file:${string}` | ":memory:";
 export { Client, InValue };
+// Re-exported so everything that talks to SQLite goes through this package
+// rather than depending on @libsql/client directly.
+export { createClient };
+export type { InArgs, InStatement, ResultSet };
 
 async function checkDbFileExists(dbPath: string) {
   if (dbPath === ":memory:") return true;

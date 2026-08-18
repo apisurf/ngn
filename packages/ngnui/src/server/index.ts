@@ -7,7 +7,7 @@
  *
  * Everything it does with the database is a read. The one exception is
  * `/api/live`, which it cannot serve at all: running code needs the project's
- * config, env and plugins, which only a live `ngn run` has. That route is
+ * config and env, which only a live `ngn run` has. That route is
  * forwarded to such a process when one is reachable and reported as
  * unavailable when it is not.
  */

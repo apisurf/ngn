@@ -7,15 +7,13 @@ export { TaskOnceRunner } from "./runtime/taskOnceRunner.js";
 export { setupDbClient, getDbClient } from "./db/db.js";
 export { initDbFileIfNotExists } from "./db/db.js";
 export { createControlsGenerator } from "./runtime/generateControls.js";
-export { TaskContext, BaseTaskContext } from "./source/types.js";
+export { TaskContext } from "./source/types.js";
 
-// Plugin system exports
-export { PluginManager } from "./plugin/manager.js";
-export { definePlugin, pluginSchema } from "./plugin/definePlugin.js";
+// Per-task SQLite, injected as ctx.sqlite
+export { closeTaskDatabases } from "./runtime/taskSqlite.js";
 export type {
-  Plugin,
-  PluginApi,
-  PluginInitContext,
-  PluginName,
-  PluginsToApiMap,
-} from "./plugin/types.js";
+  TaskSqlite,
+  DBInstance,
+  InitDBOptions,
+  Migration,
+} from "./runtime/taskSqlite.js";

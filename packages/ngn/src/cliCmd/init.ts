@@ -99,7 +99,6 @@ export const init = async (options: {
     port: options.apiPort || DEFAULT_API_PORT,
     match: [options.match || DEFAULT_MATCH_PATTERN],
     envFile: options.envFile || DEFAULT_ENV_FILE,
-    plugins: [],
   };
 
   await createConfigFile(absConfigFilePath, cwd, normalizedOptions);

@@ -28,9 +28,9 @@ is not an error: the UI starts empty and fills in.
 
 ## Live tasks
 
-The live editor executes code, which needs a project's compiler, config, env
-and plugins — things a viewer pointed at a file does not have. `ngn run` keeps
-a small endpoint for it, and ngnui forwards there when you say where it is:
+The live editor executes code, which needs a project's compiler, config and
+env — things a viewer pointed at a file does not have. `ngn run` keeps a small
+endpoint for it, and ngnui forwards there when you say where it is:
 
 ```bash
 ngn run                                          # in the project

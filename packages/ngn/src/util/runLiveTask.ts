@@ -12,6 +12,7 @@ import {
   createControlsGenerator,
   setupDbClient,
   getDbClient,
+  closeTaskDatabases,
 } from "ngn-core";
 import { readConfig, findConfigFile } from "../config";
 import { NGN_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
@@ -69,7 +70,6 @@ export const runLiveTask = async (options: {
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env,
-      plugins: {},
     });
 
     const task = new Task({
@@ -81,7 +81,13 @@ export const runLiveTask = async (options: {
       },
     });
 
-    return task.execute();
+    // A live task is a one-off with a filename that is never reused, so any
+    // database it opened has no second run to be held open for.
+    try {
+      return await task.execute();
+    } finally {
+      closeTaskDatabases();
+    }
   } catch (error) {
     console.error("Error running task.");
     console.error(error);
