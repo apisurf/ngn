@@ -1,6 +1,5 @@
 import { isAbsolute } from "node:path";
 import invariant from "tiny-invariant";
-import { runApi } from "ngn-api";
 import {
   handleSigInt,
   handleSigTerm,
@@ -18,7 +17,42 @@ import {
   PluginManager,
 } from "ngn-core";
 import { getRunConfig } from "../config";
+import { runLiveServer, LIVE_HOST } from "../liveServer";
 import { runLiveTask } from "../util/runLiveTask";
+import { describeDbPath } from "../util/dbPath";
+import { VERSION } from "../version";
+
+/**
+ * What a run is, in five lines, at the moment it starts.
+ *
+ * The scheduler is headless now: the dashboard is a separate command against
+ * the same file. That is only obvious if the run says so, so it prints the
+ * exact `ngnui` invocation for this project — including `--live`, without
+ * which the editor in that UI has nothing to execute against.
+ */
+function printReadout(dbPath: string, port: number) {
+  const db = describeDbPath(dbPath);
+  const live = `http://${LIVE_HOST}:${port}`;
+
+  const lines = [``, `  ngn ${VERSION}`, ``, `  live       ${live}`];
+
+  if (db.isMemory) {
+    lines.push(
+      `  database   :memory: — nothing is persisted, and there is nothing to browse`,
+      ``,
+      `  Set dbPath in ngn.config.ts to a file: URL to keep runs.`
+    );
+  } else {
+    lines.push(
+      `  database   ${db.absolute}`,
+      ``,
+      `  browse     ngnui --db ${db.absolute} --live ${live}`,
+      `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`
+    );
+  }
+
+  console.log(`${lines.join("\n")}\n`);
+}
 
 // async function watchSourceDirectories(
 //   matchPatterns: string[],
@@ -47,7 +81,7 @@ export const run = async (options: { root?: string; match?: string }) => {
 
   const config = await getRunConfig(rootDirAbs, options.match);
   const taskLibrary = new TaskLibrary();
-  let apiServer: Awaited<ReturnType<typeof runApi>>;
+  let liveServer: Awaited<ReturnType<typeof runLiveServer>>;
   let scheduler: TaskLibraryScheduler;
 
   // Create plugin manager from config
@@ -95,29 +129,27 @@ export const run = async (options: { root?: string; match?: string }) => {
 
     scheduler.start();
 
-    apiServer = await runApi(
-      {
-        dbClient,
-        port: 8787,
+    const port = config.configFileOptions.port;
+
+    liveServer = await runLiveServer({
+      port,
+      version: VERSION,
+      executeLiveTask: async (
+        code: string,
+        language: "typescript" | "javascript"
+      ) => {
+        return runLiveTask({
+          root: rootDirAbs,
+          filePath: `live-task-${Date.now()}-${Math.random()
+            .toString(36)
+            .substring(2, 15)}.ts`,
+          code: code,
+          language: language,
+        });
       },
-      {
-        coreControls: {
-          executeLiveTask: async (
-            code: string,
-            language: "typescript" | "javascript"
-          ) => {
-            return runLiveTask({
-              root: rootDirAbs,
-              filePath: `live-task-${Date.now()}-${Math.random()
-                .toString(36)
-                .substring(2, 15)}.ts`,
-              code: code,
-              language: language,
-            });
-          },
-        },
-      }
-    );
+    });
+
+    printReadout(config.configFileOptions.dbPath, port);
   } catch (error) {
     console.error("Error while running.");
     console.error(error);
@@ -127,13 +159,13 @@ export const run = async (options: { root?: string; match?: string }) => {
 
   handleSigInt(async () => {
     await scheduler?.stop();
-    apiServer?.close();
+    liveServer?.close();
     await pluginManager.destroy();
     process.exit(0);
   });
   handleSigTerm(async () => {
     await scheduler?.stop();
-    apiServer?.close();
+    liveServer?.close();
     await pluginManager.destroy();
     process.exit(0);
   });

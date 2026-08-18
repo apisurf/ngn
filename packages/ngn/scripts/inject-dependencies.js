@@ -14,11 +14,11 @@ const path = require("path");
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../..");
 const CLI_PACKAGE_JSON_PATH = path.join(__dirname, "../package.json");
 
-// Workspace packages that need their dependencies extracted
-// Note: ngn-ui is excluded because it's pre-built and copied as static files
+// Workspace packages that need their dependencies extracted.
+// @apisurf/ngnui is excluded on purpose: it is its own published CLI with its
+// own dependencies, not something the scheduler bundles.
 const WORKSPACE_PACKAGES = [
   "ngn-core",
-  "ngn-api",
   "ngn-os",
   "ngn-persistence",
   "ngn-schema",

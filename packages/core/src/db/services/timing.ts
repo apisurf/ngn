@@ -31,7 +31,7 @@ export class TimingService {
       // }
 
       // insert if not exists
-      const { rows } = await this.db.execute({
+      await this.db.execute({
         sql: "INSERT INTO timings (label, value, file_task_id, task_run_id) VALUES (:label, :value, :file_task_id, :task_run_id) RETURNING id",
         args: { label, value: duration, file_task_id, task_run_id },
       });

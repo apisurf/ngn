@@ -13,19 +13,8 @@ import {
   setupDbClient,
   getDbClient,
 } from "ngn-core";
-import { readConfig } from "../config";
+import { readConfig, findConfigFile } from "../config";
 import { NGN_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
-import { existsSync } from "node:fs";
-
-function findConfigFile(rootDir: string): string | null {
-  for (const filename of NGN_CONFIG_FILENAMES) {
-    const configPath = join(rootDir, filename);
-    if (existsSync(configPath)) {
-      return configPath;
-    }
-  }
-  return null;
-}
 
 export const runLiveTask = async (options: {
   root: string;

@@ -1,0 +1,89 @@
+{
+  "name": "@apisurf/ngnui",
+  "type": "module",
+  "version": "0.1.17",
+  "description": "ngnui — browse an ngn task database in a local web UI: tasks, runs, logs, timings.",
+  "keywords": [
+    "ngn",
+    "cli",
+    "scheduler",
+    "sqlite",
+    "viewer",
+    "dashboard"
+  ],
+  "author": "Luka Vidakovic",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apisurf/ngn.git",
+    "directory": "packages/ngnui"
+  },
+  "homepage": "https://github.com/apisurf/ngn#readme",
+  "bugs": {
+    "url": "https://github.com/apisurf/ngn/issues"
+  },
+  "bin": {
+    "ngnui": "./bin/ngnui.mjs"
+  },
+  "scripts": {
+    "dev": "NGN_UI_PORT=3000 vite",
+    "dev:server": "NGN_UI_PORT=8787 tsx watch src/server/index.ts",
+    "build": "vite build && tsup",
+    "start": "node ./bin/ngnui.mjs",
+    "test": "vitest run",
+    "format": "biome format",
+    "lint": "biome lint",
+    "check": "biome check",
+    "gen:types": "npx -y @chakra-ui/cli typegen src/theme.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.18.1",
+    "@libsql/client": "^0.14.0",
+    "hono": "^4.8.12"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@chakra-ui/charts": "^3.27.0",
+    "@chakra-ui/react": "^3.27.0",
+    "@emotion/react": "^11.14.0",
+    "@faker-js/faker": "^9.6.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@tanstack/match-sorter-utils": "^8.19.4",
+    "@tanstack/react-query": "^5.66.5",
+    "@tanstack/react-query-devtools": "^5.66.5",
+    "@tanstack/react-router": "^1.121.2",
+    "@tanstack/react-router-devtools": "^1.121.2",
+    "@tanstack/router-plugin": "^1.121.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.2.0",
+    "@types/node": "^22.8.1",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@uidotdev/usehooks": "^2.4.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "date-fns": "^4.1.0",
+    "jsdom": "^26.0.0",
+    "next-themes": "^0.4.6",
+    "ngn-schema": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.5.0",
+    "recharts": "^3.2.1",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.1.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.0.5",
+    "web-vitals": "^4.2.4",
+    "zod": "^3.24.2"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
