@@ -3,9 +3,9 @@ import {
   logTaskConsoleError,
   logTaskConsoleInfo,
   logTaskConsoleWarn,
-} from "ngn-os";
+} from "@apisurf/ngn-os";
 import invariant from "tiny-invariant";
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import {
   BuildCompiledTaskConfigFn,
   CompiledTaskCallbacks,

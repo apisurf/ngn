@@ -5,7 +5,7 @@ import {
   handleSigTerm,
   createFileDescriptor,
   readEnv,
-} from "ngn-os";
+} from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -13,9 +13,9 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
-} from "ngn-core";
-import { readConfig, findConfigFile } from "../config";
-import { NGN_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants";
+} from "@apisurf/ngn-core";
+import { readConfig, findConfigFile } from "../config.js";
+import { NGN_CONFIG_FILENAMES, DEFAULT_ENV_FILE } from "../constants.js";
 
 export const runLiveTask = async (options: {
   root: string;

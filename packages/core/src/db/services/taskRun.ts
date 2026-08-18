@@ -1,6 +1,6 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import z from "zod";
-import { $taskRun } from "ngn-schema";
+import { $taskRun } from "@apisurf/ngn-schema";
 
 type TaskRun = z.infer<typeof $taskRun>;
 

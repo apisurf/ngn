@@ -1,4 +1,4 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import { FileTaskService } from "./fileTask.js";
 import { FileTaskVersionService } from "./fileTaskVersion.js";
 

@@ -1,5 +1,5 @@
-import { Compiler } from "ngn-core";
-import { getRunConfig } from "../config";
+import { Compiler } from "@apisurf/ngn-core";
+import { getRunConfig } from "../config.js";
 import { isAbsolute } from "node:path";
 
 /**

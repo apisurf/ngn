@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm } from "ngn-os";
+import { handleSigInt, handleSigTerm } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -8,8 +8,8 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
-} from "ngn-core";
-import { getRunConfig } from "../config";
+} from "@apisurf/ngn-core";
+import { getRunConfig } from "../config.js";
 
 export const runOnce = async (filePath: string, options: { root?: string }) => {
   const rootDirAbs =

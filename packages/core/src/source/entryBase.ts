@@ -1,4 +1,4 @@
-import { FsNodeFileDescriptor } from "ngn-os";
+import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
 
 export abstract class EntryBase {
   abstract get path(): {

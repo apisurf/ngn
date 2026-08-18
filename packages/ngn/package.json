@@ -1,13 +1,13 @@
 {
   "name": "@apisurf/ngn",
   "version": "0.2.1",
+  "type": "module",
   "bin": {
     "ngn": "dist/cli.js"
   },
   "scripts": {
     "dev": "tsup --watch",
-    "build": "tsup",
-    "inject-deps": "node scripts/inject-dependencies.js"
+    "build": "tsup"
   },
   "author": "Luka Vidakovic",
   "description": "CLI scheduler for Node tasks. Automate and monitor Javascript and Typescript tasks.",
@@ -30,13 +30,11 @@
     "url": "https://github.com/apisurf/ngn/issues"
   },
   "dependencies": {
+    "@apisurf/ngn-core": "workspace:*",
+    "@apisurf/ngn-os": "workspace:*",
+    "@apisurf/ngn-persistence": "workspace:*",
     "@hono/node-server": "^1.18.1",
-    "@libsql/client": "^0.14.0",
-    "chokidar": "^4.0.1",
     "commander": "^12.1.0",
-    "debug": "^4.4.1",
-    "dotenv": "^17.2.1",
-    "esbuild": "^0.27.1",
     "glob": "^11.0.3",
     "hono": "^4.8.12",
     "node-cron": "^3.0.3",
@@ -48,11 +46,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.8.1",
-    "@types/node-cron": "^3.0.11",
-    "ngn-core": "workspace:*",
-    "ngn-os": "workspace:*",
-    "ngn-persistence": "workspace:*",
-    "typescript": "^5.7.2"
+    "@types/node-cron": "^3.0.11"
   },
   "exports": {
     ".": {

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { isFile, getCwd, stripAbsBasePath } from "ngn-os";
+import { isFile, getCwd, stripAbsBasePath } from "@apisurf/ngn-os";
 import { writeFileSync } from "node:fs";
 const DEFAULT_TASKS_DIR = "tasks";
 

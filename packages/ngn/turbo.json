@@ -3,17 +3,17 @@
   "tasks": {
     "build": {
       "dependsOn": [
-        "ngn-core#build",
-        "ngn-os#build",
-        "ngn-persistence#build"
+        "@apisurf/ngn-core#build",
+        "@apisurf/ngn-os#build",
+        "@apisurf/ngn-persistence#build"
       ],
       "outputs": ["dist/**"]
     },
     "dev": {
       "dependsOn": [
-        "ngn-core#build",
-        "ngn-os#build",
-        "ngn-persistence#build"
+        "@apisurf/ngn-core#build",
+        "@apisurf/ngn-os#build",
+        "@apisurf/ngn-persistence#build"
       ],
       "persistent": true,
       "cache": false

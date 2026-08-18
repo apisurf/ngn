@@ -4,11 +4,11 @@ import {
   readEnv as readEnvFile,
   createFileDescriptor,
   FsNodeFileDescriptor,
-} from "ngn-os";
-import { Compiler, executeEsm } from "ngn-core";
+} from "@apisurf/ngn-os";
+import { Compiler, executeEsm } from "@apisurf/ngn-core";
 import { ZodError } from "zod";
-import { configSchema, ConfigFileOptions } from "./configSchema";
-import { CliOptions } from "./types";
+import { configSchema, ConfigFileOptions } from "./configSchema.js";
+import { CliOptions } from "./types.js";
 import {
   NGN_CONFIG_FILENAMES,
   DEFAULT_ENV_FILENAME,
@@ -16,7 +16,7 @@ import {
   DEFAULT_API_PORT,
   DEFAULT_MATCH_PATTERN,
   DEFAULT_ENV_FILE,
-} from "./constants";
+} from "./constants.js";
 import { glob } from "glob";
 import outmatch from "outmatch";
 

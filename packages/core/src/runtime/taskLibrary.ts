@@ -1,4 +1,4 @@
-import { FsNodeFileDescriptor } from "ngn-os";
+import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
 import invariant from "tiny-invariant";
 import { BuildCompiledTaskConfigFn } from "./types.js";
 import { Task } from "./task.js";

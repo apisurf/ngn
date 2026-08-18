@@ -1,6 +1,6 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import z from "zod";
-import { $fileTaskVersion } from "ngn-schema";
+import { $fileTaskVersion } from "@apisurf/ngn-schema";
 
 const $fileTaskVersionInsert = $fileTaskVersion.omit({
   id: true,

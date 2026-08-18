@@ -1,4 +1,4 @@
-import type { ConfigFileOptions } from "./configSchema";
+import type { ConfigFileOptions } from "./configSchema.js";
 
 /**
  * Define NGN configuration.

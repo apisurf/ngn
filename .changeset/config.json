@@ -5,11 +5,10 @@
   "fixed": [
     [
       "@apisurf/ngn",
-      "@apisurf/ngnui",
-      "ngn-core",
-      "ngn-os",
-      "ngn-persistence",
-      "ngn-schema"
+      "@apisurf/ngn-core",
+      "@apisurf/ngn-os",
+      "@apisurf/ngn-persistence",
+      "@apisurf/ngn-schema"
     ]
   ],
   "linked": [],

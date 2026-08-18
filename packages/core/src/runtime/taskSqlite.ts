@@ -7,7 +7,7 @@ import {
   type InArgs,
   type InStatement,
   type ResultSet,
-} from "ngn-persistence";
+} from "@apisurf/ngn-persistence";
 
 /**
  * A database migration

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { init } from "./cliCmd/init";
-import { run } from "./cliCmd/run";
-import { runOnce } from "./cliCmd/runOnce";
-import { runSingle } from "./cliCmd/runSingle";
-import { compile } from "./cliCmd/compile";
-import { initDbFile } from "./cliCmd/initDbFile";
-import { addTask } from "./cliCmd/addTask";
-import { sql } from "./cliCmd/sql";
-import { VERSION } from "./version";
-import { DEFAULT_API_PORT, DEFAULT_MATCH_PATTERN } from "./constants";
+import { init } from "./cliCmd/init.js";
+import { run } from "./cliCmd/run.js";
+import { runOnce } from "./cliCmd/runOnce.js";
+import { runSingle } from "./cliCmd/runSingle.js";
+import { compile } from "./cliCmd/compile.js";
+import { initDbFile } from "./cliCmd/initDbFile.js";
+import { addTask } from "./cliCmd/addTask.js";
+import { sql } from "./cliCmd/sql.js";
+import { VERSION } from "./version.js";
+import { DEFAULT_API_PORT, DEFAULT_MATCH_PATTERN } from "./constants.js";
 const DEBUG_MODE = Boolean(process.env.DEBUG);
 const program = new Command();
 
@@ -57,7 +57,7 @@ Task data
 
 Reading results
   \`ngn sql\` prints rows and exits — \`ngn sql --help\` lists the tables.
-  \`ngnui --db <file>\` serves the same database as a dashboard.
+  \`ngnui --db <file>\` serves the same database as a dashboard (paid module).
   Both need dbPath set to a file: URL; the :memory: default keeps nothing.
 `;
 

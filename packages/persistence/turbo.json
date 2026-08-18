@@ -1,7 +1,7 @@
 {
   "extends": ["//"],
   "tasks": {
-    "build": { "dependsOn": ["ngn-os#build"] },
+    "build": { "dependsOn": ["@apisurf/ngn-os#build"] },
     "dev": { "persistent": true, "cache": false }
   }
 }

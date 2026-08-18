@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { validate, schedule, ScheduledTask } from "node-cron";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm, createFileDescriptor } from "ngn-os";
+import { handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -9,14 +9,14 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
-} from "ngn-core";
-import { CliOptions } from "../types";
+} from "@apisurf/ngn-core";
+import { CliOptions } from "../types.js";
 import {
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
   DEFAULT_ENV_FILE,
   DEFAULT_MATCH_PATTERN,
-} from "../constants";
+} from "../constants.js";
 
 /**
  * Creates a simple config for running a single task file without requiring a config file.

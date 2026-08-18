@@ -1,5 +1,5 @@
 import invariant from "tiny-invariant";
-import { logTaskOnceRunner, logTaskOnceRunnerError } from "ngn-os";
+import { logTaskOnceRunner, logTaskOnceRunnerError } from "@apisurf/ngn-os";
 import { Task } from "./task.js";
 
 type Options = {

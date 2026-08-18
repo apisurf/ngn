@@ -1,4 +1,4 @@
-import { isFile } from "ngn-os";
+import { isFile } from "@apisurf/ngn-os";
 import {
   type Client,
   type InArgs,

@@ -1,6 +1,6 @@
-import { FsNodeFileDescriptor } from "ngn-os";
-import { readEnv } from "./config";
-import type { ConfigFileOptions } from "./configSchema";
+import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
+import { readEnv } from "./config.js";
+import type { ConfigFileOptions } from "./configSchema.js";
 
 export type { ConfigFileOptions };
 

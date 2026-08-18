@@ -1,6 +1,6 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import z from "zod";
-import { $fileTask, $fileTaskInsert } from "ngn-schema";
+import { $fileTask, $fileTaskInsert } from "@apisurf/ngn-schema";
 
 type FileTask = z.infer<typeof $fileTask>;
 type FileTaskInsert = z.infer<typeof $fileTaskInsert>;

@@ -10,16 +10,16 @@
  * so `ngn sql "..." --json | jq` works without filtering out chatter.
  */
 import { existsSync } from "node:fs";
-import { openDbClient } from "ngn-persistence";
-import { findConfigFile, readConfig } from "../config";
-import { describeDbPath } from "../util/dbPath";
+import { openDbClient } from "@apisurf/ngn-persistence";
+import { findConfigFile, readConfig } from "../config.js";
+import { describeDbPath } from "../util/dbPath.js";
 import {
   type Row,
   formatMs,
   renderCsv,
   renderJson,
   renderTable,
-} from "../util/format";
+} from "../util/format.js";
 
 export interface SqlOptions {
   db?: string;

@@ -1,4 +1,4 @@
-import { FsNodeFileDescriptor } from "ngn-os";
+import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
 import { TaskSqlite } from "../runtime/taskSqlite.js";
 
 export type LiveSourceParams = {

@@ -6,7 +6,7 @@ import {
   // FsDirWatcher,
   // absOrJoinWithRoot,
   // extractSourceDirsFromGlobs,
-} from "ngn-os";
+} from "@apisurf/ngn-os";
 import {
   Compiler,
   TaskLibrary,
@@ -15,12 +15,12 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
-} from "ngn-core";
-import { getRunConfig } from "../config";
-import { runLiveServer, LIVE_HOST } from "../liveServer";
-import { runLiveTask } from "../util/runLiveTask";
-import { describeDbPath } from "../util/dbPath";
-import { VERSION } from "../version";
+} from "@apisurf/ngn-core";
+import { getRunConfig } from "../config.js";
+import { runLiveServer, LIVE_HOST } from "../liveServer.js";
+import { runLiveTask } from "../util/runLiveTask.js";
+import { describeDbPath } from "../util/dbPath.js";
+import { VERSION } from "../version.js";
 
 /**
  * What a run is, in five lines, at the moment it starts.
@@ -29,6 +29,10 @@ import { VERSION } from "../version";
  * the same file. That is only obvious if the run says so, so it prints the
  * exact `ngnui` invocation for this project — including `--live`, without
  * which the editor in that UI has nothing to execute against.
+ *
+ * `ngnui` is a paid module in its own repository, so the readout says so
+ * rather than leaving someone to discover it at install time. `ngn sql`
+ * covers the same data and ships here.
  */
 function printReadout(dbPath: string, port: number) {
   const db = describeDbPath(dbPath);
@@ -47,7 +51,9 @@ function printReadout(dbPath: string, port: number) {
       `  database   ${db.absolute}`,
       ``,
       `  browse     ngnui --db ${db.absolute} --live ${live}`,
-      `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`
+      `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`,
+      ``,
+      `  ngnui is a paid module; ngn sql ships with ngn.`
     );
   }
 

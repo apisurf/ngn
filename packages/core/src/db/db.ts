@@ -3,7 +3,7 @@ import {
   safeInitDbClient,
   initDbFileIfNotExists,
   isDbPath,
-} from "ngn-persistence";
+} from "@apisurf/ngn-persistence";
 import invariant from "tiny-invariant";
 
 let db: Client;

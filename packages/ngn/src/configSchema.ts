@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_MATCH_PATTERN, DEFAULT_ENV_FILE } from "./constants";
+import { DEFAULT_MATCH_PATTERN, DEFAULT_ENV_FILE } from "./constants.js";
 
 export const configSchema = z.object({
   dbPath: z

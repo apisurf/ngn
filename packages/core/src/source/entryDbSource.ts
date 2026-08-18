@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import invariant from "tiny-invariant";
-import { FsNodeFileDescriptor } from "ngn-os";
+import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
 import { EntryBase } from "./entryBase.js";
 import { DbSourceParams, OnTaskCodeLoaded } from "./types.js";
 

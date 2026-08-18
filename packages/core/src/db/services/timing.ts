@@ -1,4 +1,4 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 
 export class TimingService {
   constructor(private db: Client) {}

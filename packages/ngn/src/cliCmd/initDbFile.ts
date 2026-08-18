@@ -1,6 +1,6 @@
 import invariant from "tiny-invariant";
-import { DbPath } from "ngn-persistence";
-import { initDbFileIfNotExists } from "ngn-core";
+import { DbPath } from "@apisurf/ngn-persistence";
+import { initDbFileIfNotExists } from "@apisurf/ngn-core";
 
 export const initDbFile = async (dbPath: DbPath) => {
   invariant(dbPath, "dbPath is required");

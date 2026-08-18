@@ -50,8 +50,7 @@ echo -e "${BLUE}📦 Current @apisurf/ngn version: ${CURRENT_VERSION}${NC}"
 # Show what will happen
 echo -e "\n${YELLOW}This will:${NC}"
 echo -e "  1. Build all packages"
-echo -e "  2. Inject workspace dependencies into the @apisurf/ngn package"
-echo -e "  3. Publish to the public npm registry via changesets"
+echo -e "  2. Publish to the public npm registry via changesets"
 
 read -p $'\nReady to proceed? (y/N): ' -n 1 -r
 echo
@@ -61,18 +60,19 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Step 1: Build
-echo -e "\n${YELLOW}🔨 Step 1/3: Building all packages...${NC}"
+echo -e "\n${YELLOW}🔨 Step 1/2: Building all packages...${NC}"
 pnpm build
 
-# Step 2: Inject deps
-echo -e "\n${YELLOW}📥 Step 2/3: Injecting dependencies into @apisurf/ngn...${NC}"
-pnpm --filter @apisurf/ngn inject-deps
-
-# Step 3: Publish
-echo -e "\n${YELLOW}📤 Step 3/3: Publishing via changesets...${NC}"
+# Step 2: Publish
+# changeset publish rewrites each `workspace:*` range to the concrete version
+# it just published, so the packages resolve each other from npm.
+echo -e "\n${YELLOW}📤 Step 2/2: Publishing via changesets...${NC}"
 pnpm changeset publish
 
 echo -e "\n${GREEN}✅ Release complete!${NC}"
 echo -e "\n${BLUE}Verify on npm:${NC}"
 echo -e "  https://www.npmjs.com/package/@apisurf/ngn"
-echo -e "  https://www.npmjs.com/package/@apisurf/ngnui"
+echo -e "  https://www.npmjs.com/package/@apisurf/ngn-core"
+echo -e "  https://www.npmjs.com/package/@apisurf/ngn-os"
+echo -e "  https://www.npmjs.com/package/@apisurf/ngn-persistence"
+echo -e "  https://www.npmjs.com/package/@apisurf/ngn-schema"

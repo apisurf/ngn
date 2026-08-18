@@ -6,9 +6,9 @@ import {
   absOrJoinWithRoot,
   getCwd,
   stripAbsBasePath,
-} from "ngn-os";
+} from "@apisurf/ngn-os";
 import { writeFileSync } from "node:fs";
-import type { ConfigFileOptions } from "../configSchema";
+import type { ConfigFileOptions } from "../configSchema.js";
 import {
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
@@ -16,7 +16,7 @@ import {
   DEFAULT_TASKS_DIR,
   DEFAULT_MATCH_PATTERN,
   NGN_CONFIG_FILENAME_TS,
-} from "../constants";
+} from "../constants.js";
 
 const generateConfigFileContents = (options: ConfigFileOptions): string => {
   const dbPathValue =

@@ -1,6 +1,6 @@
-import { Client } from "ngn-persistence";
+import { Client } from "@apisurf/ngn-persistence";
 import z from "zod";
-import { $kv } from "ngn-schema";
+import { $kv } from "@apisurf/ngn-schema";
 
 type KV = z.infer<typeof $kv>;
 
