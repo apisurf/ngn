@@ -10,7 +10,7 @@
  * so `ngn sql "..." --json | jq` works without filtering out chatter.
  */
 import { existsSync } from "node:fs";
-import { createClient } from "@libsql/client";
+import { openDbClient } from "ngn-persistence";
 import { findConfigFile, readConfig } from "../config";
 import { describeDbPath } from "../util/dbPath";
 import {
@@ -33,7 +33,9 @@ export const sql = async (query: string, options: SqlOptions) => {
   const dbPath = await resolveDbPath(options);
   if (dbPath === null) return fail();
 
-  const client = createClient({ url: `file:${dbPath}` });
+  // Read-only session against a file a task may be writing right now: take the
+  // busy timeout, but leave the journal mode of someone else's file alone.
+  const client = openDbClient(`file:${dbPath}`, { wal: false });
   const started = performance.now();
 
   try {

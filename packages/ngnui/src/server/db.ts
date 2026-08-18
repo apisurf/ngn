@@ -14,6 +14,9 @@ export const DEFAULT_DB_FILE = "ngn.sqlite";
 
 let cached: Client | null = null;
 
+/** How long a read waits on a lock before failing. SQLite's default is 0. */
+const BUSY_TIMEOUT_MS = 5000;
+
 /** Absolute path of the database this server is showing. */
 export function dbPath(): string {
   const raw = process.env.NGN_UI_DB || DEFAULT_DB_FILE;
@@ -41,6 +44,11 @@ export function getDbClient(): Client | null {
   if (!dbExists()) return null;
 
   cached = createClient({ url: `file:${dbPath()}` });
+
+  // A viewer must not stall the process writing the file it is showing, and a
+  // zero busy timeout means the first contended read fails outright. The
+  // journal mode is deliberately left as found — that would change the file.
+  cached.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
 
   return cached;
 }

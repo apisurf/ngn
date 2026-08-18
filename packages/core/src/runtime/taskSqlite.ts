@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import {
-  createClient,
+  openDbClient,
   type Client,
   type InArgs,
   type InStatement,
@@ -168,7 +168,12 @@ function getClient(absolutePath: string): Client {
   // databases in a subfolder of its own folder, so make the path first.
   mkdirSync(dirname(absolutePath), { recursive: true });
 
-  const client = createClient({ url: `file:${absolutePath}` });
+  // openDbClient puts the file in WAL and gives the connection a busy timeout.
+  // Without it a task database stays in rollback-journal mode, where a single
+  // reader anywhere (the UI, `ngn sql`, a second `ngn` process) locks the whole
+  // file, and a zero busy timeout turns that into an immediate
+  // "SQLITE_BUSY: database is locked" rather than a short wait.
+  const client = openDbClient(`file:${absolutePath}`);
   openClients.set(absolutePath, client);
 
   return client;

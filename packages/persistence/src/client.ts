@@ -17,6 +17,72 @@ export { Client, InValue };
 export { createClient };
 export type { InArgs, InStatement, ResultSet };
 
+/**
+ * How long a connection waits for a lock it cannot take before giving up.
+ *
+ * SQLite's own default is 0 — the very first contended statement fails with
+ * SQLITE_BUSY instead of retrying — which is what surfaces as
+ * "SQLITE_BUSY: database is locked" the moment a second connection (another
+ * `ngn` process, `ngn sql`, the UI, a database browser) touches the file.
+ */
+const BUSY_TIMEOUT_MS = 5000;
+
+export interface ConnectionPragmaOptions {
+  /**
+   * Switch the file to WAL and relax the commit fsync.
+   *
+   * WAL is a property of the file rather than of the connection, so a reader
+   * that must not modify what it is showing should pass `false`.
+   */
+  wal?: boolean;
+  /** Lock wait, in milliseconds. */
+  busyTimeoutMs?: number;
+}
+
+/**
+ * The pragmas every connection this package hands out is expected to carry.
+ *
+ * The statements are issued back to back without awaiting in between: the
+ * local driver runs each one synchronously, so they are all on the handle
+ * before a caller's first query can be, whether or not the caller awaits the
+ * returned promise.
+ */
+export function applyConnectionPragmas(
+  client: Client,
+  { wal = true, busyTimeoutMs = BUSY_TIMEOUT_MS }: ConnectionPragmaOptions = {}
+) {
+  const pragmas = [`PRAGMA busy_timeout = ${busyTimeoutMs}`];
+
+  if (wal) {
+    // Write-Ahead Logging: readers no longer block the writer, so a query from
+    // the UI or a `ngn sql` session cannot stall a task mid-write.
+    pragmas.push("PRAGMA journal_mode = WAL");
+    // The WAL counterpart to WAL mode: fsync at checkpoints rather than at
+    // every commit. A crash can cost the most recent transactions; it cannot
+    // corrupt the file.
+    pragmas.push("PRAGMA synchronous = NORMAL");
+  }
+
+  return Promise.all(pragmas.map((pragma) => client.execute(pragma)));
+}
+
+/**
+ * Open a connection with those pragmas already applied.
+ *
+ * Everything in ngn that opens a SQLite file should come through here, so
+ * there is one place that decides how a connection behaves under contention.
+ */
+export function openDbClient(
+  url: string,
+  options?: ConnectionPragmaOptions
+): Client {
+  const client = createClient({ url });
+
+  applyConnectionPragmas(client, options);
+
+  return client;
+}
+
 async function checkDbFileExists(dbPath: string) {
   if (dbPath === ":memory:") return true;
 
@@ -53,10 +119,16 @@ export async function initDbFileIfNotExists(dbPath: DbPath) {
 
   const normalizedDbPath = normalizeDbPath(dbPath);
   const dbFileExists = await checkDbFileExists(normalizedDbPath);
-  const dbClient = createClient({ url: normalizedDbPath });
+  const dbClient = openDbClient(normalizedDbPath);
 
-  if (!dbFileExists) {
-    await runMigrations(dbClient);
+  try {
+    if (!dbFileExists) {
+      await runMigrations(dbClient);
+    }
+  } finally {
+    // This connection exists only to create the file; callers get their own.
+    // Leaving it open would leave a second handle on every database ngn opens.
+    dbClient.close();
   }
 
   return normalizedDbPath;
@@ -84,12 +156,7 @@ export async function strictInitDbClientFromFilePath(
     dbFileExists,
     `Database file does not exist at path: ${normalizedDbPath}`
   );
-  const dbClient = createClient({ url: normalizedDbPath });
-
-  // Enable Write-Ahead Logging for better performance
-  dbClient.execute("PRAGMA journal_mode=WAL");
-
-  return dbClient;
+  return openDbClient(normalizedDbPath);
 }
 
 /**
@@ -110,15 +177,13 @@ export async function safeInitDbClient(sqliteUrl: DbPath) {
   let dbClient: Client;
 
   if (sqliteUrl === ":memory:") {
-    dbClient = createClient({ url: sqliteUrl });
+    // An in-memory database has no file to journal, so WAL does not apply.
+    dbClient = openDbClient(sqliteUrl, { wal: false });
     await runMigrations(dbClient);
   } else {
     const normalizedDbPath = await initDbFileIfNotExists(sqliteUrl);
-    dbClient = createClient({ url: normalizedDbPath });
+    dbClient = openDbClient(normalizedDbPath);
   }
-
-  // Enable Write-Ahead Logging for better performance
-  dbClient.execute("PRAGMA journal_mode=WAL");
 
   return dbClient;
 }
