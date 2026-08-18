@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn-persistence",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "ngn SQLite persistence: connection pragmas, migrations and the client.",
   "type": "module",
   "author": "Luka Vidakovic",

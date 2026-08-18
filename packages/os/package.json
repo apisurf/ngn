@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn-os",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "ngn filesystem and process helpers: task discovery, watching, config and signals.",
   "type": "module",
   "author": "Luka Vidakovic",
