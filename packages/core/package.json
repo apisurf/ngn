@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn-core",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "ngn runtime: task compilation, scheduling and the run/log/timing services.",
   "type": "module",
   "author": "Luka Vidakovic",

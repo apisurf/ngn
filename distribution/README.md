@@ -25,10 +25,17 @@ publish and trips `E429 rate limited otp`; and a Bypass-2FA token cannot run
 ## Publishing Workflow
 
 ```bash
-pnpm version:bump     # write a changeset, then bump versions
-pnpm version:release  # build and publish
+pnpm version:bump                      # write a changeset, then bump versions
+git add -A && git commit -m "Version 0.2.3"
+pnpm version:release                   # build and publish
 git push --follow-tags
 ```
+
+Changesets runs with `commit: false`, so step one leaves the bumped
+`package.json` files, the new CHANGELOG entries and the deletion of the consumed
+changeset uncommitted. Commit them before publishing — `release.sh` only warns
+about a dirty tree, and `changeset publish` tags whatever commit is checked out,
+so publishing first leaves the tag pointing at the pre-release commit.
 
 `version:release` runs `distribution/release.sh`: prompt for the token, build
 every workspace package, then `changeset publish` — which rewrites each

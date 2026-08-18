@@ -1,5 +1,17 @@
 # ngn-schema
 
+## 0.2.4
+
+### Patch Changes
+
+- docs update
+
+## 0.2.3
+
+### Patch Changes
+
+- Release procedure and docs update
+
 ## 0.2.2
 
 ### Patch Changes

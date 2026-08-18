@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn-schema",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "ngn database schema: zod definitions for the tables ngn reads and writes.",
   "type": "module",
   "author": "Luka Vidakovic",

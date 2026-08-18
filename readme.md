@@ -48,10 +48,15 @@ See `packages/ngn/README.md` for usage.
 All five packages go out together on one version.
 
 ```bash
-pnpm version:bump     # write a changeset, apply it to every package
-pnpm version:release  # build, then publish via changesets
+pnpm version:bump                      # write a changeset, apply it to every package
+git add -A && git commit -m "Version 0.2.3"
+pnpm version:release                   # build, then publish via changesets
 git push --follow-tags
 ```
+
+The commit is a real step: changesets is configured with `commit: false`, so the
+version bumps, the CHANGELOG entries and the removal of the consumed changeset
+are all left in the working tree for you to review and commit.
 
 `version:release` asks for an npm **granular access token**, held in memory only.
 It needs **read and write on the whole `@apisurf` scope** — a token limited to
