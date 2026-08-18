@@ -2,7 +2,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["ngn-core#build"]
+      "dependsOn": ["ngn-core#build", "^build"]
     },
     "dev": {
       "persistent": true,

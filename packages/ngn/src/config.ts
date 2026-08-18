@@ -28,7 +28,7 @@ const defaults: ConfigFileOptions = {
   plugins: [],
 };
 
-function findConfigFile(rootDir: string): string | null {
+export function findConfigFile(rootDir: string): string | null {
   for (const filename of NGN_CONFIG_FILENAMES) {
     const configPath = join(rootDir, filename);
     if (existsSync(configPath)) {

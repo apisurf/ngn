@@ -4,7 +4,6 @@
     "build": {
       "dependsOn": [
         "ngn-core#build",
-        "ngn-api#build",
         "ngn-os#build",
         "ngn-persistence#build"
       ],
@@ -13,7 +12,6 @@
     "dev": {
       "dependsOn": [
         "ngn-core#build",
-        "ngn-api#build",
         "ngn-os#build",
         "ngn-persistence#build"
       ],

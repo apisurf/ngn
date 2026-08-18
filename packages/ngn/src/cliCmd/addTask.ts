@@ -14,36 +14,6 @@ const createInitialTask = async (initialTaskPath: string, cwd: string) => {
     return;
   }
 
-  const _initialTaskContent = `
-import { TaskContext } from "@apisurf/ngn";
-
-// Run every 5 seconds
-export const timing = "*/5 * * * * *";
-
-export const task = async (ctx: TaskContext) => {
-  console.log("Example task executed every 5 seconds. Time:", new Date().toISOString());
-};
-
-
-// Optional hooks
-
-// export const shouldSkip = async (ctx: TaskContext) => {
-//   return false; // Change to true to skip execution
-// };
-
-// export const onSuccess = async (ctx: TaskContext) => {
-//   console.log("Task completed successfully");
-// };
-
-// export const onError = (error: Error, ctx: TaskContext) => {
-//   console.error("Task failed with error:", error);
-// };
-
-// export const onComplete = async (ctx: TaskContext) => {
-//   console.log("Task execution completed");
-// };
-`;
-
   const initialTaskContent = `
 // Write your TypeScript code here
 import { TaskContext } from "@apisurf/ngn";
