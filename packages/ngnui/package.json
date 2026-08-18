@@ -1,7 +1,7 @@
 {
   "name": "@apisurf/ngnui",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ngnui — browse an ngn task database in a local web UI: tasks, runs, logs, timings.",
   "keywords": [
     "ngn",
