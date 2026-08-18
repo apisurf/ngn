@@ -56,7 +56,7 @@ async function loadConfigFile(configPath: string): Promise<ConfigFileOptions> {
       const issues = error.issues
         .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
         .join("\n");
-      throw new Error(`Config validation failed:\n${issues}`);
+      throw new Error(`Config validation failed:\n${issues}`, { cause: error });
     }
     throw error;
   }

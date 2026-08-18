@@ -2,8 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "dev": {
       "cache": false,
@@ -17,9 +21,12 @@
       "cache": false,
       "persistent": true
     },
-    "lint": {},
     "test": {},
-    "clean": { "cache": false }
+    "clean": {
+      "cache": false
+    }
   },
-  "globalEnv": ["NODE_ENV"]
+  "globalEnv": [
+    "NODE_ENV"
+  ]
 }

@@ -8,7 +8,8 @@ function normalizeValue(value: unknown): string | null {
   if (typeof value !== "string") {
     try {
       return JSON.stringify(value);
-    } catch (error) {
+    } catch {
+      // Circular, or a BigInt: fall back to whatever the value calls itself.
       try {
         return value?.toString() ?? null;
       } catch (error) {
