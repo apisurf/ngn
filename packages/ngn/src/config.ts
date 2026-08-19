@@ -81,9 +81,7 @@ export async function getRunConfig(rootDir: string, filePathMatch?: string): Pro
 
   if (!configFilePath) {
     console.error(
-      `\nConfig file not found in: ${rootDir}\n\nExpected one of: ${NGN_CONFIG_FILENAMES.join(
-        ", ",
-      )}\n\nRun \`ngn init\` to generate a config file.\n`,
+      `ngn: no ${NGN_CONFIG_FILENAMES.join(" or ")} in ${rootDir} — run \`ngn init\` to create one.`,
     );
     process.exit(1);
   }

@@ -1,6 +1,6 @@
 import { Compiler } from "@apisurf/ngn-core";
+import { getCwd } from "@apisurf/ngn-os";
 import { getRunConfig } from "../config.js";
-import { isAbsolute } from "node:path";
 
 /**
  * Compile command - validates that all tasks can be compiled successfully.
@@ -8,7 +8,7 @@ import { isAbsolute } from "node:path";
  * so this command is mainly useful for validation/debugging.
  */
 export const compile = async (options: { root?: string; match?: string }) => {
-  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
+  const rootDirAbs = getCwd(process.cwd(), options.root);
   const config = await getRunConfig(rootDirAbs, options.match);
 
   try {
@@ -22,9 +22,9 @@ export const compile = async (options: { root?: string; match?: string }) => {
       console.log(`${sourcePath}\n\n ${compiledCode}`);
     }
 
-    console.log(`\n\nSuccessfully compiled ${result.compiled.size} task(s).`);
+    console.log(`\ncompiled ${result.compiled.size} task(s)`);
   } catch (error) {
-    console.error("Error compiling tasks.");
-    console.error(error);
+    console.error(`ngn: ${error instanceof Error ? error.stack : String(error)}`);
+    process.exitCode = 1;
   }
 };

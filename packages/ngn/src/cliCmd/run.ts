@@ -1,6 +1,6 @@
-import { isAbsolute } from "node:path";
 import invariant from "tiny-invariant";
 import {
+  getCwd,
   handleSigInt,
   handleSigTerm,
   // FsDirWatcher,
@@ -23,16 +23,9 @@ import { describeDbPath } from "../util/dbPath.js";
 import { VERSION } from "../version.js";
 
 /**
- * What a run is, in five lines, at the moment it starts.
- *
- * The scheduler is headless now: the dashboard is a separate command against
- * the same file. That is only obvious if the run says so, so it prints the
- * exact `ngnui` invocation for this project — including `--live`, without
- * which the editor in that UI has nothing to execute against.
- *
- * `ngnui` is a paid module in its own repository, so the readout says so
- * rather than leaving someone to discover it at install time. `ngn sql`
- * covers the same data and ships here.
+ * What a run is, at the moment it starts. The scheduler is headless, so the
+ * readout prints the exact `ngnui` invocation for this project — including
+ * `--live`, without which the editor in that UI has nothing to run against.
  */
 function printReadout(dbPath: string, port: number) {
   const db = describeDbPath(dbPath);
@@ -41,11 +34,7 @@ function printReadout(dbPath: string, port: number) {
   const lines = [``, `  ngn ${VERSION}`, ``, `  live       ${live}`];
 
   if (db.isMemory) {
-    lines.push(
-      `  database   :memory: — nothing is persisted, and there is nothing to browse`,
-      ``,
-      `  Set dbPath in ngn.config.ts to a file: URL to keep runs.`,
-    );
+    lines.push(`  database   :memory: (not persisted — set dbPath to a file: URL to keep runs)`);
   } else {
     lines.push(
       `  database   ${db.absolute}`,
@@ -53,7 +42,7 @@ function printReadout(dbPath: string, port: number) {
       `  browse     ngnui --db ${db.absolute} --live ${live}`,
       `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`,
       ``,
-      `  ngnui is a paid module; ngn sql ships with ngn.`,
+      `  (ngnui is a separate paid module)`,
     );
   }
 
@@ -82,7 +71,7 @@ function printReadout(dbPath: string, port: number) {
 // }
 
 export const run = async (options: { root?: string; match?: string }) => {
-  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
+  const rootDirAbs = getCwd(process.cwd(), options.root);
 
   const config = await getRunConfig(rootDirAbs, options.match);
   const taskLibrary = new TaskLibrary();
@@ -138,9 +127,9 @@ export const run = async (options: { root?: string; match?: string }) => {
 
     printReadout(config.configFileOptions.dbPath, port);
   } catch (error) {
-    console.error("Error while running.");
-    console.error(error);
+    console.error(`ngn: run failed: ${error instanceof Error ? error.stack : String(error)}`);
     closeTaskDatabases();
+    process.exit(1);
   }
 
   handleSigInt(async () => {

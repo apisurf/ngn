@@ -13,52 +13,40 @@ import { DEFAULT_API_PORT, DEFAULT_MATCH_PATTERN } from "./constants.js";
 const DEBUG_MODE = Boolean(process.env.DEBUG);
 const program = new Command();
 
-/**
- * The intro screen is the only thing a caller who has never seen ngn reads
- * before deciding what to type — increasingly that caller is an agent, which
- * gets one shot at it and cannot ask a follow-up. A bare command list does not
- * say what a task file has to export, where results end up, or that `run`
- * never returns, so it leads with those three and keeps the tour to a screen.
- */
+/** Read once, by a caller who cannot ask a follow-up: examples first, then facts. */
 const INTRO = `
-What it is
-  A cron scheduler for TypeScript and JavaScript task files. \`ngn run\` loads
-  every file matching \`match\`, schedules each on its own cron pattern, and
-  records every run — status, logs, timings — into one SQLite database.
-
-Inputs
-  ngn.config.ts  dbPath (default :memory:), port (default ${DEFAULT_API_PORT}),
-                 match (default ${DEFAULT_MATCH_PATTERN}), envFile (default .env)
-  a task file    export const timing = "*/5 * * * * *"  // cron, seconds first
-                 export const task = async (ctx) => { ... }
-                 ctx has log.info/error/warning, kv.get/set, timing.start, env,
-                 and sqlite — its own database, no setup, kept next to the task
-                 optional: shouldSkip, onSuccess, onError, onComplete
-                 anything else, import it: only your code is bundled, imports
-                 resolve from your node_modules
-
-Interactive vs one-shot
-  \`run\` and \`run:single\` do not exit — they hold the terminal until Ctrl-C.
-  \`run:once\`, \`add\`, \`init\` and \`sql\` finish and exit; prefer those when
-  nothing is there to press Ctrl-C.
-
 Examples
-  ngn init                          scaffold ngn.config.ts and tasks/
-  ngn add scrape.ts                 write a new task file
-  ngn run                           schedule every matching task (blocks)
-  ngn run --match "api/**/*.ts"     schedule a subset — quote the glob
-  ngn run:once tasks/scrape.ts      run one task now, then exit
+  ngn init                        create ngn.config.ts + tasks/
+  ngn add scrape.ts               create tasks/scrape.ts from a template
+  ngn run                         schedule every matching task   (blocks)
+  ngn run --match "api/**/*.ts"   schedule a subset              (blocks)
+  ngn run:once tasks/scrape.ts    run one task now, then exit
   ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"
 
-Task data
-  ctx.sqlite is a database per task file — tasks/scrape.ts uses tasks/scrape.db.
-  execute(sql, args), batch(stmts), initDB({file, migrations}), destroyDB(file).
-  A task can only open databases in its own folder, never a parent's.
+Blocking: run, run:single hold the terminal until Ctrl-C. All others exit.
 
-Reading results
-  \`ngn sql\` prints rows and exits — \`ngn sql --help\` lists the tables.
-  \`ngnui --db <file>\` serves the same database as a dashboard (paid module).
-  Both need dbPath set to a file: URL; the :memory: default keeps nothing.
+Task file
+  export const timing = "*/5 * * * * *"    // cron, 6 fields, seconds first
+  export const task = async (ctx) => {}    // required
+  optional: shouldSkip, onSuccess, onError, onComplete
+  ctx: log.info/error/warning, kv.get/set/delete, timing.start, env, meta,
+       sqlite (own db per task file, no setup)
+  Only your file is bundled; imports resolve from your node_modules.
+
+ngn.config.ts
+  dbPath   ":memory:" (default) | "file:./ngn.db"   :memory: persists nothing
+  port     ${DEFAULT_API_PORT}
+  match    ["${DEFAULT_MATCH_PATTERN}"]                        globs relative to root
+  envFile  ".env"
+
+ctx.sqlite
+  tasks/scrape.ts writes tasks/scrape.db. Confined to the task's own folder.
+  execute(sql, args), batch(stmts), initDB({file, migrations}), destroyDB(file)
+
+Results
+  ngn sql --help      table schemas and example queries
+  ngnui --db <file>   dashboard, separate paid module
+  Both require dbPath to be a file: URL.
 `;
 
 program
@@ -69,55 +57,79 @@ program
 
 program
   .command("init")
-  .description("Initialize the ngn CLI configuration")
-  .option("--dbFile <path>", "Database file path")
-  .option("--apiPort <port>", "API port to run the server on")
-  .option("--match <path>", "Task paths glob matching pattern")
-  .option("--out <path>", "Output directory path")
-  .option("--configFile <path>", "Config file path")
-  .option("--envFile <path>", "Environment file path")
-  .option("--root <path>", "Root directory path")
+  .description("Create ngn.config.ts and tasks/")
+  .option("--dbFile <path>", "dbPath to write, e.g. ./ngn.db (default: :memory:)")
+  .option("--apiPort <port>", `Live server port (default: ${DEFAULT_API_PORT})`)
+  .option("--match <glob>", `Task glob, relative to root (default: ${DEFAULT_MATCH_PATTERN})`)
+  .option("--configFile <path>", "Config filename to write (default: ngn.config.ts)")
+  .option("--envFile <path>", "Env file path to record in config (default: .env)")
+  .option("--root <path>", "Project root (default: cwd)")
   .action(init);
 
 program
   .command("add")
-  .description("Add a file task to tasks directory")
-  .argument("<filePath>", "File path of the task")
-  .option("--root <path>", "Root directory path")
+  .description("Create tasks/<filePath> from a template")
+  .argument("<filePath>", "Path under tasks/, e.g. scrape.ts or group/scrape.ts")
+  .option("--root <path>", "Project root (default: cwd)")
   .action(addTask);
 
 program
   .command("run")
-  .description("Run tasks")
-  .option("--root <path>", "root directory path")
-  // without this option, it will run all tasks in the tasks directory
-  // the pattern is matched against the task path relative to the root, so it
-  // has to cover the directory too: "tasks/single-task.ts" or "**/single-task.ts"
-  // matches, a bare "single-task.ts" matches nothing
-  // to glob match tasks inside the tasks directory => ngn run --match "group/**/*.ts" or ngn run --match "group/{auth,user}/*.ts" (use parenthesis to escape CLI expansion)
-  .option("--match <path>", "Only run tasks matching the partial path")
+  .description("Schedule all matching tasks (blocks)")
+  .option("--root <path>", "Project root (default: cwd)")
+  .option(
+    "--match <glob>",
+    "Filter the config `match` results; tested against the task path relative to root",
+  )
+  .addHelpText(
+    "after",
+    `
+Matching
+  The pattern is tested against the task path relative to root, so it must
+  include the directory: "tasks/scrape.ts" or "**/scrape.ts" match,
+  "scrape.ts" matches nothing. Quote globs so the shell does not expand them.
+
+Examples
+  ngn run --match "group/**/*.ts"
+  ngn run --match "group/{auth,user}/*.ts"
+`,
+  )
   .action(run);
 
-// schedule a single task with custom cron pattern
 program
   .command("run:single")
-  .description("Run a single task with a custom cron pattern")
-  .argument("<filePath>", "File path of the task")
-  .option("-t, --timing <pattern>", "Cron pattern for scheduling (e.g., '*/2 * * * * *')")
-  .option("--root <path>", "root directory path")
+  .description("Schedule one file on a cron pattern (blocks)")
+  .argument("<filePath>", "Path to the task file, relative to root or absolute")
+  .requiredOption("-t, --timing <cron>", "6-field cron, seconds first: '*/2 * * * * *'")
+  .option("--root <path>", "Project root (default: cwd)")
+  .addHelpText(
+    "after",
+    `
+Ignores ngn.config.ts: no .env is loaded (ctx.env is empty) and the run
+database is :memory:, so nothing is recorded. Use \`ngn run --match\` to
+schedule one configured task instead.
+`,
+  )
   .action(runSingle);
 
-// run specific task once without scheduling nor API/UI server
 program
   .command("run:once")
-  .description("Run a single task once")
-  .argument("<filePath>", "File path of the task")
-  .option("--root <path>", "root directory path")
+  .description("Run one matching task immediately, then exit")
+  .argument("<pattern>", "Task path relative to root, e.g. tasks/scrape.ts")
+  .option("--root <path>", "Project root (default: cwd)")
+  .addHelpText(
+    "after",
+    `
+Only tasks already covered by \`match\` in ngn.config.ts are candidates, and
+the pattern is tested against the task path relative to root. Runs the first
+match. Exits non-zero if the task throws.
+`,
+  )
   .action(runOnce);
 
 program
   .command("sql")
-  .description("Query the task database with SQLite and print the rows")
+  .description("Query the run database and print rows")
   .argument("<query>", "SQL query to run")
   .option("--db <path>", "Database file. Defaults to dbPath in ngn.config.ts")
   .option("--root <path>", "Root directory to read ngn.config.ts from")
@@ -130,14 +142,14 @@ program
 Tables
   file_tasks           id, path, parent_path, status, created_at, updated_at
   file_task_versions   id, file_task_id, version, md5_hash, compiled_code
-  task_runs            id, file_task_id, file_task_version_id, status
-                       ('pending' | 'skipped' | 'running' | 'success' |
-                       'failure'), started_at, ended_at, created_at
+  task_runs            id, file_task_id, file_task_version_id, started_at,
+                       ended_at, created_at
+                       status: pending | skipped | running | success | failure
   logs                 id, file_task_id, task_run_id, status, value, created_at
   timings              id, file_task_id, task_run_id, label, value, created_at
   kvs                  id, file_task_id, key, value, created_at
 
-  Times are unix milliseconds. Rows go to stdout, counts and errors to stderr.
+  Times are unix milliseconds. Rows -> stdout; counts and errors -> stderr.
 
 Examples
   ngn sql "SELECT status, COUNT(*) FROM task_runs GROUP BY status"
@@ -152,14 +164,14 @@ Examples
 if (DEBUG_MODE) {
   program
     .command("compile")
-    .description("Compile all tasks")
-    .option("--root <path>", "root directory path")
-    .option("--match <path>", "Only run tasks matching the partial path")
+    .description("Compile all matching tasks and print the output")
+    .option("--root <path>", "Project root (default: cwd)")
+    .option("--match <glob>", "Filter the config `match` results")
     .action(compile);
 
   program
     .command("db:init")
-    .description("Initialize the database file if it does not exist")
+    .description("Create the database file if it does not exist")
     .argument("<dbPath>", "Database file path")
     .action(initDbFile);
 }

@@ -10,6 +10,7 @@
  * so `ngn sql "..." --json | jq` works without filtering out chatter.
  */
 import { existsSync } from "node:fs";
+import { getCwd } from "@apisurf/ngn-os";
 import { openDbClient } from "@apisurf/ngn-persistence";
 import { findConfigFile, readConfig } from "../config.js";
 import { describeDbPath } from "../util/dbPath.js";
@@ -121,7 +122,7 @@ async function resolveDbPath(options: SqlOptions): Promise<string | null> {
     return described.absolute;
   }
 
-  const rootDir = options.root ?? process.cwd();
+  const rootDir = getCwd(process.cwd(), options.root);
   const configPath = findConfigFile(rootDir);
   if (!configPath) {
     process.stderr.write(

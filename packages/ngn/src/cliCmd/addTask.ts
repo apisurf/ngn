@@ -1,14 +1,14 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { isFile, getCwd, stripAbsBasePath } from "@apisurf/ngn-os";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 const DEFAULT_TASKS_DIR = "tasks";
 
-const createInitialTask = async (initialTaskPath: string, cwd: string) => {
+const createInitialTask = async (initialTaskPath: string, cwd: string): Promise<boolean> => {
+  const relative = stripAbsBasePath(initialTaskPath, cwd);
+
   if (await isFile(initialTaskPath)) {
-    console.log(
-      `Initial task already exists at ${stripAbsBasePath(initialTaskPath, cwd)}. Skipping...`,
-    );
-    return;
+    console.log(`exists ${relative}`);
+    return false;
   }
 
   const initialTaskContent = `
@@ -36,7 +36,21 @@ export const task = async (ctx: TaskContext) => {
   return { length: result.length };
 };`;
 
-  writeFileSync(initialTaskPath, initialTaskContent, "utf-8");
+  // tasks/ may not exist yet (`ngn add` before `ngn init`), and the path may
+  // name a subdirectory of its own — writeFileSync creates neither.
+  try {
+    mkdirSync(dirname(initialTaskPath), { recursive: true });
+    writeFileSync(initialTaskPath, initialTaskContent, "utf-8");
+  } catch (error) {
+    console.error(
+      `ngn: cannot write ${relative}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+    return false;
+  }
+
+  console.log(`wrote ${relative}`);
+  return true;
 };
 
 export const addTask = async (
@@ -48,6 +62,7 @@ export const addTask = async (
   const cwd = getCwd(process.cwd(), options.root || process.cwd());
   const initialTaskPath = join(cwd, DEFAULT_TASKS_DIR, filePath);
 
-  await createInitialTask(initialTaskPath, cwd);
-  console.log(`Initialized!\n\nRun 'ngn run' to start tasks.`);
+  if (await createInitialTask(initialTaskPath, cwd)) {
+    console.log("next: ngn run");
+  }
 };

@@ -1,7 +1,6 @@
-import { isAbsolute } from "node:path";
 import { validate, schedule, ScheduledTask } from "node-cron";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
+import { getCwd, handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -50,12 +49,18 @@ async function getSingleTaskConfig(rootDir: string, filePath: string): Promise<C
   };
 }
 
-export const runSingle = async (filePath: string, options: { root?: string; timing?: string }) => {
-  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
+export const runSingle = async (filePath: string, options: { root?: string; timing: string }) => {
+  const rootDirAbs = getCwd(process.cwd(), options.root);
 
-  // Validate cron pattern
-  invariant(options.timing, "Timing pattern is required. Use -t flag to provide a cron pattern");
-  invariant(validate(options.timing), `Invalid cron pattern: ${options.timing}`);
+  // Bad input from the caller, not a broken invariant: report it without a stack.
+  if (!validate(options.timing)) {
+    console.error(
+      `ngn: invalid cron pattern "${options.timing}".\n` +
+        "     Expected 6 fields, seconds first, e.g. '*/2 * * * * *'.",
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   const config = await getSingleTaskConfig(rootDirAbs, filePath);
   let scheduledTask: ScheduledTask | null = null;
@@ -91,37 +96,29 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
     await task.loadEntry();
     invariant(task.hasTaskExport(), `Task function is missing in ${filePath}`);
 
-    console.log(`Scheduling task: ${filePath}`);
-    console.log(`Cron pattern: ${options.timing}`);
-
     const wrappedUserTask = async () => {
       try {
         await task.execute();
       } catch (error) {
-        console.error(`Error executing task: ${filePath}`);
-        console.error(error);
+        console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
       }
     };
 
     // Schedule the task with the provided cron pattern
     scheduledTask = schedule(options.timing, wrappedUserTask);
 
-    console.log(`Task scheduled successfully. Running on schedule: ${options.timing}`);
-    console.log("Press Ctrl+C to stop...");
+    console.log(`scheduled ${filePath} on ${options.timing}  (Ctrl-C to stop)`);
   } catch (error) {
-    console.error("Error scheduling task.");
-    console.error(error);
+    console.error(`ngn: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 
   handleSigInt(async () => {
-    console.log("\nStopping scheduled task...");
     scheduledTask?.stop();
     closeTaskDatabases();
     process.exit(0);
   });
   handleSigTerm(async () => {
-    console.log("\nStopping scheduled task...");
     scheduledTask?.stop();
     closeTaskDatabases();
     process.exit(0);

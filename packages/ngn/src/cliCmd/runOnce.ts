@@ -1,6 +1,5 @@
-import { isAbsolute } from "node:path";
 import invariant from "tiny-invariant";
-import { handleSigInt, handleSigTerm } from "@apisurf/ngn-os";
+import { getCwd, handleSigInt, handleSigTerm } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
@@ -11,10 +10,21 @@ import {
 } from "@apisurf/ngn-core";
 import { getRunConfig } from "../config.js";
 
-export const runOnce = async (filePath: string, options: { root?: string }) => {
-  const rootDirAbs = options.root && isAbsolute(options.root) ? options.root : process.cwd();
+export const runOnce = async (pattern: string, options: { root?: string }) => {
+  const rootDirAbs = getCwd(process.cwd(), options.root);
 
-  const config = await getRunConfig(rootDirAbs, filePath); // filePath is the path of the task to run
+  const config = await getRunConfig(rootDirAbs, pattern);
+
+  if (config.sourcePaths.length === 0) {
+    console.error(
+      `ngn: no task matched "${pattern}".\n` +
+        "     The pattern is tested against the task path relative to root and must\n" +
+        "     include the directory, e.g. tasks/scrape.ts. Only tasks covered by\n" +
+        "     `match` in ngn.config.ts are candidates.",
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   handleSigInt(async () => {
     process.exit(0);
@@ -36,8 +46,9 @@ export const runOnce = async (filePath: string, options: { root?: string }) => {
       env: config.env,
     });
 
-    // Get the first (and only) compiled entry
-    const [sourcePath, compiledCode] = [...result.compiled.entries()][0];
+    const [first] = [...result.compiled.entries()];
+    invariant(first, `Nothing compiled for ${config.sourcePaths[0]}`);
+    const [sourcePath, compiledCode] = first;
     const descriptor = config.descriptors[sourcePath];
     invariant(descriptor, `No descriptor found for source path: ${sourcePath}`);
 
@@ -52,8 +63,8 @@ export const runOnce = async (filePath: string, options: { root?: string }) => {
 
     await task.execute();
   } catch (error) {
-    console.error("Error running task.");
-    console.error(error);
+    console.error(`ngn: ${error instanceof Error ? error.stack : String(error)}`);
+    process.exitCode = 1;
   } finally {
     closeTaskDatabases();
   }
