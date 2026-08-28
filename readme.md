@@ -38,10 +38,44 @@ to find one.
 ```bash
 pnpm install
 pnpm build          # turbo, in dependency order
-pnpm lint
+pnpm typecheck      # tsc --noEmit, per package
+pnpm lint           # oxlint
+pnpm fmt            # oxfmt (fmt:check to verify without writing)
 ```
 
 See `packages/ngn/README.md` for usage.
+
+### Before you push
+
+Nothing runs these for you — there is no CI on push — so run them locally:
+
+```bash
+pnpm lint && pnpm typecheck && pnpm fmt:check && pnpm build
+```
+
+`lint` reports maintainability limits as warnings and does **not** fail the
+command, so read its output rather than trusting the exit code.
+
+### What the linter enforces
+
+Beyond oxlint's `correctness`, `suspicious` and `perf` categories, four
+structural limits are set in `.oxlintrc.json`:
+
+| Rule | Limit | What it catches |
+| --- | --- | --- |
+| `complexity` | 15 (modified) | a function with too many branches to hold in your head |
+| `max-depth` | 4 | nesting that wants an early return or a helper |
+| `max-params` | 5 | an argument list that wants to be an object |
+| `max-nested-callbacks` | 3 | callback pyramids |
+
+The thresholds were picked from this codebase's own distribution: the median
+function scores 3 and the 95th percentile is around 7, so a hit is a genuine
+outlier rather than ordinary branching. Split the function — that is almost
+always the right fix. If it truly is not, suppress the one line and say why:
+
+```ts
+/* oxlint-disable complexity -- exhaustive protocol switch, flat by nature */
+```
 
 ## Releasing
 

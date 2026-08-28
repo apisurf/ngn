@@ -20,6 +20,9 @@
     "test": {},
     "clean": {
       "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
     }
   },
   "globalEnv": ["NODE_ENV"]

@@ -31,6 +31,7 @@
     "dist"
   ],
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "build": "tsup src/client.ts --dts --out-dir dist --format esm",
     "dev": "tsup src/client.ts --dts --out-dir dist --format esm --watch"
   },

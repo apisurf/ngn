@@ -92,7 +92,7 @@ export class Task {
     this.entryExports = await this.entry.getExports();
   }
 
-  async execute() {
+  private async loadAndRegister() {
     invariant(this.entry, "Entry not initialized.");
 
     try {
@@ -120,23 +120,45 @@ export class Task {
 
       throw error;
     }
+  }
+
+  private async runTask(
+    task: EntryExports["task"],
+    taskContext: TaskContext,
+    hooks: Pick<EntryExports, "onSuccess" | "onError" | "onComplete">,
+  ) {
+    invariant(this.entry, "Entry not initialized.");
+    const path = this.entry.paths.relativeEntry;
+
+    try {
+      await this.runtimeCallbacks?.onStart?.({ path });
+      const taskReturnValue = await task(taskContext);
+      await this.runtimeCallbacks?.onSuccess?.({ path });
+      await hooks.onSuccess?.(taskContext);
+      return taskReturnValue;
+    } catch (err) {
+      await this.runtimeCallbacks?.onFailure?.({ path });
+      await hooks.onError?.(err as Error, taskContext);
+      throw err;
+    } finally {
+      await hooks.onComplete?.(taskContext);
+    }
+  }
+
+  async execute() {
+    invariant(this.entry, "Entry not initialized.");
+
+    await this.loadAndRegister();
+    invariant(this.entryExports, "Entry failed to get exports.");
 
     // register task execution start
     await this.taskCallbacks?.onTaskExecutionStart?.();
 
-    const {
-      shouldSkip,
-      // shouldRetry,
-      onSuccess,
-      onError,
-      onComplete,
-      task,
-    } = this.entryExports;
+    const { shouldSkip, onSuccess, onError, onComplete, task } = this.entryExports;
+    const path = this.entry.paths.relativeEntry;
 
     if (!task) {
-      await this.runtimeCallbacks?.onNotFound?.({
-        path: this.entry.paths.relativeEntry,
-      });
+      await this.runtimeCallbacks?.onNotFound?.({ path });
       throw new Error("Task function not found");
     }
 
@@ -150,30 +172,10 @@ export class Task {
     };
 
     if (await shouldSkip?.(taskContext)) {
-      await this.runtimeCallbacks?.onSkip?.({
-        path: this.entry.paths.relativeEntry,
-      });
+      await this.runtimeCallbacks?.onSkip?.({ path });
       return;
     }
 
-    try {
-      await this.runtimeCallbacks?.onStart?.({
-        path: this.entry.paths.relativeEntry,
-      });
-      const taskReturnValue = await task(taskContext);
-      await this.runtimeCallbacks?.onSuccess?.({
-        path: this.entry.paths.relativeEntry,
-      });
-      await onSuccess?.(taskContext);
-      return taskReturnValue;
-    } catch (err) {
-      await this.runtimeCallbacks?.onFailure?.({
-        path: this.entry.paths.relativeEntry,
-      });
-      await onError?.(err as Error, taskContext);
-      throw err;
-    } finally {
-      await onComplete?.(taskContext);
-    }
+    return this.runTask(task, taskContext, { onSuccess, onError, onComplete });
   }
 }

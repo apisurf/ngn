@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
     "build": "tsup"
   },
   "author": "Luka Vidakovic",
