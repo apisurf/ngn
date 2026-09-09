@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@apisurf/ngn",
+      "@apisurf/ngn-core",
+      "@apisurf/ngn-os",
+      "@apisurf/ngn-persistence",
+      "@apisurf/ngn-schema"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "develop",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}

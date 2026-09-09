@@ -1,0 +1,129 @@
+import { validate, schedule, ScheduledTask } from "node-cron";
+import invariant from "tiny-invariant";
+import { getCwd, handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
+import {
+  Compiler,
+  Task,
+  createControlsGenerator,
+  setupDbClient,
+  getDbClient,
+  closeTaskDatabases,
+} from "@apisurf/ngn-core";
+import { CliOptions } from "../types.js";
+import {
+  DEFAULT_DB_PATH,
+  DEFAULT_API_PORT,
+  DEFAULT_ENV_FILE,
+  DEFAULT_MATCH_PATTERN,
+} from "../constants.js";
+
+/**
+ * Creates a simple config for running a single task file without requiring a config file.
+ * Uses defaults for all configuration options and an in-memory database.
+ */
+async function getSingleTaskConfig(rootDir: string, filePath: string): Promise<CliOptions> {
+  // Create file descriptor for the single task file
+  const descriptor = createFileDescriptor({
+    rootDir,
+    path: filePath,
+  });
+
+  const sourcePath = descriptor.path.absolute;
+
+  return {
+    rootDir: rootDir,
+    configFileOptions: {
+      match: [DEFAULT_MATCH_PATTERN],
+      dbPath: DEFAULT_DB_PATH,
+      port: DEFAULT_API_PORT,
+      envFile: DEFAULT_ENV_FILE,
+    },
+    sourcePaths: [sourcePath],
+    descriptors: { [sourcePath]: descriptor },
+    compileConfig: {
+      minify: false,
+      silent: true,
+    },
+    env: {}, // No environment variables loaded
+    timing: null,
+  };
+}
+
+export const runSingle = async (filePath: string, options: { root?: string; timing: string }) => {
+  const rootDirAbs = getCwd(process.cwd(), options.root);
+
+  // Bad input from the caller, not a broken invariant: report it without a stack.
+  if (!validate(options.timing)) {
+    console.error(
+      `ngn: invalid cron pattern "${options.timing}".\n` +
+        "     Expected 6 fields, seconds first, e.g. '*/2 * * * * *'.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = await getSingleTaskConfig(rootDirAbs, filePath);
+  let scheduledTask: ScheduledTask | null = null;
+
+  try {
+    await setupDbClient(config.configFileOptions.dbPath);
+    const dbClient = getDbClient();
+    invariant(dbClient, "DB client not initialized");
+
+    const compiler = new Compiler(config.compileConfig);
+    // Compile to in-memory string instead of writing to disk
+    const result = await compiler.compile(config.sourcePaths);
+    const generateControlsFn = createControlsGenerator({
+      dbClient,
+      env: config.env,
+    });
+
+    // Get the first (and only) compiled entry
+    const [sourcePath, compiledCode] = [...result.compiled.entries()][0];
+    const descriptor = config.descriptors[sourcePath];
+    invariant(descriptor, `No descriptor found for source path: ${sourcePath}`);
+
+    const task = new Task({
+      buildConfigFn: generateControlsFn,
+      entryParams: {
+        compiledCode,
+        descriptor,
+        tasksRootDir: config.rootDir,
+      },
+    });
+
+    // Load the task to ensure it's valid
+    await task.loadEntry();
+    invariant(task.hasTaskExport(), `Task function is missing in ${filePath}`);
+
+    const wrappedUserTask = async () => {
+      try {
+        await task.execute();
+      } catch (error) {
+        console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
+      }
+    };
+
+    // Schedule the task with the provided cron pattern
+    scheduledTask = schedule(options.timing, wrappedUserTask);
+
+    console.log(`scheduled ${filePath} on ${options.timing}  (Ctrl-C to stop)`);
+  } catch (error) {
+    console.error(`ngn: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+
+  handleSigInt(async () => {
+    scheduledTask?.stop();
+    closeTaskDatabases();
+    process.exit(0);
+  });
+  handleSigTerm(async () => {
+    scheduledTask?.stop();
+    closeTaskDatabases();
+    process.exit(0);
+  });
+
+  // Keep the process running
+  await new Promise(() => {});
+};

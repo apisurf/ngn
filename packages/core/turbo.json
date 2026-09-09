@@ -1,0 +1,13 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "@apisurf/ngn-os#build",
+        "@apisurf/ngn-persistence#build",
+        "@apisurf/ngn-schema#build"
+      ]
+    },
+    "dev": { "persistent": true, "cache": false }
+  }
+}

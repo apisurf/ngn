@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "rules": {
+    "complexity": ["warn", { "max": 15, "variant": "modified" }],
+    "max-depth": ["warn", 4],
+    "max-params": ["warn", 5],
+    "max-nested-callbacks": ["warn", 3],
+    // The codebase marks private fields with a leading underscore on purpose.
+    "no-underscore-dangle": "off",
+    // Migrations and compilation steps are sequential by design.
+    "no-await-in-loop": "off"
+  },
+  "env": {
+    "builtin": true,
+    "node": true,
+    "es2024": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/.turbo/**"]
+}

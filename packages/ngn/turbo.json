@@ -1,0 +1,22 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "@apisurf/ngn-core#build",
+        "@apisurf/ngn-os#build",
+        "@apisurf/ngn-persistence#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": [
+        "@apisurf/ngn-core#build",
+        "@apisurf/ngn-os#build",
+        "@apisurf/ngn-persistence#build"
+      ],
+      "persistent": true,
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "name": "@apisurf/ngn",
+  "version": "0.2.4",
+  "type": "module",
+  "bin": {
+    "ngn": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "build": "tsup"
+  },
+  "author": "Luka Vidakovic",
+  "description": "CLI scheduler for Node tasks. Automate and monitor Javascript and Typescript tasks.",
+  "keywords": [
+    "cli",
+    "scheduler",
+    "cron",
+    "task",
+    "automation",
+    "typescript"
+  ],
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apisurf/ngn.git",
+    "directory": "packages/ngn"
+  },
+  "homepage": "https://github.com/apisurf/ngn#readme",
+  "bugs": {
+    "url": "https://github.com/apisurf/ngn/issues"
+  },
+  "dependencies": {
+    "@apisurf/ngn-core": "workspace:*",
+    "@apisurf/ngn-os": "workspace:*",
+    "@apisurf/ngn-persistence": "workspace:*",
+    "@hono/node-server": "^1.18.1",
+    "commander": "^12.1.0",
+    "glob": "^11.0.3",
+    "hono": "^4.8.12",
+    "node-cron": "^3.0.3",
+    "outmatch": "^1.0.0",
+    "tiny-invariant": "^1.3.3",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.1",
+    "@types/node-cron": "^3.0.11"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

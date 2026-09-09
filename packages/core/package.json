@@ -1,0 +1,55 @@
+{
+  "name": "@apisurf/ngn-core",
+  "version": "0.2.4",
+  "description": "ngn runtime: task compilation, scheduling and the run/log/timing services.",
+  "type": "module",
+  "author": "Luka Vidakovic",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apisurf/ngn.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/apisurf/ngn#readme",
+  "bugs": {
+    "url": "https://github.com/apisurf/ngn/issues"
+  },
+  "keywords": [
+    "ngn",
+    "scheduler",
+    "tasks"
+  ],
+  "main": "./dist/core.js",
+  "types": "./dist/core.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/core.js",
+      "types": "./dist/core.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsup src/core.ts --dts --out-dir dist --format esm",
+    "dev": "tsup src/core.ts --dts --out-dir dist --format esm --watch"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@apisurf/ngn-os": "workspace:*",
+    "@apisurf/ngn-persistence": "workspace:*",
+    "@apisurf/ngn-schema": "workspace:*",
+    "esbuild": "^0.27.1",
+    "node-cron": "^3.0.3",
+    "tiny-invariant": "^1.3.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.1",
+    "@types/node-cron": "^3.0.11",
+    "tsup": "^8.3.5"
+  }
+}
