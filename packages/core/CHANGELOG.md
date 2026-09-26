@@ -1,5 +1,15 @@
 # ngn-core
 
+## 0.2.6
+
+### Patch Changes
+
+- ui lib
+- Updated dependencies
+  - @apisurf/ngn-os@0.2.6
+  - @apisurf/ngn-persistence@0.2.6
+  - @apisurf/ngn-schema@0.2.6
+
 ## 0.2.5
 
 ### Patch Changes

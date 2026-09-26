@@ -1,5 +1,11 @@
 # ngn-os
 
+## 0.2.6
+
+### Patch Changes
+
+- ui lib
+
 ## 0.2.5
 
 ### Patch Changes

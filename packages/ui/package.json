@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngnui",
-  "version": "0.0.1",
+  "version": "0.2.6",
   "description": "ngnui — browse an ngn run database in a local web UI: tasks, runs, logs, timings, stored keys, versions, plus a live task editor.",
   "keywords": [
     "cron",
