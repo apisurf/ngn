@@ -7,10 +7,13 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "ui": "pnpm --filter @apisurf/ngnui dev",
+    "ngnui": "node packages/ui/bin/ngnui.mjs",
     "version:bump": "changeset && changeset version",
     "version:release": "./distribution/release.sh"
   },

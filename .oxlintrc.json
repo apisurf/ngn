@@ -21,5 +21,13 @@
     "node": true,
     "es2024": true
   },
-  "ignorePatterns": ["**/dist/**", "**/.turbo/**"]
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.turbo/**",
+    "**/.output/**",
+    "**/.nitro/**",
+    "**/.tanstack/**",
+    "**/styled-system/**",
+    "**/routeTree.gen.ts"
+  ]
 }

@@ -1,4 +1,12 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["**/package.json", "**/*.md"]
+  "ignorePatterns": [
+    "**/package.json",
+    "**/*.md",
+    "**/.output/**",
+    "**/.nitro/**",
+    "**/.tanstack/**",
+    "**/styled-system/**",
+    "**/routeTree.gen.ts"
+  ]
 }

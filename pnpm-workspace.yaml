@@ -2,4 +2,11 @@ packages:
   - packages/*
 
 onlyBuiltDependencies:
+  - better-sqlite3
   - esbuild
+
+# @pandacss/dev (packages/ui) depends on typescript@6. Without this, pnpm
+# resolves tsup's typescript peer in every other package to that newest copy
+# instead of the TypeScript 5 the repo builds its declarations with.
+overrides:
+  tsup>typescript: ^5

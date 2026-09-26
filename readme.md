@@ -23,9 +23,11 @@ All five are versioned together — the changeset `fixed` group in
 
 ## The dashboard
 
-`@apisurf/ngnui` serves a prebuilt web dashboard over the same database file.
-It is a **paid module** and lives in its own repository; `ngn sql` covers the
-same data from the terminal and ships here.
+**[`@apisurf/ngnui`](./packages/ui)** (`packages/ui`) serves a prebuilt web
+dashboard over the same database file: tasks, runs, logs, timings, stored keys,
+versions and a SQL console. It is a **paid module**, kept `private` in this
+workspace and outside the changeset `fixed` group; `ngn sql` covers the same data
+from the terminal.
 
 The scheduler does not serve a web UI, and the viewer does not run tasks. The
 one thing that crosses that line is the live task editor, which needs a
@@ -38,10 +40,14 @@ to find one.
 ```bash
 pnpm install
 pnpm build          # turbo, in dependency order
-pnpm typecheck      # tsc --noEmit, per package
+pnpm typecheck      # tsc --noEmit (tsgo for packages/ui), per package
+pnpm test           # vitest, where a package has tests
 pnpm lint           # oxlint
 pnpm fmt            # oxfmt (fmt:check to verify without writing)
 ```
+
+`make` lists the same tasks, plus `make check` to run them all and the release
+steps. `make ui` starts ngnui's dev server — see `packages/ui/README.md`.
 
 See `packages/ngn/README.md` for usage.
 
@@ -50,7 +56,7 @@ See `packages/ngn/README.md` for usage.
 Nothing runs these for you — there is no CI on push — so run them locally:
 
 ```bash
-pnpm lint && pnpm typecheck && pnpm fmt:check && pnpm build
+make check          # lint, typecheck, test, fmt:check, build
 ```
 
 `lint` reports maintainability limits as warnings and does **not** fail the
