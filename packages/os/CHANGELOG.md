@@ -1,5 +1,11 @@
 # ngn-os
 
+## 0.2.5
+
+### Patch Changes
+
+- Improvements
+
 ## 0.2.4
 
 ### Patch Changes
