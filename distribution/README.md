@@ -1,7 +1,7 @@
 # NGN Distribution
 
-Publishing `@apisurf/ngn` and its sibling `@apisurf/*` packages to the public
-**npm registry** using changesets.
+Publishing `@apisurf/ngn`, the `@apisurf/ngnui` dashboard and the sibling
+`@apisurf/ngn-*` libraries to the public **npm registry** using changesets.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ every workspace package, then `changeset publish` — which rewrites each
 
 Publishing is per package and not atomic. Changesets skips whatever is already
 on the registry, so re-running `pnpm version:release` after a partial failure
-publishes only what is missing. Note that it tags all five packages regardless,
+publishes only what is missing. Note that it tags all six packages regardless,
 so the tags alone are not proof a release landed — check the registry.
 
 ## Local Testing (Before Publishing)
@@ -53,6 +53,10 @@ pnpm build
 cd packages/ngn
 npm pack --dry-run          # inspect contents
 npm install -g ./apisurf-ngn-*.tgz && ngn --version
+
+cd ../ui
+npm pack --dry-run          # bin/, dist/, LICENSE, README.md
+npm install -g ./apisurf-ngnui-*.tgz && ngnui --version
 ```
 
 **Should include:** `dist/`, `LICENSE`, `README.md`, `package.json`

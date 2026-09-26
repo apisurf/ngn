@@ -45,7 +45,7 @@ ctx.sqlite
 
 Results
   ngn sql --help      table schemas and example queries
-  ngnui --db <file>   dashboard, separate paid module
+  ngnui --db <file>   dashboard, from npm i -g @apisurf/ngnui
   Both require dbPath to be a file: URL.
 `;
 

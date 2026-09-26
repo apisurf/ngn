@@ -18,16 +18,16 @@ can read or write the same database:
 | `@apisurf/ngn-persistence` | `packages/persistence` | SQLite client, connection pragmas and migrations |
 | `@apisurf/ngn-schema` | `packages/schema` | zod definitions for the tables ngn reads and writes |
 
-All five are versioned together — the changeset `fixed` group in
+These, `@apisurf/ngn` and the dashboard below are versioned together — the changeset `fixed` group in
 `.changeset/config.json` keeps them on one number.
 
 ## The dashboard
 
 **[`@apisurf/ngnui`](./packages/ui)** (`packages/ui`) serves a prebuilt web
 dashboard over the same database file: tasks, runs, logs, timings, stored keys,
-versions and a SQL console. It is a **paid module**, kept `private` in this
-workspace and outside the changeset `fixed` group; `ngn sql` covers the same data
-from the terminal.
+versions and a SQL console. It is published on npm and versioned with the rest,
+in the same changeset `fixed` group; `ngn sql` covers the same data from the
+terminal.
 
 The scheduler does not serve a web UI, and the viewer does not run tasks. The
 one thing that crosses that line is the live task editor, which needs a

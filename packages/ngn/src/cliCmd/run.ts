@@ -42,7 +42,7 @@ function printReadout(dbPath: string, port: number) {
       `  browse     ngnui --db ${db.absolute} --live ${live}`,
       `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`,
       ``,
-      `  (ngnui is a separate paid module)`,
+      `  (ngnui: npm install -g @apisurf/ngnui, or run it with npx)`,
     );
   }
 

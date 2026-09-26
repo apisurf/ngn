@@ -1,6 +1,6 @@
 # ngnui
 
-A local browser UI for the database [ngn](../ngn) records its runs into, laid
+A local browser UI for the database [ngn](https://www.npmjs.com/package/@apisurf/ngn) records its runs into, laid
 out the way wireui is: tasks down the left, open tabs across the top, and each
 run shown with its logs and timings on one clock. Everything in it is read-only
 except the live editor, which does not run anything itself — it hands the code
@@ -20,6 +20,16 @@ ngnui        # reads it (run from the same project folder)
 
   Ctrl-C to stop.
 ```
+
+## Install
+
+```bash
+npm install -g @apisurf/ngnui    # then run `ngnui`
+npx @apisurf/ngnui               # or without installing
+```
+
+It needs Node 20.12 or newer. `better-sqlite3` is its one runtime dependency and
+installs a prebuilt native binary for your platform.
 
 ## Usage
 
@@ -148,5 +158,5 @@ Stack: TanStack Start (React 19, file routes, server functions) on Vite with a N
 `node-server` build, Panda CSS, better-sqlite3, TypeScript checked by `tsgo`,
 linted with `oxlint` and formatted with `oxfmt` — the same setup as wireui. Every
 dependency is pinned to an exact version. The tests build their fixture with
-`@apisurf/ngn-persistence`, so a change to ngn's schema fails them. The package is
-`private` for now; remove that flag and add a changeset to publish it.
+`@apisurf/ngn-persistence`, so a change to ngn's schema fails them. It is released
+with the other `@apisurf/ngn*` packages — see `distribution/README.md`.
