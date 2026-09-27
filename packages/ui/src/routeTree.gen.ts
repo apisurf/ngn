@@ -10,19 +10,33 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as LiveRouteImport } from './routes/live'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as QueryRouteImport } from './routes/query'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as TasksTaskIdRouteImport } from './routes/tasks.$taskId'
+import { Route as TasksTaskIdIndexRouteImport } from './routes/tasks.$taskId.index'
+import { Route as TasksTaskIdRunsRunIdRouteImport } from './routes/tasks.$taskId.runs.$runId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LiveRoute = LiveRouteImport.update({
   id: '/live',
   path: '/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QueryRoute = QueryRouteImport.update({
@@ -40,43 +54,93 @@ const TasksTaskIdRoute = TasksTaskIdRouteImport.update({
   path: '/tasks/$taskId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TasksTaskIdIndexRoute = TasksTaskIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TasksTaskIdRoute,
+} as any)
+const TasksTaskIdRunsRunIdRoute = TasksTaskIdRunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => TasksTaskIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/logs': typeof LogsRoute
   '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
+  '/tasks/$taskId/': typeof TasksTaskIdIndexRoute
+  '/tasks/$taskId/runs/$runId': typeof TasksTaskIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/logs': typeof LogsRoute
   '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks/$taskId': typeof TasksTaskIdIndexRoute
+  '/tasks/$taskId/runs/$runId': typeof TasksTaskIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/logs': typeof LogsRoute
   '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
-  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
+  '/tasks/$taskId/': typeof TasksTaskIdIndexRoute
+  '/tasks/$taskId/runs/$runId': typeof TasksTaskIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/live' | '/query' | '/runs/$runId' | '/tasks/$taskId'
+  fullPaths:
+    | '/'
+    | '/history'
+    | '/live'
+    | '/logs'
+    | '/query'
+    | '/runs/$runId'
+    | '/tasks/$taskId'
+    | '/tasks/$taskId/'
+    | '/tasks/$taskId/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/live' | '/query' | '/runs/$runId' | '/tasks/$taskId'
-  id: '__root__' | '/' | '/live' | '/query' | '/runs/$runId' | '/tasks/$taskId'
+  to:
+    | '/'
+    | '/history'
+    | '/live'
+    | '/logs'
+    | '/query'
+    | '/runs/$runId'
+    | '/tasks/$taskId'
+    | '/tasks/$taskId/runs/$runId'
+  id:
+    | '__root__'
+    | '/'
+    | '/history'
+    | '/live'
+    | '/logs'
+    | '/query'
+    | '/runs/$runId'
+    | '/tasks/$taskId'
+    | '/tasks/$taskId/'
+    | '/tasks/$taskId/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HistoryRoute: typeof HistoryRoute
   LiveRoute: typeof LiveRoute
+  LogsRoute: typeof LogsRoute
   QueryRoute: typeof QueryRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
-  TasksTaskIdRoute: typeof TasksTaskIdRoute
+  TasksTaskIdRoute: typeof TasksTaskIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -88,11 +152,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/live': {
       id: '/live'
       path: '/live'
       fullPath: '/live'
       preLoaderRoute: typeof LiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/query': {
@@ -116,15 +194,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksTaskIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tasks/$taskId/': {
+      id: '/tasks/$taskId/'
+      path: '/'
+      fullPath: '/tasks/$taskId/'
+      preLoaderRoute: typeof TasksTaskIdIndexRouteImport
+      parentRoute: typeof TasksTaskIdRoute
+    }
+    '/tasks/$taskId/runs/$runId': {
+      id: '/tasks/$taskId/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/tasks/$taskId/runs/$runId'
+      preLoaderRoute: typeof TasksTaskIdRunsRunIdRouteImport
+      parentRoute: typeof TasksTaskIdRoute
+    }
   }
 }
 
+interface TasksTaskIdRouteChildren {
+  TasksTaskIdIndexRoute: typeof TasksTaskIdIndexRoute
+  TasksTaskIdRunsRunIdRoute: typeof TasksTaskIdRunsRunIdRoute
+}
+
+const TasksTaskIdRouteChildren: TasksTaskIdRouteChildren = {
+  TasksTaskIdIndexRoute: TasksTaskIdIndexRoute,
+  TasksTaskIdRunsRunIdRoute: TasksTaskIdRunsRunIdRoute,
+}
+
+const TasksTaskIdRouteWithChildren = TasksTaskIdRoute._addFileChildren(
+  TasksTaskIdRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HistoryRoute: HistoryRoute,
   LiveRoute: LiveRoute,
+  LogsRoute: LogsRoute,
   QueryRoute: QueryRoute,
   RunsRunIdRoute: RunsRunIdRoute,
-  TasksTaskIdRoute: TasksTaskIdRoute,
+  TasksTaskIdRoute: TasksTaskIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,26 +1,30 @@
 // The frame every page renders inside, laid out the way wireui's is:
 //
 //   ┌ top bar: file · Live · refresh · layout · theme ─────────────────────────┐
-//   ├ rail ┬ sidebar ──────────┬ open tabs ──────────────────────────────────┤
-//   │  ▣   │ Tasks             │ health.ts ×  sync-users.ts #41 ×            │
-//   │  ◷   │ History           ├─────────────────────────────────────────────┤
-//   │  ≡   │ Logs              │ the page                                    │
-//   │ ⌂ </>⛁│                   │                                             │
+//   ├ rail ┬ tasks ────────────┬ open tabs ──────────────────────────────────┤
+//   │  ⌂   │ tasks/api/        │ health.ts ×  sync-users.ts #41 ×  History × │
+//   │  ◷   │ sync-users.ts  41 ├─────────────────────────────────────────────┤
+//   │  ≡   │ health.ts     603 │ the page                                    │
+//   │ </>⛁ │                   │                                             │
 //   ├──────┴───────────────────┴─────────────────────────────────────────────┤
 //   └ status bar: path · size · counts · running · editor · live state ──────┘
 //
-// Nothing in the frame remounts on navigation, so the sidebar keeps its scroll,
-// its filter and its open folders while the page beside it changes.
+// Every rail item is a page, opened beside the others as a tab. The sidebar is
+// only ever the task list; collapsed, it leaves a strip to expand it from. Nothing
+// in the frame remounts on navigation, so it keeps its scroll and its filter
+// while the page beside it changes.
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import { basename, formatAgo, formatBytes, formatCount, plural } from "~/lib/format";
-import type { SidebarPanel, ThemePref } from "~/lib/prefs";
+import type { ThemePref } from "~/lib/prefs";
 import { useNow, usePrefs } from "~/lib/prefs";
 import type { Tab } from "~/lib/tabs";
 import { useTabs } from "~/lib/tabs";
 import {
+  IconChevronLeft,
+  IconChevronRight,
   IconClose,
   IconCode,
   IconDatabase,
@@ -31,15 +35,12 @@ import {
   IconOverview,
   IconRefresh,
   IconRun,
-  IconSidebar,
   IconSplitSide,
   IconSplitStacked,
   IconSun,
   IconTask,
 } from "./icons";
 import { IconButton, mono, truncate } from "./primitives";
-import { HistoryPanel } from "./sidebar-history";
-import { LogsPanel } from "./sidebar-logs";
 import { TasksPanel } from "./sidebar-tasks";
 
 const root = getRouteApi("__root__");
@@ -54,7 +55,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <TopBar />
       <div className={css({ display: "flex", flex: "1", minH: "0" })}>
         <Rail />
-        {prefs.sidebarOpen ? <Sidebar filterRef={filterRef} /> : null}
+        {prefs.sidebarOpen ? <Sidebar filterRef={filterRef} /> : <CollapsedSidebar />}
         <main
           className={css({
             display: "flex",
@@ -80,7 +81,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** `/` focuses the sidebar's filter, as in most tools with one. */
+/**
+ * `/` focuses a filter, as in most tools with one: the page's own when it has
+ * one (History, Logs), else the task sidebar's.
+ */
 function useSlashToFilter(ref: React.RefObject<HTMLInputElement | null>) {
   const { prefs, set } = usePrefs();
   React.useEffect(() => {
@@ -90,6 +94,11 @@ function useSlashToFilter(ref: React.RefObject<HTMLInputElement | null>) {
       if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))
         return;
       event.preventDefault();
+      const own = document.querySelector<HTMLInputElement>("main input[data-page-filter]");
+      if (own) {
+        own.focus();
+        return;
+      }
       if (!prefs.sidebarOpen) set("sidebarOpen", true);
       window.requestAnimationFrame(() => ref.current?.focus());
     };
@@ -209,12 +218,6 @@ function TopBar() {
 // Rail and sidebar
 // -----------------------------------------------------------------------------
 
-const PANELS: { id: SidebarPanel; label: string; icon: React.ReactNode }[] = [
-  { id: "tasks", label: "Tasks", icon: <IconTask size={18} /> },
-  { id: "history", label: "History", icon: <IconHistory size={18} /> },
-  { id: "logs", label: "Logs", icon: <IconLogs size={18} /> },
-];
-
 const railButton = css({
   display: "flex",
   flexDir: "column",
@@ -235,16 +238,16 @@ const railButton = css({
   "&[data-active=true] svg": { color: "accent" },
 });
 
-function Rail() {
-  const { prefs, set } = usePrefs();
-  const select = (panel: SidebarPanel) => {
-    if (prefs.panel === panel && prefs.sidebarOpen) set("sidebarOpen", false);
-    else {
-      set("panel", panel);
-      set("sidebarOpen", true);
-    }
-  };
+/** The pages, in the order the rail lists them. */
+const PAGES = [
+  { to: "/", label: "Overview", icon: <IconOverview size={18} />, exact: true },
+  { to: "/history", label: "History", icon: <IconHistory size={18} />, exact: false },
+  { to: "/logs", label: "Logs", icon: <IconLogs size={18} />, exact: false },
+  { to: "/live", label: "Editor", icon: <IconCode size={18} />, exact: false },
+  { to: "/query", label: "SQL", icon: <IconDatabase size={18} />, exact: false },
+] as const;
 
+function Rail() {
   return (
     <nav
       aria-label="Sections"
@@ -259,45 +262,18 @@ function Rail() {
         flexShrink: 0,
       })}
     >
-      {PANELS.map((panel) => (
-        <button
-          key={panel.id}
-          type="button"
+      {PAGES.map((page) => (
+        <Link
+          key={page.to}
+          to={page.to}
           className={railButton}
-          data-active={prefs.sidebarOpen && prefs.panel === panel.id}
-          onClick={() => select(panel.id)}
+          activeProps={{ "data-active": true }}
+          activeOptions={{ exact: page.exact, includeSearch: false }}
         >
-          {panel.icon}
-          {panel.label}
-        </button>
+          {page.icon}
+          {page.label}
+        </Link>
       ))}
-      <div className={css({ w: "28px", h: "1px", bg: "line", my: "1.5" })} />
-      <Link
-        to="/"
-        className={railButton}
-        activeProps={{ "data-active": true }}
-        activeOptions={{ exact: true }}
-      >
-        <IconOverview size={18} />
-        Overview
-      </Link>
-      <Link to="/live" className={railButton} activeProps={{ "data-active": true }}>
-        <IconCode size={18} />
-        Editor
-      </Link>
-      <Link to="/query" className={railButton} activeProps={{ "data-active": true }}>
-        <IconDatabase size={18} />
-        SQL
-      </Link>
-      <div className={css({ mt: "auto" })}>
-        <IconButton
-          label={prefs.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-          aria-pressed={prefs.sidebarOpen}
-          onClick={() => set("sidebarOpen", !prefs.sidebarOpen)}
-        >
-          <IconSidebar />
-        </IconButton>
-      </div>
     </nav>
   );
 }
@@ -310,7 +286,6 @@ function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | 
   const [dragging, setDragging] = React.useState(false);
   const [width, setWidth] = React.useState(prefs.sidebarWidth);
   React.useEffect(() => setWidth(prefs.sidebarWidth), [prefs.sidebarWidth]);
-  const title = PANELS.find((p) => p.id === prefs.panel)?.label ?? "";
 
   return (
     <aside
@@ -328,17 +303,20 @@ function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | 
         className={css({
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
           h: "30px",
-          px: "3",
+          pl: "3",
+          pr: "1.5",
           flexShrink: 0,
         })}
       >
-        <span className={css({ fontWeight: "600", fontSize: "12px" })}>{title}</span>
+        <span className={css({ fontWeight: "600", fontSize: "12px" })}>Tasks</span>
+        <IconButton label="Collapse tasks" onClick={() => set("sidebarOpen", false)}>
+          <IconChevronLeft size={14} />
+        </IconButton>
       </div>
       <div className={css({ flex: "1", minH: "0" })}>
-        {prefs.panel === "tasks" ? <TasksPanel filterRef={filterRef} /> : null}
-        {prefs.panel === "history" ? <HistoryPanel filterRef={filterRef} /> : null}
-        {prefs.panel === "logs" ? <LogsPanel filterRef={filterRef} /> : null}
+        <TasksPanel filterRef={filterRef} />
       </div>
       <div
         role="separator"
@@ -376,6 +354,46 @@ function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | 
         )}
       />
     </aside>
+  );
+}
+
+/** What the sidebar leaves when collapsed: a strip that expands it again. */
+function CollapsedSidebar() {
+  const { set } = usePrefs();
+  return (
+    <button
+      type="button"
+      aria-label="Expand tasks"
+      title="Expand tasks"
+      onClick={() => set("sidebarOpen", true)}
+      className={css({
+        display: "flex",
+        flexDir: "column",
+        alignItems: "center",
+        gap: "2",
+        w: "28px",
+        pt: "2",
+        flexShrink: 0,
+        border: "none",
+        bg: "transparent",
+        color: "muted",
+        cursor: "pointer",
+        rounded: "md",
+        _hover: { color: "fg", bg: "hover" },
+      })}
+    >
+      <IconChevronRight size={14} />
+      <span
+        className={css({
+          writingMode: "vertical-rl",
+          fontSize: "12px",
+          fontWeight: "600",
+          letterSpacing: "0.02em",
+        })}
+      >
+        Tasks
+      </span>
+    </button>
   );
 }
 
@@ -483,6 +501,8 @@ function TabStrip() {
 function TabGlyph({ tab }: { tab: Tab }) {
   const glyph = {
     overview: <IconOverview size={13} />,
+    history: <IconHistory size={13} />,
+    logs: <IconLogs size={13} />,
     task: <IconTask size={13} />,
     run: <IconRun size={12} />,
     query: <IconDatabase size={13} />,

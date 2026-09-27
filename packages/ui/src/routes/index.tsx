@@ -104,7 +104,10 @@ function OverviewPage() {
                         key={run.id}
                         data-link
                         onClick={() =>
-                          void navigate({ to: "/runs/$runId", params: { runId: String(run.id) } })
+                          void navigate({
+                            to: "/tasks/$taskId/runs/$runId",
+                            params: { taskId: String(run.task_id), runId: String(run.id) },
+                          })
                         }
                       >
                         <td className={css({ maxW: "260px" })}>
@@ -161,8 +164,8 @@ function OverviewPage() {
                   data.problems.map((log) => (
                     <Link
                       key={log.id}
-                      to="/runs/$runId"
-                      params={{ runId: String(log.run_id) }}
+                      to="/tasks/$taskId/runs/$runId"
+                      params={{ taskId: String(log.task_id), runId: String(log.run_id) }}
                       search={{ tab: "logs", log: log.id }}
                       className={listRow}
                     >

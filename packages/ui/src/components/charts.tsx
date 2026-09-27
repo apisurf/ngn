@@ -32,7 +32,12 @@ export function DurationStrip({ runs }: { runs: RunRow[] }) {
             key={run.id}
             type="button"
             title={`#${run.id} · ${runLabel(run.status)}${run.duration_ms != null ? ` · ${formatMs(run.duration_ms)}` : ""}`}
-            onClick={() => void navigate({ to: "/runs/$runId", params: { runId: String(run.id) } })}
+            onClick={() =>
+              void navigate({
+                to: "/tasks/$taskId/runs/$runId",
+                params: { taskId: String(run.task_id), runId: String(run.id) },
+              })
+            }
             className={css({
               flex: "1",
               maxW: "22px",

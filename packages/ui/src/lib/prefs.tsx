@@ -1,7 +1,7 @@
 // Per-viewer preferences and the Live switch.
 //
 // Everything here is a convenience: the theme, how the live editor's code and
-// result panes are arranged, which sidebar panel is open and how wide. It is
+// result panes are arranged, whether the task sidebar is open and how wide. It is
 // kept in localStorage and read after mount — the server renders the defaults,
 // so the first paint and hydration agree — and every access is wrapped,
 // because storage can be missing or blocked and the UI must work without it.
@@ -11,14 +11,12 @@ import * as React from "react";
 
 export type ThemePref = "system" | "light" | "dark";
 export type PaneLayout = "side" | "stacked";
-export type SidebarPanel = "tasks" | "history" | "logs";
 
 export interface Prefs {
   theme: ThemePref;
   layout: PaneLayout;
   sidebarWidth: number;
   sidebarOpen: boolean;
-  panel: SidebarPanel;
   live: boolean;
 }
 
@@ -27,7 +25,6 @@ const DEFAULTS: Prefs = {
   layout: "side",
   sidebarWidth: 300,
   sidebarOpen: true,
-  panel: "tasks",
   live: false,
 };
 
@@ -121,15 +118,11 @@ function readStored(): Partial<Prefs> {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Partial<Prefs>;
     if (typeof parsed !== "object" || !parsed) return {};
-    // A panel this build no longer has would leave the sidebar blank.
-    if (parsed.panel && !PANELS.has(parsed.panel)) delete parsed.panel;
     return parsed;
   } catch {
     return {};
   }
 }
-
-const PANELS: ReadonlySet<SidebarPanel> = new Set(["tasks", "history", "logs"]);
 
 function applyTheme(theme: ThemePref) {
   const media = window.matchMedia("(prefers-color-scheme: dark)");

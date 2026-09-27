@@ -67,6 +67,22 @@ export function formatDayHeading(now: number, ms: number): string {
   return formatDay(now, ms);
 }
 
+/** Rows, newest first, split under the day heading each falls on. */
+export function groupByDay<T>(
+  rows: readonly T[],
+  now: number,
+  at: (row: T) => number,
+): { day: string; rows: T[] }[] {
+  const out: { day: string; rows: T[] }[] = [];
+  for (const row of rows) {
+    const day = formatDayHeading(now, at(row));
+    const last = out[out.length - 1];
+    if (last && last.day === day) last.rows.push(row);
+    else out.push({ day, rows: [row] });
+  }
+  return out;
+}
+
 /** `4 min ago`; a date once "ago" stops being a useful answer. */
 export function formatAgo(now: number, ms: number): string {
   const seconds = Math.max(0, now - ms) / 1000;

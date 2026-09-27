@@ -367,6 +367,40 @@ export function TabList<T extends string>({
   );
 }
 
+/** A button that stays pressed: an on/off filter beside a Segmented. */
+export function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+      className={css({
+        h: "26px",
+        px: "2",
+        rounded: "md",
+        border: "1px solid",
+        borderColor: "line",
+        bg: "transparent",
+        color: "muted",
+        cursor: "pointer",
+        fontSize: "12px",
+        _hover: { color: "fg" },
+        "&[aria-pressed=true]": { color: "accent", borderColor: "accent", bg: "accentSoft" },
+      })}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function Segmented<T extends string>({
   items,
   value,

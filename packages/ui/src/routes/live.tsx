@@ -314,8 +314,8 @@ function Result({
             </span>
             {run ? (
               <Link
-                to="/runs/$runId"
-                params={{ runId: String(run.run.id) }}
+                to="/tasks/$taskId/runs/$runId"
+                params={{ taskId: String(run.run.task_id), runId: String(run.run.id) }}
                 className={css({
                   display: "inline-flex",
                   alignItems: "center",

@@ -63,27 +63,33 @@ does not exist yet is not an error: the UI starts empty and fills in once
 ```
 ┌ ngnui / ngn.sqlite                                     [● Live] ⟳ ◫ ☾ ┐
 ├──────┬──────────────────────┬────────────────────────────────────────┤
-│ ▣    │ Tasks                │ Overview ×  sync-users.ts #41 ×  SQL × │
-│ Task │ tasks/api/           ├────────────────────────────────────────┤
-│ ◷    │ ▾ sync-users.ts  ● 41│ ● sync-users.ts #41  Failed  v2        │
-│ Hist │     ● 18:09  412 ms  │ The task failed: upstream returned 503 │
-│ ≡    │     ● 18:06  388 ms  │ Timeline  Logs  Timings  Code  Details │
-│ Logs │ ▸ health.ts       603│ +0 ms   TIME  fetch   ████████         │
-│ ⌂ </>│ Live editor          │ +294 ms TIME  write           ██       │
-│ ⛁    │ ▸ Run at 18:56:04   1│ +368 ms ERROR sync failed: …        ▏  │
+│ ⌂    │ Tasks                │ Overview ×  sync-users.ts #41 ×  SQL × │
+│ Over │ tasks/api/           ├────────────────────────────────────────┤
+│ ◷    │ sync-users.ts    ● 41│ sync-users.ts  Failing  v2             │
+│ Hist │ health.ts         603│ tasks/api/sync-users.ts · */5 * * * *  │
+│ ≡    │ Live editor          │ ‹ Runs / #41  Failed  · code v2    ‹ › │
+│ Logs │ Run at 18:56:04     1│ The task failed: upstream returned 503 │
+│ </>  │                      │ Timeline  Logs  Timings  Details       │
+│ ⛁    │                      │ +368 ms ERROR sync failed: …        ▏  │
 └──────┴──────────────────────┴────────────────────────────────────────┘
 ```
 
-**The sidebar** has three panels:
+**The sidebar** is the task list: every task file, grouped by its folder. Its
+runs are on its page. Code sent from the live editor is recorded as a task too;
+those are grouped at the bottom and named by when they ran. The chevron in its
+header collapses it to a slim strip; click the strip to expand it again.
 
-- **Tasks.** Every task file, grouped by its folder, with its recent runs under
-  it. Code sent from the live editor is recorded as a task too; those are grouped
-  at the bottom and named by when they ran.
+**The rail** opens pages, each in a tab like any other:
+
+- **Overview**, **Editor** and **SQL**, below.
 - **History.** Every run of every task, newest first, under day headings. Search
   by task path, narrow to failed, skipped or running, and hide the editor's runs.
 - **Logs.** Every line every task wrote, newest first, searchable by message or
   task path, filterable by level. ngn's own lifecycle lines (`Task started`,
   `Task succeeded`, …) are hidden unless asked for.
+
+History's and Logs' filters are kept in the URL, so their tab reopens on the same
+view. `/` focuses the page's search box there, and the task filter elsewhere.
 
 **Tabs** work as in wireui: a single click opens a _preview_ tab (italic) that the
 next single click reuses; double-click a tab or a sidebar row to keep it.
@@ -93,21 +99,24 @@ Middle-click closes a tab. Each tab remembers its sub-tab.
 compiled version and put into words when it is a common shape — and which hooks
 it exports. Its tabs are:
 
-- **Runs**: success rate, median and p95 duration, a bar per run, and the history
+- **Runs**: success rate, median and p95 duration, a bar per run, and the history;
+  a row opens that run
 - **Timings**: each `ctx.timing` label's count, average, p50, p95, max and trend
 - **Logs**: every line it wrote, across runs
 - **Store**: its `ctx.kv` keys as they stand now, JSON pretty-printed
 - **Versions**: each distinct build of the file, how its runs went, and its code
 
-**A run** leads with its verdict. A failed run shows the last error the task
+**A run** opens under its task's header, and leads with its verdict. A failed run shows the last error the task
 logged — ngn records that a run failed, not what it threw, so this is whatever an
 `onError` hook wrote. The tabs are:
 
 - **Timeline**: log lines and timing spans on one clock, with a waterfall
 - **Logs**: the run's lines, filterable, with JSON messages opening into a tree
 - **Timings**: spans folded by label, then every span
-- **Code**: the exact version that ran, as source or as stored
 - **Details**: every field of the row
+
+The code that ran is not repeated: the run links to its version in the task's
+**Versions** tab, and says so when the task has moved on since.
 
 `[` and `]` step to the previous or next run of the same task and keep the same
 tab open.

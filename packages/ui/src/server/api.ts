@@ -120,16 +120,11 @@ export interface Workspace {
   counts: WorkspaceCounts | null;
   /** Every task, most recently run first. */
   tasks: TaskItem[];
-  /** Recent runs, newest first, capped at {@link RUN_WINDOW}. */
-  runs: RunItem[];
   /** The `--live` endpoint this server forwards to, or null when the editor is off. */
   live: string | null;
   /** The server's clock, so relative times agree on both sides of hydration. */
   now: number;
 }
-
-/** Runs the sidebar holds. Older ones stay reachable from their task's page. */
-const RUN_WINDOW = 500;
 
 export const getWorkspace = createServerFn({ method: "GET" }).handler(
   async (): Promise<Workspace> => {
@@ -145,14 +140,13 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
     };
     const db = readable();
     if (!db) {
-      return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [], runs: [] };
+      return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [] };
     }
     return {
       ...base,
       bytes: fileBytes(),
       counts: q.workspaceCounts(db),
       tasks: q.listTasks(db).map(describe),
-      runs: q.listRuns(db, { limit: RUN_WINDOW }).map(describe),
     };
   },
 );
@@ -232,42 +226,53 @@ export const getLogs = createServerFn({ method: "GET" })
 // Tasks
 // -----------------------------------------------------------------------------
 
+/** What the task's header needs, shown above its tabs and above any one run of it. */
 export interface TaskPage {
   task: TaskItem;
+  /** The newest version's code, which is what the schedule and hooks are read from. */
+  latest: VersionCode | null;
+}
+
+export const getTask = createServerFn({ method: "GET" })
+  .validator((input: unknown) => ({ taskId: id(record(input).taskId, "taskId") }))
+  .handler(async ({ data }): Promise<TaskPage | null> => {
+    const db = readable();
+    if (!db) return null;
+    const task = q.getTask(db, data.taskId);
+    if (!task) return null;
+    return { task: describe(task), latest: q.getVersionCode(db, task.id) };
+  });
+
+/** A task's tabs: its run history, timings, keys and versions. */
+export interface TaskDetails {
   runs: RunRow[];
   timings: TimingStat[];
   versions: VersionRow[];
   keys: KvRow[];
   /** The version picked in the Versions tab, or the newest. */
   code: VersionCode | null;
-  /** The newest version's code, which is what the schedule and hooks are read from. */
-  latest: VersionCode | null;
 }
 
-/** Runs a task page holds. The history panel reaches further back. */
+/** Runs a task page holds. The SQL console reaches further back. */
 const TASK_RUN_WINDOW = 1000;
 
-export const getTask = createServerFn({ method: "GET" })
+export const getTaskDetails = createServerFn({ method: "GET" })
   .validator((input: unknown) => {
     const r = record(input);
     return { taskId: id(r.taskId, "taskId"), versionId: optionalId(r.versionId, "versionId") };
   })
-  .handler(async ({ data }): Promise<TaskPage | null> => {
+  .handler(async ({ data }): Promise<TaskDetails | null> => {
     const db = readable();
     if (!db) return null;
-    const task = q.getTask(db, data.taskId);
-    if (!task) return null;
-    const latest = q.getVersionCode(db, task.id);
-    const picked =
-      data.versionId === undefined ? latest : q.getVersionCode(db, task.id, data.versionId);
+    const taskId = data.taskId;
     return {
-      task: describe(task),
-      runs: q.listRuns(db, { taskId: task.id, limit: TASK_RUN_WINDOW }),
-      timings: q.timingStats(db, task.id),
-      versions: q.listVersions(db, task.id),
-      keys: q.listKeys(db, task.id),
-      code: picked ?? latest,
-      latest,
+      runs: q.listRuns(db, { taskId, limit: TASK_RUN_WINDOW }),
+      timings: q.timingStats(db, taskId),
+      versions: q.listVersions(db, taskId),
+      keys: q.listKeys(db, taskId),
+      code:
+        (data.versionId === undefined ? null : q.getVersionCode(db, taskId, data.versionId)) ??
+        q.getVersionCode(db, taskId),
     };
   });
 
@@ -288,6 +293,14 @@ export interface RunPage {
   /** The code this run executed. */
   code: VersionCode | null;
 }
+
+/** The task a run belongs to, so a bare run link can be sent to it. */
+export const getRunTaskId = createServerFn({ method: "GET" })
+  .validator((input: unknown) => ({ runId: id(record(input).runId, "runId") }))
+  .handler(async ({ data }): Promise<number | null> => {
+    const db = readable();
+    return db ? (q.getRun(db, data.runId)?.task_id ?? null) : null;
+  });
 
 export const getRun = createServerFn({ method: "GET" })
   .validator((input: unknown) => ({ runId: id(record(input).runId, "runId") }))

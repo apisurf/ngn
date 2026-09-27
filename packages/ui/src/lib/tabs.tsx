@@ -1,7 +1,7 @@
 // Open tabs, the way an API client keeps them.
 //
-// Every page is a tab: a run, a task, the overview, the SQL console, the live
-// editor. The URL stays the source of truth for what is on screen; this only
+// Every page is a tab: a run, a task, the overview, the run history, the log
+// feed, the SQL console, the live editor. The URL stays the source of truth for what is on screen; this only
 // remembers what else is open and where each tab last was, so switching back
 // lands on the same sub-tab it was left on.
 //
@@ -12,10 +12,10 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 
-export type TabIcon = "overview" | "task" | "run" | "query" | "live";
+export type TabIcon = "overview" | "history" | "logs" | "task" | "run" | "query" | "live";
 
 export interface Tab {
-  /** Identity: `run:7`, `task:3`, `overview`, `query`, `live`. */
+  /** Identity: `run:7`, `task:3`, `overview`, `history`, `logs`, `query`, `live`. */
   key: string;
   /** Where the tab was last, sub-tabs and all. */
   href: string;
@@ -28,11 +28,31 @@ export interface Tab {
 
 export const tabKey = {
   overview: () => "overview",
+  history: () => "history",
+  logs: () => "logs",
   query: () => "query",
   live: () => "live",
   run: (id: number) => `run:${id}`,
   task: (id: number) => `task:${id}`,
 };
+
+/**
+ * The tab a URL belongs to, read off the path alone. Which tab owns the URL on
+ * screen is decided here rather than by which page registered last: during a
+ * navigation the URL changes before the page leaving it unmounts, and asking
+ * that page would file the new URL under the old tab.
+ */
+export function tabKeyFor(pathname: string): string | null {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/") return tabKey.overview();
+  const run = /^\/tasks\/\d+\/runs\/(\d+)$/.exec(path);
+  if (run) return tabKey.run(Number(run[1]));
+  const task = /^\/tasks\/(\d+)$/.exec(path);
+  if (task) return tabKey.task(Number(task[1]));
+  const page = path.slice(1);
+  if (page === "history" || page === "logs" || page === "query" || page === "live") return page;
+  return null;
+}
 
 interface TabsContextValue {
   tabs: Tab[];
@@ -67,9 +87,13 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [tabs, setTabs] = React.useState<Tab[]>([]);
-  const [activeKey, setActiveKey] = React.useState<string | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const href = location.href;
+  const activeKey = tabKeyFor(location.pathname);
+  // Read, not depended on: a page re-registering because the URL moved on would
+  // otherwise take the URL of wherever it is being navigated to.
+  const onScreen = React.useRef({ href, key: activeKey });
+  onScreen.current = { href, key: activeKey };
 
   React.useEffect(() => {
     try {
@@ -90,7 +114,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tabs, loaded]);
 
-  // Keep the active tab's href in step with sub-tab and filter changes.
+  // Keep the tab the URL belongs to in step with sub-tab and filter changes.
   React.useEffect(() => {
     if (!activeKey) return;
     setTabs((current) =>
@@ -98,28 +122,27 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     );
   }, [href, activeKey]);
 
-  const register = React.useCallback(
-    (tab: Omit<Tab, "preview" | "href">) => {
-      setActiveKey(tab.key);
-      setTabs((current) => {
-        const existing = current.findIndex((t) => t.key === tab.key);
-        if (existing >= 0) {
-          const next = [...current];
-          next[existing] = { ...next[existing]!, ...tab, href };
-          return next;
-        }
-        const fresh: Tab = { ...tab, href, preview: true };
-        const preview = current.findIndex((t) => t.preview);
-        if (preview >= 0) {
-          const next = [...current];
-          next[preview] = fresh;
-          return next;
-        }
-        return [...current, fresh];
-      });
-    },
-    [href],
-  );
+  const register = React.useCallback((tab: Omit<Tab, "preview" | "href">) => {
+    // A page still on screen while the next one loads has no say.
+    if (tab.key !== onScreen.current.key) return;
+    const at = onScreen.current.href;
+    setTabs((current) => {
+      const existing = current.findIndex((t) => t.key === tab.key);
+      if (existing >= 0) {
+        const next = [...current];
+        next[existing] = { ...next[existing]!, ...tab };
+        return next;
+      }
+      const fresh: Tab = { ...tab, href: at, preview: true };
+      const preview = current.findIndex((t) => t.preview);
+      if (preview >= 0) {
+        const next = [...current];
+        next[preview] = fresh;
+        return next;
+      }
+      return [...current, fresh];
+    });
+  }, []);
 
   const pin = React.useCallback((key: string) => {
     setTabs((current) => current.map((t) => (t.key === key ? { ...t, preview: false } : t)));
@@ -133,7 +156,6 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
       setTabs(next);
       if (key === activeKey) {
         const neighbour = next[Math.min(index, next.length - 1)];
-        if (!neighbour) setActiveKey(null);
         void navigate({ href: neighbour?.href ?? "/" });
       }
     },
@@ -151,10 +173,35 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;
 }
 
+/**
+ * A stored tab whose href points at another tab's page — which older builds
+ * could save — is sent back to its own page, or dropped when that is unknown.
+ */
+function repair(tab: Tab): Tab | null {
+  if (tabKeyFor(tab.href.split(/[?#]/)[0]!) === tab.key) return tab;
+  const home = homeOf(tab.key);
+  return home ? { ...tab, href: home } : null;
+}
+
+/** Where a tab's page lives, from its key alone. */
+function homeOf(key: string): string | null {
+  const [kind, id] = key.split(":");
+  if (kind === "overview") return "/";
+  if (kind === "task" && id) return `/tasks/${id}`;
+  // The run's task is not in its key; the bare run URL redirects to it.
+  if (kind === "run" && id) return `/runs/${id}`;
+  if (kind === "history" || kind === "logs" || kind === "query" || kind === "live")
+    return `/${kind}`;
+  return null;
+}
+
 /** Stored tabs first, then any the current page registered before they loaded. */
 function merge(stored: Tab[], current: Tab[]): Tab[] {
   const valid = Array.isArray(stored)
-    ? stored.filter((t) => t && typeof t.key === "string" && typeof t.href === "string")
+    ? stored
+        .filter((t) => t && typeof t.key === "string" && typeof t.href === "string")
+        .map(repair)
+        .filter((t): t is Tab => t != null)
     : [];
   const keys = new Set(valid.map((t) => t.key));
   const extra = current.filter((t) => !keys.has(t.key));

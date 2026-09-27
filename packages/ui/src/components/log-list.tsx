@@ -14,8 +14,7 @@ import { isLifecycle, logLevel } from "~/lib/ngn";
 import type { LogRow } from "~/server/api";
 import { IconChevronDown, IconChevronRight, IconLogs } from "./icons";
 import { JsonView } from "./json-view";
-import { CopyButton, Empty, FilterInput, LevelBadge, mono, Segmented } from "./primitives";
-import { Toggle } from "./sidebar-history";
+import { CopyButton, Empty, FilterInput, LevelBadge, mono, Segmented, Toggle } from "./primitives";
 
 type Level = "all" | "warn" | "error";
 
@@ -233,8 +232,8 @@ function LogLine({
       </div>
       {showRun ? (
         <Link
-          to="/runs/$runId"
-          params={{ runId: String(log.run_id) }}
+          to="/tasks/$taskId/runs/$runId"
+          params={{ taskId: String(log.task_id), runId: String(log.run_id) }}
           search={{ tab: "logs", log: log.id }}
           className={css({ color: "faint", flexShrink: 0, _hover: { color: "accent" } })}
         >
