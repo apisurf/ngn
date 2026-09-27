@@ -1,5 +1,13 @@
 # ngn-persistence
 
+## 0.2.7
+
+### Patch Changes
+
+- UX improvements
+- Updated dependencies
+  - @apisurf/ngn-os@0.2.7
+
 ## 0.2.6
 
 ### Patch Changes
