@@ -34,19 +34,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "panda codegen --silent && vite build",
+    "build": "panda codegen --log-level silent && vite build",
     "start": "node ./bin/ngnui.mjs",
-    "typecheck": "panda codegen --silent && tsgo --noEmit",
+    "typecheck": "panda codegen --log-level silent && tsgo --noEmit",
     "test": "vitest run",
     "lint": "oxlint --deny-warnings",
-    "prepare": "panda codegen --silent"
+    "prepare": "panda codegen --log-level silent"
   },
   "dependencies": {
     "better-sqlite3": "11.7.0"
   },
   "devDependencies": {
     "@apisurf/ngn-persistence": "workspace:*",
-    "@pandacss/dev": "1.12.1",
+    "@pandacss/dev": "2.0.1",
+    "@pandacss/preset-base": "2.0.1",
+    "@pandacss/preset-panda": "2.0.1",
     "@tanstack/react-router": "1.170.39",
     "@tanstack/react-start": "1.168.58",
     "@types/better-sqlite3": "7.6.12",

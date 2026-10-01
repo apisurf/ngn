@@ -17,6 +17,9 @@ import { defineConfig } from "@pandacss/dev";
 const c = (base: string, dark: string) => ({ value: { base, _dark: dark } });
 
 export default defineConfig({
+  // Panda 2 injects no preset on its own: without these two there are no
+  // utilities, conditions or default tokens to extend.
+  presets: ["@pandacss/preset-base", "@pandacss/preset-panda"],
   preflight: true,
   include: ["./src/**/*.{ts,tsx}"],
   exclude: [],
