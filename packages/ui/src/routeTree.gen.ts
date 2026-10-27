@@ -12,8 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as LiveRouteImport } from './routes/live'
-import { Route as LogsRouteImport } from './routes/logs'
-import { Route as QueryRouteImport } from './routes/query'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as TasksTaskIdRouteImport } from './routes/tasks.$taskId'
 import { Route as TasksTaskIdIndexRouteImport } from './routes/tasks.$taskId.index'
@@ -32,16 +30,6 @@ const HistoryRoute = HistoryRouteImport.update({
 const LiveRoute = LiveRouteImport.update({
   id: '/live',
   path: '/live',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LogsRoute = LogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueryRoute = QueryRouteImport.update({
-  id: '/query',
-  path: '/query',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunsRunIdRoute = RunsRunIdRouteImport.update({
@@ -69,8 +57,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
-  '/logs': typeof LogsRoute
-  '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
   '/tasks/$taskId/': typeof TasksTaskIdIndexRoute
@@ -80,8 +66,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
-  '/logs': typeof LogsRoute
-  '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/tasks/$taskId': typeof TasksTaskIdIndexRoute
   '/tasks/$taskId/runs/$runId': typeof TasksTaskIdRunsRunIdRoute
@@ -91,8 +75,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
-  '/logs': typeof LogsRoute
-  '/query': typeof QueryRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
   '/tasks/$taskId/': typeof TasksTaskIdIndexRoute
@@ -104,8 +86,6 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
-    | '/logs'
-    | '/query'
     | '/runs/$runId'
     | '/tasks/$taskId'
     | '/tasks/$taskId/'
@@ -115,8 +95,6 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
-    | '/logs'
-    | '/query'
     | '/runs/$runId'
     | '/tasks/$taskId'
     | '/tasks/$taskId/runs/$runId'
@@ -125,8 +103,6 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
-    | '/logs'
-    | '/query'
     | '/runs/$runId'
     | '/tasks/$taskId'
     | '/tasks/$taskId/'
@@ -137,8 +113,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
   LiveRoute: typeof LiveRoute
-  LogsRoute: typeof LogsRoute
-  QueryRoute: typeof QueryRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
   TasksTaskIdRoute: typeof TasksTaskIdRouteWithChildren
 }
@@ -164,20 +138,6 @@ declare module '@tanstack/react-router' {
       path: '/live'
       fullPath: '/live'
       preLoaderRoute: typeof LiveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/logs': {
-      id: '/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof LogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/query': {
-      id: '/query'
-      path: '/query'
-      fullPath: '/query'
-      preLoaderRoute: typeof QueryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/runs/$runId': {
@@ -229,8 +189,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
   LiveRoute: LiveRoute,
-  LogsRoute: LogsRoute,
-  QueryRoute: QueryRoute,
   RunsRunIdRoute: RunsRunIdRoute,
   TasksTaskIdRoute: TasksTaskIdRouteWithChildren,
 }

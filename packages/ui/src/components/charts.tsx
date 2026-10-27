@@ -74,14 +74,18 @@ export function DurationStrip({ runs }: { runs: RunRow[] }) {
         })}
       >
         <span>max {formatMs(max)}</span>
-        <Legend tone="ok" label="Succeeded" />
-        <Legend tone="bad" label="Failed" />
-        <Legend tone="neutral" label="Skipped" />
-        <Legend tone="info" label="Running" />
+        {/* Only the colours the strip actually uses. */}
+        {[...new Set(shown.map((run) => run.status))]
+          .toSorted((a, b) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b))
+          .map((status) => (
+            <Legend key={status} tone={runTone(status)} label={runLabel(status)} />
+          ))}
       </div>
     </Card>
   );
 }
+
+const STATUS_ORDER = ["success", "failure", "skipped", "running", "pending"];
 
 export function Legend({ tone, label }: { tone: Tone; label: string }) {
   return (
@@ -106,8 +110,6 @@ const STACK: { key: keyof Omit<ActivityBucket, "from">; tone: Tone }[] = [
 export function ActivityChart({ buckets }: { buckets: ActivityBucket[] }) {
   const totals = buckets.map((b) => b.success + b.failure + b.skipped + b.other);
   const max = Math.max(...totals, 1);
-  const runs = totals.reduce((sum, n) => sum + n, 0);
-  const failed = buckets.reduce((sum, b) => sum + b.failure, 0);
 
   return (
     <Card className={css({ p: "3" })}>
@@ -169,9 +171,7 @@ export function ActivityChart({ buckets }: { buckets: ActivityBucket[] }) {
           flexWrap: "wrap",
         })}
       >
-        <span>
-          {plural(runs, "run")} · {plural(failed, "failure")} · busiest hour {formatCountShort(max)}
-        </span>
+        <span>busiest hour {formatCountShort(max)}</span>
         <Legend tone="ok" label="Succeeded" />
         <Legend tone="bad" label="Failed" />
         <Legend tone="neutral" label="Skipped" />
@@ -183,6 +183,43 @@ export function ActivityChart({ buckets }: { buckets: ActivityBucket[] }) {
 function formatCountShort(n: number): string {
   return n >= 10_000 ? `${Math.round(n / 1000)}k` : n.toLocaleString("en-US");
 }
+
+// -----------------------------------------------------------------------------
+// A task's latest outcomes
+// -----------------------------------------------------------------------------
+
+/**
+ * A task's latest runs as a row of ticks, newest on the right. Every strip is
+ * `slots` wide, padded on the left, so strips in a column line up by recency.
+ */
+export function OutcomeStrip({
+  runs,
+  slots,
+}: {
+  runs: { id: number; status: string }[];
+  slots: number;
+}) {
+  const pad = Math.max(0, slots - runs.length);
+  return (
+    <div
+      aria-label={`Latest ${plural(runs.length, "run")}`}
+      className={css({ display: "flex", gap: "2px", alignItems: "center" })}
+    >
+      {Array.from({ length: pad }, (_, i) => (
+        <span key={`pad${i}`} className={cx(tick, css({ bg: "line", opacity: 0.5 }))} />
+      ))}
+      {runs.map((run) => (
+        <span
+          key={run.id}
+          title={`#${run.id} · ${runLabel(run.status)}`}
+          className={cx(tick, TONE_BAR[runTone(run.status)])}
+        />
+      ))}
+    </div>
+  );
+}
+
+const tick = css({ display: "block", w: "5px", h: "14px", rounded: "1px", flexShrink: 0 });
 
 // -----------------------------------------------------------------------------
 // A sparkline

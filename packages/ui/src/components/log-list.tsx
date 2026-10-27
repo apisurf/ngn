@@ -122,7 +122,9 @@ export function LogList({
           ))}
           {visible.length === 0 ? (
             <div className={css({ color: "faint", textAlign: "center", py: "6" })}>
-              No lines match.
+              {!needle && level === "all" && !lifecycle && hasLifecycle
+                ? "Only ngn's own lifecycle lines here. Turn on Lifecycle to show them."
+                : "No lines match."}
             </div>
           ) : null}
         </div>

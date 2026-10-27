@@ -27,9 +27,8 @@ export function dbPath(): string {
  * missing file is re-checked on every call, so the first run after start-up is
  * picked up without a restart.
  *
- * The connection is opened `readonly` and additionally `query_only`, which is
- * what makes the SQL console safe to offer: a write fails in SQLite itself, not
- * in a check this module could get wrong. Migrations are never applied — a
+ * The connection is opened `readonly` and additionally `query_only`, so a write
+ * fails in SQLite itself, not in a check this module could get wrong. Migrations are never applied — a
  * viewer must not change the file it is showing.
  */
 export function getDb(): Db | null {

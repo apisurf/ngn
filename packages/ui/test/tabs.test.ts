@@ -5,8 +5,6 @@ describe("tabKeyFor", () => {
   it("files every page's URL under its own tab", () => {
     expect(tabKeyFor("/")).toBe("overview");
     expect(tabKeyFor("/history")).toBe("history");
-    expect(tabKeyFor("/logs")).toBe("logs");
-    expect(tabKeyFor("/query")).toBe("query");
     expect(tabKeyFor("/live")).toBe("live");
     expect(tabKeyFor("/tasks/3")).toBe("task:3");
     expect(tabKeyFor("/tasks/3/")).toBe("task:3");

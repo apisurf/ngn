@@ -97,6 +97,15 @@ export function formatAgo(now: number, ms: number): string {
   return formatDay(now, ms);
 }
 
+/** `12 min`, `3 h` — how long something has been going on, roughly. */
+export function formatSpan(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${Math.floor(seconds)} s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  if (seconds < 48 * 3600) return `${Math.floor(seconds / 3600)} h`;
+  return `${Math.floor(seconds / 86_400)} d`;
+}
+
 /** `+1.24 s` — where something sits relative to the start of its run. */
 export function formatOffset(ms: number): string {
   return `+${formatMs(Math.max(0, ms))}`;

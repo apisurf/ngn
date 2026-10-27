@@ -12,8 +12,9 @@ import { IconHistory } from "~/components/icons";
 import {
   Dot,
   Empty,
+  LogCount,
   mono,
-  RunBadge,
+  RunOutcome,
   scrollPane,
   Segmented,
   table,
@@ -21,7 +22,7 @@ import {
   truncate,
 } from "~/components/primitives";
 import { useUnreadable } from "~/components/states";
-import { formatClock, formatCount, formatMs, groupByDay } from "~/lib/format";
+import { formatClock, formatMs, groupByDay } from "~/lib/format";
 import { runTone } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
@@ -136,7 +137,14 @@ function HistoryPage() {
                           {formatClock(row.at)}
                         </td>
                         <td className={css({ maxW: "0", w: "full" })}>
-                          <div className={css({ display: "flex", gap: "2", minW: "0" })}>
+                          <div
+                            className={css({
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "2",
+                              minW: "0",
+                            })}
+                          >
                             <Dot tone={runTone(row.status)} />
                             <span className={cx(truncate, css({ fontWeight: "500" }))}>
                               {row.live ? "Live editor" : row.file}
@@ -148,17 +156,12 @@ function HistoryPage() {
                             ) : null}
                           </div>
                         </td>
-                        <td>
-                          <RunBadge status={row.status} />
+                        <td className={css({ maxW: "260px" })}>
+                          <RunOutcome run={row} />
                         </td>
                         <td className={cx(mono, css({ color: "muted" }))}>#{row.id}</td>
                         <td className="num">
-                          {formatCount(row.log_count)}
-                          {row.error_count ? (
-                            <span className={css({ color: "bad" })}> · {row.error_count}✕</span>
-                          ) : row.warn_count ? (
-                            <span className={css({ color: "warn" })}> · {row.warn_count}!</span>
-                          ) : null}
+                          <LogCount run={row} />
                         </td>
                         <td className={cx("num", mono)}>{formatMs(row.duration_ms)}</td>
                       </tr>

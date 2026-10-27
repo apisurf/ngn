@@ -19,9 +19,10 @@ import {
   Card,
   Dot,
   Empty,
+  LogCount,
   mono,
   pagePad,
-  RunBadge,
+  RunOutcome,
   scrollPane,
   SectionTitle,
   Segmented,
@@ -29,13 +30,22 @@ import {
   StatGrid,
   TabList,
   table,
+  truncate,
 } from "~/components/primitives";
 import { formatAgo, formatCount, formatDateTime, formatMs, plural } from "~/lib/format";
 import { prettyJson } from "~/lib/json";
-import { percentile, runTone } from "~/lib/ngn";
+import { percentile, readSkip, runTone } from "~/lib/ngn";
 import { useNow, usePrefs } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
-import type { KvRow, LogRow, RunRow, TaskDetails, TaskItem, TimingStat } from "~/server/api";
+import type {
+  KvRow,
+  LogRow,
+  RunRow,
+  SkipCount,
+  TaskDetails,
+  TaskItem,
+  TimingStat,
+} from "~/server/api";
 import { getLogs, getTaskDetails } from "~/server/api";
 
 type TaskTab = "runs" | "timings" | "logs" | "store" | "versions";
@@ -91,7 +101,7 @@ function TaskPage() {
       {tab === "runs" ? (
         <div className={scrollPane}>
           <div className={pagePad}>
-            <RunsTab task={task} runs={details.runs} now={now} />
+            <RunsTab task={task} runs={details.runs} skips={details.skips} now={now} />
           </div>
         </div>
       ) : null}
@@ -121,62 +131,53 @@ function TaskPage() {
 
 type Show = "all" | "failure" | "skipped";
 
-function RunsTab({ task, runs, now }: { task: TaskItem; runs: RunRow[]; now: number }) {
+function RunsTab({
+  task,
+  runs,
+  skips,
+  now,
+}: {
+  task: TaskItem;
+  runs: RunRow[];
+  skips: SkipCount[];
+  now: number;
+}) {
   const navigate = useNavigate();
   const [show, setShow] = React.useState<Show>("all");
   if (runs.length === 0) return <Empty title="This task has not run yet" />;
 
-  const durations = runs
-    .map((r) => r.duration_ms)
-    .filter((d): d is number => d != null)
-    .toSorted((a, b) => a - b);
-  const decided = task.success_count + task.failure_count;
-  const rate = decided ? Math.round((task.success_count / decided) * 1000) / 10 : null;
   const visible = show === "all" ? runs : runs.filter((r) => r.status === show);
 
   return (
     <>
-      <StatGrid>
-        <Stat
-          label="Runs"
-          value={formatCount(task.run_count)}
-          sub={`last ${formatAgo(now, runs[0]!.at)}`}
-        />
-        <Stat
-          label="Success rate"
-          value={rate == null ? "—" : `${rate}%`}
-          tone={rate == null ? undefined : task.failure_count ? "bad" : "ok"}
-          sub={`${plural(task.failure_count, "failure")} · ${formatCount(task.skipped_count)} skipped`}
-        />
-        <Stat
-          label="Median duration"
-          value={formatMs(percentile(durations, 0.5))}
-          sub={`p95 ${formatMs(percentile(durations, 0.95))}`}
-        />
-        <Stat
-          label="Slowest"
-          value={formatMs(durations[durations.length - 1])}
-          sub={`over the last ${plural(durations.length, "finished run")}`}
-        />
-      </StatGrid>
+      <TaskStats task={task} runs={runs} skips={skips} now={now} />
 
       <section>
         <SectionTitle>Duration per run</SectionTitle>
         <DurationStrip runs={runs} />
       </section>
 
+      {skips.length > 1 ? <SkipBreakdown skips={skips} /> : null}
+
       <section>
         <SectionTitle
           right={
-            <Segmented
-              items={[
-                { id: "all", label: "All" },
-                { id: "failure", label: `Failed ${task.failure_count}` },
-                { id: "skipped", label: `Skipped ${task.skipped_count}` },
-              ]}
-              value={show}
-              onSelect={setShow}
-            />
+            // Filters only for what there is to filter to.
+            task.failure_count || task.skipped_count ? (
+              <Segmented
+                items={[
+                  { id: "all" as const, label: "All" },
+                  ...(task.failure_count
+                    ? [{ id: "failure" as const, label: `Failed ${task.failure_count}` }]
+                    : []),
+                  ...(task.skipped_count
+                    ? [{ id: "skipped" as const, label: `Skipped ${task.skipped_count}` }]
+                    : []),
+                ]}
+                value={show}
+                onSelect={setShow}
+              />
+            ) : null
           }
         >
           History
@@ -186,6 +187,7 @@ function RunsTab({ task, runs, now }: { task: TaskItem; runs: RunRow[]; now: num
             runs={visible}
             now={now}
             latestVersion={task.version}
+            versions={task.version_count}
             onOpen={(id) =>
               void navigate({
                 to: "/tasks/$taskId/runs/$runId",
@@ -196,8 +198,8 @@ function RunsTab({ task, runs, now }: { task: TaskItem; runs: RunRow[]; now: num
         </Card>
         {runs.length < task.run_count ? (
           <p className={css({ color: "faint", fontSize: "12px", mt: "2", mb: "0" })}>
-            Showing the latest {formatCount(runs.length)} of {formatCount(task.run_count)} runs. The
-            SQL console reaches the rest.
+            Showing the latest {formatCount(runs.length)} of {formatCount(task.run_count)} runs.{" "}
+            <code>ngn sql</code> reaches the rest.
           </p>
         ) : null}
       </section>
@@ -205,27 +207,127 @@ function RunsTab({ task, runs, now }: { task: TaskItem; runs: RunRow[]; now: num
   );
 }
 
+function TaskStats({
+  task,
+  runs,
+  skips,
+  now,
+}: {
+  task: TaskItem;
+  runs: RunRow[];
+  skips: SkipCount[];
+  now: number;
+}) {
+  const durations = runs
+    .map((r) => r.duration_ms)
+    .filter((d): d is number => d != null)
+    .toSorted((a, b) => a - b);
+  const decided = task.success_count + task.failure_count;
+  const rate = decided ? Math.round((task.success_count / decided) * 1000) / 10 : null;
+  const topSkip = skips[0];
+
+  return (
+    <StatGrid>
+      <Stat
+        label="Runs"
+        value={formatCount(task.run_count)}
+        sub={runs[0] ? `last ${formatAgo(now, runs[0].at)}` : undefined}
+      />
+      <Stat
+        label="Success rate"
+        value={rate == null ? "—" : `${rate}%`}
+        tone={rate != null && rate < 90 ? "bad" : undefined}
+        sub={[
+          plural(task.failure_count, "failure"),
+          task.retry_count ? plural(task.retry_count, "retry", "retries") : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      />
+      <Stat
+        label="Median duration"
+        value={formatMs(percentile(durations, 0.5))}
+        sub={`p95 ${formatMs(percentile(durations, 0.95))} · max ${formatMs(durations[durations.length - 1])}`}
+      />
+      {topSkip ? (
+        <Stat
+          label="Skipped"
+          value={formatCount(task.skipped_count)}
+          sub={`${skips.length === 1 ? "" : "mostly "}${skipPhrase(topSkip.reason)}`}
+        />
+      ) : null}
+    </StatGrid>
+  );
+}
+
+/** `lock browser held`, `the circuit breaker`, … — a skip reason as it reads in a sentence. */
+function skipPhrase(reason: string | null): string {
+  const skip = readSkip(reason);
+  if (skip.cause === "shouldSkip") return "by shouldSkip";
+  if (skip.cause === "overlap") return "while still running";
+  if (skip.cause === "breaker") return "by the breaker";
+  if (skip.cause === "lock") return `lock ${skip.lock} busy`;
+  return skip.short;
+}
+
+/** Why the task's runs were skipped, when there is more than one reason. */
+function SkipBreakdown({ skips }: { skips: SkipCount[] }) {
+  const total = skips.reduce((sum, s) => sum + s.count, 0);
+  return (
+    <section>
+      <SectionTitle>Why runs were skipped</SectionTitle>
+      <div className={css({ display: "flex", flexDir: "column", gap: "1.5", maxW: "560px" })}>
+        {skips.map((skip) => (
+          <div
+            key={skip.reason ?? ""}
+            className={css({ display: "flex", alignItems: "center", gap: "3", fontSize: "12px" })}
+          >
+            <span className={cx(truncate, css({ w: "220px", flexShrink: 0 }))}>
+              {skip.reason ?? <span className={mono}>shouldSkip</span>}
+            </span>
+            <span className={css({ flex: "1", h: "6px", rounded: "full", bg: "hover" })}>
+              <span
+                className={css({ display: "block", h: "full", rounded: "full", bg: "faint" })}
+                style={{ width: `${(skip.count / total) * 100}%` }}
+              />
+            </span>
+            <span className={cx("num", css({ w: "40px", textAlign: "right", color: "muted" }))}>
+              {formatCount(skip.count)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function RunsTable({
   runs,
   now,
   latestVersion,
+  versions,
   onOpen,
 }: {
   runs: RunRow[];
   now: number;
   latestVersion: number;
+  versions: number;
   onOpen: (id: number) => void;
 }) {
   if (runs.length === 0) return <Empty title="No runs match" />;
+  // Columns that would say the same thing on every row are left out.
+  const showVersion = versions > 1;
+  const showLogs = runs.some((run) => run.log_count > 0);
+  const showTimings = runs.some((run) => run.timing_count > 0);
   return (
     <table className={table}>
       <thead>
         <tr>
           <th>Run</th>
           <th>Result</th>
-          <th>Version</th>
-          <th className="num">Logs</th>
-          <th className="num">Timings</th>
+          {showVersion ? <th>Version</th> : null}
+          {showLogs ? <th className="num">Logs</th> : null}
+          {showTimings ? <th className="num">Timings</th> : null}
           <th className="num">Duration</th>
           <th className="num">Started</th>
         </tr>
@@ -239,28 +341,31 @@ function RunsTable({
                 <span className={mono}>#{run.id}</span>
               </div>
             </td>
-            <td>
-              <RunBadge status={run.status} />
+            <td className={css({ maxW: "280px" })}>
+              <RunOutcome run={run} />
             </td>
-            <td
-              className={cx(
-                mono,
-                run.version != null && run.version < latestVersion
-                  ? css({ color: "faint" })
-                  : undefined,
-              )}
-            >
-              {run.version != null ? `v${run.version}` : "—"}
-            </td>
-            <td className="num">
-              {formatCount(run.log_count)}
-              {run.error_count ? (
-                <span className={css({ color: "bad" })}> · {run.error_count}✕</span>
-              ) : run.warn_count ? (
-                <span className={css({ color: "warn" })}> · {run.warn_count}!</span>
-              ) : null}
-            </td>
-            <td className="num">{run.timing_count ? formatCount(run.timing_count) : "—"}</td>
+            {showVersion ? (
+              <td
+                className={cx(
+                  mono,
+                  run.version != null && run.version < latestVersion
+                    ? css({ color: "faint" })
+                    : undefined,
+                )}
+              >
+                {run.version != null ? `v${run.version}` : "—"}
+              </td>
+            ) : null}
+            {showLogs ? (
+              <td className="num">
+                <LogCount run={run} />
+              </td>
+            ) : null}
+            {showTimings ? (
+              <td className={cx("num", run.timing_count ? undefined : css({ color: "faint" }))}>
+                {run.timing_count ? formatCount(run.timing_count) : "—"}
+              </td>
+            ) : null}
             <td className={cx("num", mono)}>{formatMs(run.duration_ms)}</td>
             <td className={cx("num", css({ color: "muted" }))}>{formatDateTime(now, run.at)}</td>
           </tr>

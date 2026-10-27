@@ -11,6 +11,7 @@ import * as React from "react";
 import { css, cx } from "styled-system/css";
 import { useActive } from "~/lib/active";
 import { formatClock, formatDayHeading } from "~/lib/format";
+import { circuitOpen } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTabs } from "~/lib/tabs";
 import type { TaskItem } from "~/server/api";
@@ -133,7 +134,14 @@ function TaskNode({ task, active }: { task: TaskItem; active: boolean }) {
         {ranAt ? `Run at ${formatClock(ranAt)}` : task.file}
       </span>
       {task.status !== "active" ? <Pill>{task.status}</Pill> : null}
-      {task.last_outcome === "failure" ? <Dot tone="bad" title="Latest run failed" /> : null}
+      {task.last_outcome === "failure" ? (
+        <Dot
+          tone="bad"
+          title={
+            circuitOpen(task) ? "Circuit open: ngn is skipping its ticks" : "Latest run failed"
+          }
+        />
+      ) : null}
       <span
         className={css({ fontSize: "11px", color: "faint", fontVariantNumeric: "tabular-nums" })}
         title={`${task.run_count} runs`}

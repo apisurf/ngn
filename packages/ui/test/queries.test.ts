@@ -9,18 +9,22 @@ import type { Db } from "../src/server/db";
 import { schemaState } from "../src/server/db";
 import {
   activity,
+  failingSpell,
   failureMessage,
+  getRun,
   getRunResult,
   getTask,
   latestLiveRun,
   listKeys,
+  listLocks,
   listLogs,
-  listRelations,
   listRuns,
   listTasks,
   listVersions,
+  recentOutcomes,
   runNeighbours,
-  runQuery,
+  skipReasons,
+  tickAttempts,
   timingStats,
   workspaceCounts,
 } from "../src/server/queries";
@@ -216,8 +220,8 @@ describe("runs", () => {
     expect(runs[2]).toMatchObject({
       version: 1,
       duration_ms: 300,
-      log_count: 4,
-      // "Task failed" is ngn's line, not the task's.
+      // "Task started" and "Task failed" are ngn's lines, not the task's.
+      log_count: 2,
       error_count: 1,
       warn_count: 1,
       timing_count: 1,
@@ -245,14 +249,117 @@ describe("runs", () => {
   });
 });
 
+describe("retries, skips and locks", () => {
+  /** A tick of three tries — two failures, then a success — and two kinds of skip. */
+  function seedRetries() {
+    const w = new Database(path);
+    const run = w.prepare(
+      `INSERT INTO task_runs (file_task_id, file_task_version_id, status, created_at, started_at, ended_at, retry_of, skip_reason)
+       VALUES (1, 2, ?, ?, ?, ?, ?, ?)`,
+    );
+    const first = Number(
+      run.run("failure", T0 + 20_000, T0 + 20_000, T0 + 20_100, null, null).lastInsertRowid,
+    );
+    const second = Number(
+      run.run("failure", T0 + 21_000, T0 + 21_000, T0 + 21_100, first, null).lastInsertRowid,
+    );
+    const third = Number(
+      run.run("success", T0 + 22_000, T0 + 22_000, T0 + 22_050, first, null).lastInsertRowid,
+    );
+    run.run("skipped", T0 + 23_000, null, T0 + 23_000, null, 'lock "browser" is held');
+    const breaker = Number(
+      run.run(
+        "skipped",
+        T0 + 24_000,
+        null,
+        T0 + 24_000,
+        null,
+        "circuit open after repeated failures",
+      ).lastInsertRowid,
+    );
+    w.prepare(
+      "INSERT INTO locks (name, holder, task_run_id, acquired_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("browser", "123:abc", third, T0 + 22_000, T0 + 82_000);
+    w.close();
+    return { first, second, third, breaker };
+  }
+
+  it("numbers each try of a tick", () => {
+    const { first, second, third } = seedRetries();
+    const byId = new Map(listRuns(db, { taskId: 1 }).map((r) => [r.id, r]));
+    expect(byId.get(first)).toMatchObject({ attempt: 1, attempts: 3, retry_of: null });
+    expect(byId.get(second)).toMatchObject({ attempt: 2, attempts: 3, retry_of: first });
+    expect(byId.get(third)).toMatchObject({ attempt: 3, attempts: 3 });
+    // A run that was never retried is its tick's only try.
+    expect(byId.get(1)).toMatchObject({ attempt: 1, attempts: 1 });
+    // The same, read alone.
+    expect(getRun(db, second)).toMatchObject({ attempt: 2, attempts: 3 });
+    expect(tickAttempts(db, { id: second, retry_of: first }).map((a) => a.id)).toEqual([
+      first,
+      second,
+      third,
+    ]);
+  });
+
+  it("counts retries and says why runs were skipped", () => {
+    const { breaker } = seedRetries();
+    expect(getTask(db, 1)).toMatchObject({
+      retry_count: 2,
+      last_run_id: breaker,
+      last_skip_reason: "circuit open after repeated failures",
+    });
+    expect(skipReasons(db, 1)).toEqual([
+      // The seed's own skip predates skip_reason: shouldSkip's.
+      { reason: null, count: 1 },
+      { reason: "circuit open after repeated failures", count: 1 },
+      { reason: 'lock "browser" is held', count: 1 },
+    ]);
+  });
+
+  it("lists locks with the run and task that hold them", () => {
+    const { third } = seedRetries();
+    expect(listLocks(db)).toEqual([
+      {
+        name: "browser",
+        holder: "123:abc",
+        run_id: third,
+        task_id: 1,
+        path: "tasks/api/sync.ts",
+        acquired_at: T0 + 22_000,
+        expires_at: T0 + 82_000,
+      },
+    ]);
+  });
+
+  it("reads a file from before retries, skip reasons and locks", () => {
+    const legacy = new Database(":memory:");
+    legacy.exec(`
+      CREATE TABLE file_tasks (id INTEGER PRIMARY KEY, path TEXT, parent_path TEXT, status TEXT, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE file_task_versions (id INTEGER PRIMARY KEY, file_task_id INTEGER, version INTEGER);
+      CREATE TABLE task_runs (id INTEGER PRIMARY KEY, file_task_id INTEGER, file_task_version_id INTEGER, status TEXT, created_at INTEGER, started_at INTEGER, ended_at INTEGER);
+      CREATE TABLE logs (id INTEGER PRIMARY KEY, task_run_id INTEGER, file_task_id INTEGER, status TEXT, value TEXT, created_at INTEGER);
+      CREATE TABLE timings (id INTEGER PRIMARY KEY, task_run_id INTEGER);
+      INSERT INTO file_tasks VALUES (1, 'a.ts', '.', 'active', 0, 0);
+      INSERT INTO task_runs VALUES (1, 1, 1, 'skipped', 0, NULL, 0);
+    `);
+    expect(listRuns(legacy)).toMatchObject([
+      { id: 1, retry_of: null, skip_reason: null, attempt: 1, attempts: 1 },
+    ]);
+    expect(listTasks(legacy)[0]).toMatchObject({ retry_count: 0, last_skip_reason: null });
+    expect(skipReasons(legacy, 1)).toEqual([{ reason: null, count: 1 }]);
+    expect(tickAttempts(legacy, { id: 1, retry_of: null })).toHaveLength(1);
+    expect(listLocks(legacy)).toEqual([]);
+    legacy.close();
+  });
+});
+
 describe("logs", () => {
-  it("hides lifecycle lines unless asked, and filters by level", () => {
+  it("hides lifecycle lines unless asked", () => {
     expect(listLogs(db, { taskId: 1 }).map((l) => l.value)).toEqual([
       "sync failed: upstream returned 503",
       "rate limit close",
       "synced 3 users",
     ]);
-    expect(listLogs(db, { level: "warn" }).map((l) => l.status)).toEqual(["error", "warning"]);
     expect(listLogs(db, { runId: 2, lifecycle: true }).map((l) => l.value)[0]).toBe("Task started");
   });
 
@@ -260,11 +367,6 @@ describe("logs", () => {
     const logs = listLogs(db, { runId: 2, lifecycle: true });
     expect(failureMessage(logs)).toBe("sync failed: upstream returned 503");
     expect(failureMessage(logs.filter((l) => !l.value.startsWith("sync")))).toBeNull();
-  });
-
-  it("searches messages and task paths", () => {
-    expect(listLogs(db, { q: "503" })).toHaveLength(1);
-    expect(listLogs(db, { q: "live-task" }).map((l) => l.value)).toEqual(['{"rows":2}']);
   });
 });
 
@@ -282,45 +384,35 @@ describe("timings", () => {
   });
 });
 
+describe("overview", () => {
+  it("strips a task's latest runs, oldest first", () => {
+    expect(recentOutcomes(db, 1, 3).map((r) => r.status)).toEqual([
+      "failure",
+      "success",
+      "skipped",
+    ]);
+    expect(recentOutcomes(db, 2, 24)).toEqual([]);
+  });
+
+  it("measures how long a task has been failing since its latest success", () => {
+    // sync.ts: success, failure, success, skipped — healthy now.
+    expect(failingSpell(db, 1)).toBeNull();
+    const w = new Database(path);
+    const run = w.prepare(
+      "INSERT INTO task_runs (file_task_id, file_task_version_id, status, created_at) VALUES (1, 2, 'failure', ?)",
+    );
+    run.run(T0 + 30_000);
+    const last = Number(run.run(T0 + 31_000).lastInsertRowid);
+    w.close();
+    expect(failingSpell(db, 1)).toEqual({ last_run_id: last, since: T0 + 30_000, failures: 2 });
+  });
+});
+
 describe("activity", () => {
   it("buckets runs by hour, every hour present", () => {
     const buckets = activity(db, T0 + 10_000, 24);
     expect(buckets).toHaveLength(24);
     const last = buckets[buckets.length - 1]!;
     expect(last).toMatchObject({ success: 3, failure: 1, skipped: 1 });
-  });
-});
-
-describe("SQL console", () => {
-  it("describes the tables", () => {
-    const runs = listRelations(db).find((r) => r.name === "task_runs");
-    expect(runs?.description).toMatch(/scheduled execution/);
-    expect(runs?.columns.find((c) => c.name === "id")).toMatchObject({ pk: true });
-  });
-
-  it("returns columns and rows", () => {
-    expect(runQuery(db, "SELECT id, status FROM task_runs ORDER BY id LIMIT 2")).toMatchObject({
-      ok: true,
-      columns: ["id", "status"],
-      rows: [
-        [1, "success"],
-        [2, "failure"],
-      ],
-    });
-  });
-
-  it("refuses statements that return nothing, and writes that do", () => {
-    expect(runQuery(db, "DELETE FROM task_runs")).toMatchObject({ ok: false });
-    expect(runQuery(db, "DELETE FROM task_runs RETURNING id")).toMatchObject({ ok: false });
-    expect(runQuery(db, "SELECT COUNT(*) FROM task_runs")).toMatchObject({ rows: [[5]] });
-  });
-
-  it("caps the rows it returns and says so", () => {
-    const result = runQuery(
-      db,
-      "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n LIMIT 5000) SELECT i FROM n",
-    );
-    expect(result).toMatchObject({ ok: true, truncated: true });
-    expect(result.ok && result.rows.length).toBe(1000);
   });
 });

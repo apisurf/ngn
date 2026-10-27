@@ -12,21 +12,24 @@
 import { createServerFn } from "@tanstack/react-start";
 import { dirname } from "node:path";
 import type { TaskName } from "../lib/ngn";
-import { describeTask } from "../lib/ngn";
+import { cronOf, describeCron, describeTask } from "../lib/ngn";
 import type { Db, SchemaState } from "./db";
 import { dbPath, fileBytes, getDb, schemaState } from "./db";
 import type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
 import { executeLive, liveTarget, probeLive } from "./live";
 import type {
   ActivityBucket,
+  Attempt,
+  FailingSpell,
   KvRow,
+  LockRow,
   LogFilter,
   LogRow,
   Neighbours,
-  QueryResult,
-  RelationSchema,
+  Outcome,
   RunFilter,
   RunRow,
+  SkipCount,
   TaskRow,
   TimingRow,
   TimingStat,
@@ -40,13 +43,14 @@ export type { SchemaState } from "./db";
 export type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
 export type {
   ActivityBucket,
-  Cell,
-  ColumnInfo,
+  Attempt,
+  FailingSpell,
+  Outcome,
   KvRow,
+  LockRow,
   LogRow,
-  QueryResult,
-  RelationSchema,
   RunRow,
+  SkipCount,
   TaskRow,
   TimingRow,
   TimingStat,
@@ -155,22 +159,51 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
 // Overview
 // -----------------------------------------------------------------------------
 
-export interface Overview {
-  runs: RunItem[];
-  /** Warnings and errors tasks logged, newest first. */
-  problems: LogItem[];
-  activity: ActivityBucket[];
+/** What the overview adds to a task's row, beyond what the workspace already has. */
+export interface OverviewTask {
+  id: number;
+  /** The schedule in words, or the cron pattern when it has no plain reading. */
+  schedule: string | null;
+  /** Its latest runs, oldest first. */
+  recent: Outcome[];
+  /** Set while its latest verdict is a failure. */
+  failing: (FailingSpell & { message: string | null }) | null;
 }
+
+export interface Overview {
+  /** Every scheduled task — the live editor's are left out. */
+  tasks: OverviewTask[];
+  activity: ActivityBucket[];
+  /** Every named lock in the file, held or left behind. */
+  locks: LockRow[];
+}
+
+/** Runs in each task's strip on the overview. */
+const RECENT_RUNS = 24;
 
 export const getOverview = createServerFn({ method: "GET" }).handler(
   async (): Promise<Overview> => {
     const db = readable();
-    if (!db) return { runs: [], problems: [], activity: [] };
-    return {
-      runs: q.listRuns(db, { limit: 12 }).map(describe),
-      problems: q.listLogs(db, { level: "warn", limit: 12 }).map(describe),
-      activity: q.activity(db, Date.now()),
-    };
+    if (!db) return { tasks: [], activity: [], locks: [] };
+    const tasks = q
+      .listTasks(db)
+      .filter((task) => !describeTask(task.path).live)
+      .map((task): OverviewTask => {
+        const cron = cronOf(q.getVersionCode(db, task.id)?.compiled_code);
+        const spell = task.last_outcome === "failure" ? q.failingSpell(db, task.id) : null;
+        return {
+          id: task.id,
+          schedule: cron ? (describeCron(cron) ?? cron) : null,
+          recent: q.recentOutcomes(db, task.id, RECENT_RUNS),
+          failing: spell && {
+            ...spell,
+            message: q.failureMessage(
+              q.listLogs(db, { runId: spell.last_run_id, lifecycle: true, limit: 5000 }),
+            ),
+          },
+        };
+      });
+    return { tasks, activity: q.activity(db, Date.now()), locks: q.listLocks(db) };
   },
 );
 
@@ -206,10 +239,8 @@ export const getRuns = createServerFn({ method: "GET" })
 function logFilter(input: unknown): LogFilter {
   const r = record(input);
   return {
-    q: optionalString(r.q),
     taskId: optionalId(r.taskId, "taskId"),
     runId: optionalId(r.runId, "runId"),
-    level: r.level === "warn" || r.level === "error" ? r.level : undefined,
     lifecycle: r.lifecycle === true,
     limit: optionalLimit(r.limit),
   };
@@ -249,11 +280,13 @@ export interface TaskDetails {
   timings: TimingStat[];
   versions: VersionRow[];
   keys: KvRow[];
+  /** Why its runs were skipped, most common first. */
+  skips: SkipCount[];
   /** The version picked in the Versions tab, or the newest. */
   code: VersionCode | null;
 }
 
-/** Runs a task page holds. The SQL console reaches further back. */
+/** Runs a task page holds. `ngn sql` reaches further back. */
 const TASK_RUN_WINDOW = 1000;
 
 export const getTaskDetails = createServerFn({ method: "GET" })
@@ -270,6 +303,7 @@ export const getTaskDetails = createServerFn({ method: "GET" })
       timings: q.timingStats(db, taskId),
       versions: q.listVersions(db, taskId),
       keys: q.listKeys(db, taskId),
+      skips: q.skipReasons(db, taskId),
       code:
         (data.versionId === undefined ? null : q.getVersionCode(db, taskId, data.versionId)) ??
         q.getVersionCode(db, taskId),
@@ -294,6 +328,10 @@ export interface RunPage {
   code: VersionCode | null;
   /** What the task returned, as JSON; null when it returned nothing. */
   result: string | null;
+  /** Every try of this run's tick, first first; just this run when it was not retried. */
+  attempts: Attempt[];
+  /** Locks this run holds now, or left behind. */
+  locks: LockRow[];
 }
 
 /** The task a run belongs to, so a bare run link can be sent to it. */
@@ -323,30 +361,9 @@ export const getRun = createServerFn({ method: "GET" })
       neighbours: q.runNeighbours(db, run.task_id, run.id),
       code: q.getVersionCode(db, run.task_id, run.version_id),
       result: q.getRunResult(db, run.id),
+      attempts: q.tickAttempts(db, run),
+      locks: q.listLocks(db).filter((lock) => lock.run_id === run.id),
     };
-  });
-
-// -----------------------------------------------------------------------------
-// Schema and SQL
-// -----------------------------------------------------------------------------
-
-export const getSchema = createServerFn({ method: "GET" }).handler(
-  async (): Promise<RelationSchema[]> => {
-    const db = getDb();
-    return db ? q.listRelations(db) : [];
-  },
-);
-
-export const runSql = createServerFn({ method: "POST" })
-  .validator((input: unknown) => {
-    const sql = optionalString(record(input).sql)?.trim();
-    if (!sql) throw new Error("sql is required");
-    return { sql };
-  })
-  .handler(async ({ data }): Promise<QueryResult> => {
-    const db = getDb();
-    if (!db) return { ok: false, error: `No database at ${dbPath()} yet.` };
-    return q.runQuery(db, data.sql);
   });
 
 // -----------------------------------------------------------------------------

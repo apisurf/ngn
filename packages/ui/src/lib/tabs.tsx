@@ -1,7 +1,7 @@
 // Open tabs, the way an API client keeps them.
 //
-// Every page is a tab: a run, a task, the overview, the run history, the log
-// feed, the SQL console, the live editor. The URL stays the source of truth for what is on screen; this only
+// Every page is a tab: a run, a task, the overview, the run history, the live
+// editor. The URL stays the source of truth for what is on screen; this only
 // remembers what else is open and where each tab last was, so switching back
 // lands on the same sub-tab it was left on.
 //
@@ -12,10 +12,10 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 
-export type TabIcon = "overview" | "history" | "logs" | "task" | "run" | "query" | "live";
+export type TabIcon = "overview" | "history" | "task" | "run" | "live";
 
 export interface Tab {
-  /** Identity: `run:7`, `task:3`, `overview`, `history`, `logs`, `query`, `live`. */
+  /** Identity: `run:7`, `task:3`, `overview`, `history`, `live`. */
   key: string;
   /** Where the tab was last, sub-tabs and all. */
   href: string;
@@ -29,8 +29,6 @@ export interface Tab {
 export const tabKey = {
   overview: () => "overview",
   history: () => "history",
-  logs: () => "logs",
-  query: () => "query",
   live: () => "live",
   run: (id: number) => `run:${id}`,
   task: (id: number) => `task:${id}`,
@@ -50,7 +48,7 @@ export function tabKeyFor(pathname: string): string | null {
   const task = /^\/tasks\/(\d+)$/.exec(path);
   if (task) return tabKey.task(Number(task[1]));
   const page = path.slice(1);
-  if (page === "history" || page === "logs" || page === "query" || page === "live") return page;
+  if (page === "history" || page === "live") return page;
   return null;
 }
 
@@ -190,8 +188,7 @@ function homeOf(key: string): string | null {
   if (kind === "task" && id) return `/tasks/${id}`;
   // The run's task is not in its key; the bare run URL redirects to it.
   if (kind === "run" && id) return `/runs/${id}`;
-  if (kind === "history" || kind === "logs" || kind === "query" || kind === "live")
-    return `/${kind}`;
+  if (kind === "history" || kind === "live") return `/${kind}`;
   return null;
 }
 

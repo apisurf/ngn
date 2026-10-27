@@ -9,7 +9,7 @@
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import type { LogLevel, Tone } from "~/lib/ngn";
-import { LEVEL_TONE, logLevel, runLabel, runTone, seriesSlot } from "~/lib/ngn";
+import { LEVEL_TONE, logLevel, readSkip, runLabel, runTone, seriesSlot } from "~/lib/ngn";
 import { IconCheck, IconCopy, IconSearch } from "./icons";
 
 export const mono = css({ fontFamily: "mono", fontSize: "12px" });
@@ -52,15 +52,22 @@ export function toneText(tone: Tone): string {
   return TONE_TEXT[tone];
 }
 
-/** `Failed` in a list, as a pill in a header. */
+/**
+ * `Failed` in a list, as a pill in a header.
+ *
+ * In a list the row's dot already carries the colour, so the word is only
+ * coloured when it needs reading first: a failure, or a run still going. A
+ * column of green "Succeeded" is the usual case, and reads as noise.
+ */
 export function RunBadge({ status, pill = false }: { status: string | null; pill?: boolean }) {
   const tone = runTone(status);
   if (!pill) {
     return (
       <span
         className={cx(
-          css({ fontWeight: "500", flexShrink: 0, whiteSpace: "nowrap" }),
-          TONE_TEXT[tone],
+          css({ flexShrink: 0, whiteSpace: "nowrap" }),
+          tone === "bad" || tone === "info" ? TONE_TEXT[tone] : css({ color: "muted" }),
+          tone === "bad" ? css({ fontWeight: "500" }) : undefined,
         )}
       >
         {runLabel(status)}
@@ -68,6 +75,42 @@ export function RunBadge({ status, pill = false }: { status: string | null; pill
     );
   }
   return <Pill tone={tone}>{runLabel(status)}</Pill>;
+}
+
+/**
+ * A run's status with what qualifies it: why ngn skipped it, and which try of
+ * its tick it was. The one cell every run list uses.
+ */
+export function RunOutcome({
+  run,
+}: {
+  run: { status: string; skip_reason: string | null; attempt: number; attempts: number };
+}) {
+  const note =
+    run.status === "skipped"
+      ? readSkip(run.skip_reason).short
+      : run.attempts > 1
+        ? `try ${run.attempt}/${run.attempts}`
+        : null;
+  return (
+    <span
+      className={css({ display: "inline-flex", alignItems: "baseline", gap: "1.5", minW: "0" })}
+    >
+      <RunBadge status={run.status} />
+      {note ? (
+        <span
+          className={cx(truncate, css({ color: "faint", fontSize: "11.5px" }))}
+          title={
+            run.status === "skipped"
+              ? (run.skip_reason ?? "The task's shouldSkip returned true")
+              : undefined
+          }
+        >
+          {note}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 const LEVEL_TEXT: Record<LogLevel, string> = { info: "INFO", warn: "WARN", error: "ERROR" };
@@ -168,6 +211,28 @@ export function Pill({
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * How many lines a run wrote, with its errors or warnings beside the count —
+ * the worst of the two, so a row says one thing. A dash when it wrote none.
+ */
+export function LogCount({
+  run,
+}: {
+  run: { log_count: number; error_count: number; warn_count: number };
+}) {
+  if (run.log_count === 0) return <span className={faintText}>—</span>;
+  return (
+    <>
+      {run.log_count.toLocaleString("en-US")}
+      {run.error_count ? (
+        <span className={css({ color: "bad" })}> · {run.error_count} err</span>
+      ) : run.warn_count ? (
+        <span className={css({ color: "warn" })}> · {run.warn_count} warn</span>
+      ) : null}
+    </>
   );
 }
 
@@ -532,7 +597,10 @@ export function Kbd({ children }: { children: React.ReactNode }) {
 // Layout pieces
 // -----------------------------------------------------------------------------
 
-/** A number with a label under it — the header of every summary. */
+/**
+ * A number with its label above it — the header of every summary. Unboxed:
+ * a row of them reads as one strip of facts, not a wall of cards.
+ */
 export function Stat({
   label,
   value,
@@ -550,20 +618,14 @@ export function Stat({
         display: "flex",
         flexDir: "column",
         gap: "0.5",
-        px: "3.5",
-        py: "2.5",
-        rounded: "lg",
-        border: "1px solid",
-        borderColor: "line",
-        bg: "raised",
         minW: "0",
       })}
     >
-      <span className={css({ fontSize: "11px", color: "muted", fontWeight: "500" })}>{label}</span>
+      <span className={css({ fontSize: "11px", color: "muted" })}>{label}</span>
       <span
         className={cx(
           css({
-            fontSize: "20px",
+            fontSize: "18px",
             fontWeight: "600",
             fontVariantNumeric: "tabular-nums",
             lineHeight: "1.2",
@@ -585,8 +647,9 @@ export function StatGrid({ children }: { children: React.ReactNode }) {
     <div
       className={css({
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-        gap: "2.5",
+        gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+        columnGap: "6",
+        rowGap: "4",
       })}
     >
       {children}

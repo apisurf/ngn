@@ -63,14 +63,14 @@ does not exist yet is not an error: the UI starts empty and fills in once
 ```
 ┌ ngnui / ngn.sqlite                                     [● Live] ⟳ ◫ ☾ ┐
 ├──────┬──────────────────────┬────────────────────────────────────────┤
-│ ⌂    │ Tasks                │ Overview ×  sync-users.ts #41 ×  SQL × │
+│ ⌂    │ Tasks                │ Overview ×  sync-users.ts #41 ×        │
 │ Over │ tasks/api/           ├────────────────────────────────────────┤
 │ ◷    │ sync-users.ts    ● 41│ sync-users.ts  Failing  v2             │
 │ Hist │ health.ts         603│ tasks/api/sync-users.ts · */5 * * * *  │
-│ ≡    │ Live editor          │ ‹ Runs / #41  Failed  · code v2    ‹ › │
-│ Logs │ Run at 18:56:04     1│ The task failed: upstream returned 503 │
-│ </>  │                      │ Timeline  Logs  Timings  Details       │
-│ ⛁    │                      │ +368 ms ERROR sync failed: …        ▏  │
+│ </>  │ Live editor          │ ‹ Runs / #41  Failed  · v2         ‹ › │
+│ Edit │ Run at 18:56:04     1│ The task failed: upstream returned 503 │
+│      │                      │ Timeline  Logs  Timings  Details       │
+│      │                      │ +368 ms ERROR sync failed: …        ▏  │
 └──────┴──────────────────────┴────────────────────────────────────────┘
 ```
 
@@ -81,26 +81,29 @@ header collapses it to a slim strip; click the strip to expand it again.
 
 **The rail** opens pages, each in a tab like any other:
 
-- **Overview**, **Editor** and **SQL**, below.
+- **Overview** and **Editor**, below.
 - **History.** Every run of every task, newest first, under day headings. Search
   by task path, narrow to failed, skipped or running, and hide the editor's runs.
-- **Logs.** Every line every task wrote, newest first, searchable by message or
-  task path, filterable by level. ngn's own lifecycle lines (`Task started`,
-  `Task succeeded`, …) are hidden unless asked for.
+  Its filters are kept in the URL, so the tab reopens on the same view.
 
-History's and Logs' filters are kept in the URL, so their tab reopens on the same
-view. `/` focuses the page's search box there, and the task filter elsewhere.
+`/` focuses History's search box there, and the task filter elsewhere. Log lines
+live with what wrote them: a run's **Logs** tab, and a task's across its runs.
 
 **Tabs** work as in wireui: a single click opens a _preview_ tab (italic) that the
 next single click reuses; double-click a tab or a sidebar row to keep it.
 Middle-click closes a tab. Each tab remembers its sub-tab.
 
 **A task** shows its schedule — the `timing` export, read out of the newest
-compiled version and put into words when it is a common shape — and which hooks
-it exports. Its tabs are:
+compiled version and put into words when it is a common shape — and, under it,
+whatever changes how ngn runs it: `retry` and its breaker, `budget`, `overlap`,
+`exclusive` locks, and the hooks it exports. A task on the defaults shows none of
+that line. A task whose latest run failed is marked **Failing**, and **Circuit
+open** once its breaker is skipping ticks. Its tabs are:
 
-- **Runs**: success rate, median and p95 duration, a bar per run, and the history;
-  a row opens that run
+- **Runs**: success rate and retries, median and p95 duration, how many runs were
+  skipped and why, a bar per run, and the history; a row opens that run. A skipped
+  run says why (`shouldSkip`, still running, circuit open, a busy lock) and a
+  retried tick's runs are marked `try 2/3`
 - **Timings**: each `ctx.timing` label's count, average, p50, p95, max and trend
 - **Logs**: every line it wrote, across runs
 - **Store**: its `ctx.kv` keys as they stand now, JSON pretty-printed
@@ -108,13 +111,17 @@ it exports. Its tabs are:
 
 **A run** opens under its task's header, and leads with its verdict. A failed run shows the last error the task
 logged — ngn records that a run failed, not what it threw, so this is whatever an
-`onError` hook wrote. The tabs are:
+`onError` hook wrote. A retried run lists every try of its tick, each a link, and
+says whether a later one succeeded. A skipped run explains its `skip_reason`. A run
+with no recorded end whose lock lease has run out is flagged as most likely
+stopped. The tabs are:
 
-- **Timeline**: log lines and timing spans on one clock, with a waterfall
+- **Timeline**: log lines and timing spans on one clock, with a waterfall. ngn's
+  own lifecycle lines are hidden until **Lifecycle** is on, here and in **Logs**
 - **Logs**: the run's lines, filterable, with JSON messages opening into a tree
 - **Timings**: spans folded by label, then every span
 - **Result**: what `task` returned, as a JSON tree; only on a run that returned something
-- **Details**: the run's ids, version and times
+- **Details**: the run's ids, version, times, attempt, skip reason and any lock it holds
 
 The code that ran is not repeated: the run links to its version in the task's
 **Versions** tab, and says so when the task has moved on since.
@@ -122,10 +129,14 @@ The code that ran is not repeated: the run links to its version in the task's
 `[` and `]` step to the previous or next run of the same task and keep the same
 tab open.
 
-**Overview** gives totals for the file, runs per hour over the last day, failing
-tasks, recent warnings and errors, recent runs and the slowest tasks. **SQL** is
-`ngn sql` in the browser: a schema browser (click a column to insert it), example
-queries, and results capped at 1,000 rows. The query is kept in the URL.
+**Overview** opens with a one-line verdict — every task healthy, or what is wrong —
+and the last 24 hours in numbers. Under it, **Needs attention** lists each task whose
+latest run failed (for how long, how many runs, the last error it logged, a link to
+the failure) and any lock a stopped process left behind; it is not shown when there
+is nothing to list. **Tasks** is one row per scheduled task: its schedule in words,
+its latest runs as a strip of ticks, when it last ran, its average duration, and any
+lock it holds now. Runs per hour over the last day close the page. For anything the
+pages do not answer, `ngn sql` queries the same file from the terminal.
 
 **Live editor** sends a task to `ngn run`, which compiles it with the project's
 config and env, runs it once and records it. The result sits beside the code — side
@@ -137,9 +148,11 @@ whenever you switch back to its tab. Themes are light, dark or system.
 
 ## Notes
 
-- **It only reads.** The database is opened `readonly` and `query_only`, so neither
-  the pages nor the SQL console can change it. SQLite refuses the write, not a check
-  in this code.
+- **Older files work.** A database last written by ngn 0.2.x has no
+  `retry_of`, `skip_reason`, `result` or `locks`; those read as empty rather than
+  failing, until the next `ngn run` migrates the file.
+- **It only reads.** The database is opened `readonly` and `query_only`, so nothing in
+  the UI can change it. SQLite refuses the write, not a check in this code.
 - **The editor executes nothing here.** Code goes to the `--live` URL given at
   start-up, and only there — the browser cannot point it anywhere else.
 - **It is local.** The server binds to `127.0.0.1`. The database holds whatever

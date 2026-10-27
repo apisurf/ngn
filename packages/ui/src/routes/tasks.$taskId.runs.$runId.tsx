@@ -37,10 +37,12 @@ import {
   StatGrid,
   TabList,
   table,
+  Toggle,
   TONE_BAR,
   truncate,
 } from "~/components/primitives";
 import {
+  formatAgo,
   formatClockMs,
   formatCount,
   formatDateTime,
@@ -49,7 +51,17 @@ import {
   plural,
 } from "~/lib/format";
 import { parseStructured } from "~/lib/json";
-import { hooksOf, isLifecycle, isOpen, LEVEL_TONE, logLevel, runTone } from "~/lib/ngn";
+import type { SkipCause } from "~/lib/ngn";
+import {
+  hooksOf,
+  isLifecycle,
+  isOpen,
+  LEVEL_TONE,
+  logLevel,
+  readSkip,
+  runLabel,
+  runTone,
+} from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type { LogRow, RunPage as RunPageData, TimingRow } from "~/server/api";
@@ -151,6 +163,7 @@ function RunPage() {
           logs={logs}
           start={start}
           highlight={log}
+          lifecycleDefault={false}
           empty="This run wrote no log lines"
         />
       ) : null}
@@ -177,8 +190,10 @@ function RunHeader({ page, go }: { page: RunPageData; go: (id: number | null) =>
       })}
     >
       <RunTitle page={page} go={go} />
+      {page.attempts.length > 1 ? <Attempts page={page} /> : null}
       <RunCallout page={page} />
-      <RunStats page={page} />
+      {/* A skipped run never started: every figure would be a dash. */}
+      {page.run.status === "skipped" ? null : <RunStats page={page} />}
     </header>
   );
 }
@@ -221,7 +236,6 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
           Runs
         </Link>
         <span className={css({ color: "faint" })}>/</span>
-        <Dot tone={runTone(run.status)} />
         <h2 className={css({ fontFamily: "mono", fontSize: "14px", fontWeight: "600", m: "0" })}>
           #{run.id}
         </h2>
@@ -239,11 +253,11 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
               className={cx(subtleLink, mono, css({ fontSize: "12px" }))}
               title="Open the code this run executed"
             >
-              code v{run.version}
+              v{run.version}
             </Link>
             {behind ? (
-              <span className={css({ color: "warn", fontSize: "12px" })}>
-                older — the task is on v{task.version}
+              <span className={css({ color: "muted", fontSize: "12px" })}>
+                (the task is on v{task.version} now)
               </span>
             ) : null}
           </>
@@ -269,44 +283,159 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
   );
 }
 
+/** The tries of this run's tick, in order, each a link; this one marked. */
+function Attempts({ page }: { page: RunPageData }) {
+  const { run, attempts } = page;
+  const { tab } = Route.useSearch();
+  return (
+    <nav
+      aria-label="Attempts in this tick"
+      className={css({
+        display: "flex",
+        alignItems: "center",
+        gap: "1",
+        flexWrap: "wrap",
+        fontSize: "12px",
+        color: "muted",
+      })}
+    >
+      <span className={css({ mr: "1" })}>Tries this tick</span>
+      {attempts.map((attempt, i) => (
+        <React.Fragment key={attempt.id}>
+          {i > 0 ? <IconChevronRight size={12} /> : null}
+          <Link
+            to="/tasks/$taskId/runs/$runId"
+            params={{ taskId: String(run.task_id), runId: String(attempt.id) }}
+            search={{ tab }}
+            aria-current={attempt.id === run.id ? "page" : undefined}
+            title={`Try ${i + 1} · ${runLabel(attempt.status)} · ${formatMs(attempt.duration_ms)}`}
+            className={css({
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "1.5",
+              h: "22px",
+              px: "2",
+              rounded: "sm",
+              color: "muted",
+              textDecoration: "none",
+              _hover: { bg: "hover", color: "fg" },
+              "&[aria-current=page]": { bg: "selected", color: "fg" },
+            })}
+          >
+            <Dot tone={runTone(attempt.status)} />
+            <span className={mono}>#{attempt.id}</span>
+          </Link>
+        </React.Fragment>
+      ))}
+    </nav>
+  );
+}
+
 /** Why a run is not simply a success, when it is not. */
 function RunCallout({ page }: { page: RunPageData }) {
-  const { run, code, failure } = page;
-  if (run.status === "failure") {
-    const hasOnError = hooksOf(code?.compiled_code).includes("onError");
-    return (
-      <Callout tone="bad" icon={<IconAlert size={15} />} title="The task failed">
-        {failure ? (
-          <span className={mono}>{failure}</span>
-        ) : (
-          <span>
-            ngn records that a run failed, not what it threw.
-            {hasOnError
-              ? " This task's onError hook logged nothing for it."
-              : " Log the error from an onError hook and it shows up here."}
-          </span>
-        )}
-      </Callout>
-    );
-  }
-  if (run.status === "skipped") {
-    return (
-      <Callout tone="neutral" icon={<IconSkip size={15} />} title="Skipped">
-        The task's <span className={mono}>shouldSkip</span> returned true, so neither the task nor
-        any other hook ran.
-      </Callout>
-    );
-  }
-  if (isOpen(run.status)) {
-    return (
-      <Callout tone="info" icon={<IconClock size={15} />} title="No end recorded yet">
-        The run is {run.status}, or the process running it stopped before it could record an end.
-        Turn on <b>Live</b> to follow it.
-      </Callout>
-    );
-  }
+  if (page.run.status === "failure") return <FailureCallout page={page} />;
+  if (page.run.status === "skipped") return <SkipCallout reason={page.run.skip_reason} />;
+  if (isOpen(page.run.status)) return <OpenCallout page={page} />;
   return null;
 }
+
+function FailureCallout({ page }: { page: RunPageData }) {
+  const { run, code, failure, attempts } = page;
+  const hasOnError = hooksOf(code?.compiled_code).includes("onError");
+  const retried = attempts.some((a) => a.id > run.id);
+  const recovered = attempts[attempts.length - 1]?.status === "success";
+  const title = retried
+    ? `Try ${run.attempt} of ${attempts.length} failed — ${recovered ? "a retry succeeded" : "retried"}`
+    : attempts.length > 1
+      ? `Failed after ${attempts.length} tries`
+      : "The task failed";
+  return (
+    <Callout
+      tone={retried && recovered ? "warn" : "bad"}
+      icon={<IconAlert size={15} />}
+      title={title}
+    >
+      {failure ? (
+        <span className={mono}>{failure}</span>
+      ) : (
+        <span>
+          ngn records that a run failed, not what it threw.
+          {hasOnError
+            ? " This task's onError hook logged nothing for it."
+            : " Log the error from an onError hook and it shows up here."}
+        </span>
+      )}
+    </Callout>
+  );
+}
+
+function SkipCallout({ reason }: { reason: string | null }) {
+  const skip = readSkip(reason);
+  return (
+    <Callout tone="neutral" icon={<IconSkip size={15} />} title={SKIP_TITLE[skip.cause]}>
+      {skip.cause === "shouldSkip" ? (
+        <>
+          The task's <span className={mono}>shouldSkip</span> returned true, so neither the task nor
+          any other hook ran.
+        </>
+      ) : skip.cause === "overlap" ? (
+        <>
+          The previous run was still going when this tick fired. Export{" "}
+          <span className={mono}>overlap = "allow"</span> to start one beside it instead.
+        </>
+      ) : skip.cause === "breaker" ? (
+        <>
+          The task's last ticks failed in a row, so its <span className={mono}>retry.breaker</span>{" "}
+          is holding ticks back. The next one let through closes it again if it succeeds.
+        </>
+      ) : skip.cause === "lock" ? (
+        <>
+          Another run held <span className={mono}>{skip.lock}</span>, one of this task's{" "}
+          <span className={mono}>exclusive</span> locks. The next tick tries again.
+        </>
+      ) : (
+        <span className={mono}>{reason}</span>
+      )}
+    </Callout>
+  );
+}
+
+function OpenCallout({ page }: { page: RunPageData }) {
+  const { run, locks } = page;
+  const now = useNow(Date.now(), 5_000);
+  // A lease is renewed while its run is alive, so one that ran out says the process stopped.
+  const stale = locks.filter((lock) => lock.expires_at <= now);
+  if (stale.length) {
+    return (
+      <Callout tone="warn" icon={<IconClock size={15} />} title="No end recorded — likely stopped">
+        Its lock <span className={mono}>{stale.map((l) => l.name).join(", ")}</span> stopped being
+        renewed {formatAgo(now, Math.min(...stale.map((l) => l.expires_at)))}, which happens when
+        the process running it exits. ngn will not record an end for it.
+      </Callout>
+    );
+  }
+  return (
+    <Callout tone="info" icon={<IconClock size={15} />} title="No end recorded yet">
+      The run is {run.status}
+      {locks.length ? (
+        <>
+          {" "}
+          and holds <span className={mono}>{locks.map((l) => l.name).join(", ")}</span>
+        </>
+      ) : null}
+      , or the process running it stopped before it could record an end. Turn on <b>Live</b> to
+      follow it.
+    </Callout>
+  );
+}
+
+const SKIP_TITLE: Record<SkipCause, string> = {
+  shouldSkip: "Skipped by shouldSkip",
+  overlap: "Skipped — the previous run was still going",
+  breaker: "Skipped — circuit open",
+  lock: "Skipped — a lock was busy",
+  other: "Skipped",
+};
 
 function RunStats({ page }: { page: RunPageData }) {
   const { run, timings } = page;
@@ -362,7 +491,7 @@ type Entry =
 function TimelineTab({ page }: { page: RunPageData }) {
   const navigate = useNavigate();
   const { run, logs, timings } = page;
-  const [lifecycle, setLifecycle] = React.useState(true);
+  const [lifecycle, setLifecycle] = React.useState(false);
 
   const start = run.started_at ?? run.created_at;
   const end = Math.max(
@@ -388,6 +517,7 @@ function TimelineTab({ page }: { page: RunPageData }) {
   if (logs.length === 0 && timings.length === 0) {
     return <Empty title="This run recorded nothing" />;
   }
+  const hidden = entries.length === 0;
 
   return (
     <div className={css({ display: "flex", flexDir: "column", flex: "1", minH: "0" })}>
@@ -401,62 +531,53 @@ function TimelineTab({ page }: { page: RunPageData }) {
           flexShrink: 0,
         })}
       >
-        <label
-          className={css({
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "1.5",
-            color: "muted",
-            fontSize: "12px",
-            cursor: "pointer",
-          })}
-        >
-          <input
-            type="checkbox"
-            checked={lifecycle}
-            onChange={(e) => setLifecycle(e.target.checked)}
-          />
-          Show ngn's lifecycle lines
-        </label>
+        <Toggle checked={lifecycle} onChange={setLifecycle} label="Lifecycle" />
         <span className={css({ ml: "auto", color: "faint", fontSize: "12px" })}>
-          Timeline spans {formatMs(span)}
+          {formatMs(span)} end to end
         </span>
       </div>
-      <div className={scrollPane}>
-        <table className={table}>
-          <thead>
-            <tr>
-              <th className="num" style={{ width: 90 }}>
-                At
-              </th>
-              <th>Event</th>
-              <th className="num">Took</th>
-              <th style={{ width: "32%" }}>Timeline</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) =>
-              entry.type === "log" ? (
-                <LogEntry
-                  key={`l${entry.row.id}`}
-                  row={entry.row}
-                  start={start}
-                  span={span}
-                  onOpen={() =>
-                    void navigate({
-                      to: "/tasks/$taskId/runs/$runId",
-                      params: { taskId: String(run.task_id), runId: String(run.id) },
-                      search: { tab: "logs", log: entry.row.id },
-                    })
-                  }
-                />
-              ) : (
-                <TimingEntry key={`t${entry.row.id}`} row={entry.row} start={start} span={span} />
-              ),
-            )}
-          </tbody>
-        </table>
-      </div>
+      {hidden ? (
+        <Empty title="Only ngn's lifecycle lines">
+          The task itself logged and timed nothing in this run. Turn on <b>Lifecycle</b> to see what
+          ngn recorded around it.
+        </Empty>
+      ) : (
+        <div className={scrollPane}>
+          <table className={table}>
+            <thead>
+              <tr>
+                <th className="num" style={{ width: 90 }}>
+                  At
+                </th>
+                <th>Event</th>
+                <th className="num">Took</th>
+                <th style={{ width: "32%" }}>Timeline</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) =>
+                entry.type === "log" ? (
+                  <LogEntry
+                    key={`l${entry.row.id}`}
+                    row={entry.row}
+                    start={start}
+                    span={span}
+                    onOpen={() =>
+                      void navigate({
+                        to: "/tasks/$taskId/runs/$runId",
+                        params: { taskId: String(run.task_id), runId: String(run.id) },
+                        search: { tab: "logs", log: entry.row.id },
+                      })
+                    }
+                  />
+                ) : (
+                  <TimingEntry key={`t${entry.row.id}`} row={entry.row} start={start} span={span} />
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -700,6 +821,21 @@ function DetailsTab({ page }: { page: RunPageData }) {
     { name: "started", value: at(run.started_at) },
     { name: "ended", value: at(run.ended_at) },
     { name: "duration", value: formatMs(run.duration_ms) },
+    ...(page.attempts.length > 1
+      ? [
+          {
+            name: "attempt",
+            value: `${run.attempt} of ${page.attempts.length}${run.retry_of != null ? ` (retry_of ${run.retry_of})` : ""}`,
+          },
+        ]
+      : []),
+    ...(run.status === "skipped"
+      ? [{ name: "skip_reason", value: run.skip_reason ?? "— (shouldSkip returned true)" }]
+      : []),
+    ...page.locks.map((lock) => ({
+      name: `lock ${lock.name}`,
+      value: `held by ${lock.holder} since ${formatDateTime(now, lock.acquired_at)}, lease to ${formatDateTime(now, lock.expires_at)}`,
+    })),
   ];
   return (
     <div className={scrollPane}>

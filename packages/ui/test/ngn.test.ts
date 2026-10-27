@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStructured, prettyJson } from "../src/lib/json";
 import {
+  configOf,
   cronOf,
   describeCron,
   describeTask,
@@ -8,6 +9,7 @@ import {
   isLifecycle,
   logLevel,
   percentile,
+  readSkip,
   runLabel,
   runTone,
   seriesSlot,
@@ -62,6 +64,51 @@ var onError = async (err, ctx) => {
 };`);
   });
 
+  it("reads the scheduling exports, literal or not", () => {
+    const code = `
+  __export(x_exports, {
+    budget: () => budget,
+    exclusive: () => exclusive,
+    overlap: () => overlap,
+    retry: () => retry,
+    task: () => task
+  });
+  var overlap = "allow";
+  var budget = "2m";
+  var exclusive = ["browser", 'screenshots'];
+  var retry = {
+    attempts: 3,
+    delay: "30s",
+    breaker: { after: 5 },
+  };`;
+    expect(configOf(code)).toEqual({
+      overlap: "allow",
+      budget: "2m",
+      exclusive: ["browser", "screenshots"],
+      retry: { attempts: 3, delay: "30s", breaker: { after: 5, maxSkip: 32 } },
+      computed: [],
+    });
+    // A value worked out at load time is there, but not readable from the code.
+    const computed = `__export(x_exports, { exclusive: () => exclusive, retry: () => retry });
+  var exclusive = "lock-" + host;
+  var retry = { attempts: 1 };`;
+    expect(configOf(computed)).toMatchObject({
+      exclusive: [],
+      retry: null,
+      computed: ["exclusive"],
+    });
+    // The defaults, for a task that exports none of them — or a variable named alike.
+    expect(
+      configOf(`__export(x_exports, { task: () => task });\n  var retry = { attempts: 9 };`),
+    ).toEqual({
+      overlap: "skip",
+      budget: null,
+      exclusive: [],
+      retry: null,
+      computed: [],
+    });
+  });
+
   it("returns code of any other shape whole", () => {
     expect(sourceOf("export const task = () => 1;")).toBe("export const task = () => 1;");
   });
@@ -114,6 +161,19 @@ describe("runs and logs", () => {
   it("knows ngn's own lines from a task's", () => {
     expect(isLifecycle("Task failed")).toBe(true);
     expect(isLifecycle("Task failed: upstream")).toBe(false);
+    expect(isLifecycle('Skipped: lock "browser" is held')).toBe(true);
+  });
+
+  it("reads why ngn skipped a run", () => {
+    expect(readSkip(null)).toMatchObject({ cause: "shouldSkip" });
+    expect(readSkip("previous run still in progress")).toMatchObject({ cause: "overlap" });
+    expect(readSkip("circuit open after repeated failures")).toMatchObject({ cause: "breaker" });
+    expect(readSkip('lock "site:a.com" is held')).toEqual({
+      cause: "lock",
+      short: "lock site:a.com",
+      lock: "site:a.com",
+    });
+    expect(readSkip("something new")).toMatchObject({ cause: "other", short: "something new" });
   });
 });
 

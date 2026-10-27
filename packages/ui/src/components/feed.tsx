@@ -97,7 +97,7 @@ export function FeedFooter({ shown, limit }: { shown: number; limit: number }) {
   if (shown < limit) return null;
   return (
     <p className={css({ color: "faint", fontSize: "12px", px: "5", py: "3", m: "0" })}>
-      Showing the newest {limit}. Narrow the filters, or the SQL console reaches the rest.
+      Showing the newest {limit}. Narrow the filters, or <code>ngn sql</code> reaches the rest.
     </p>
   );
 }

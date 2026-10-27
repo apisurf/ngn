@@ -45,7 +45,7 @@ Usage
 
 Serves a prebuilt web UI over one ngn database: every task and its runs, each
 run's logs and timings on one timeline, the keys a task stored, the versions
-of its code, plus a read-only SQL console. Binds to 127.0.0.1 only and opens
+of its code, plus a live task editor. Binds to 127.0.0.1 only and opens
 the database read-only, so it is unreachable from the network and cannot
 change what it is showing.
 

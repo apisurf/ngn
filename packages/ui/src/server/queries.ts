@@ -7,7 +7,7 @@
 //
 // Times are unix milliseconds throughout, as ngn writes them.
 
-import { isLifecycle, LIFECYCLE_MESSAGES, percentile } from "../lib/ngn";
+import { isLifecycle, LIFECYCLE_MESSAGES, LIFECYCLE_PREFIX, percentile } from "../lib/ngn";
 import type { Db } from "./db";
 
 /**
@@ -16,6 +16,38 @@ import type { Db } from "./db";
  * threading parameters through every query that selects it.
  */
 const LIFECYCLE_IN = `(${LIFECYCLE_MESSAGES.map((m) => `'${m.replace(/'/g, "''")}'`).join(", ")})`;
+
+/** SQL that is true for a task's own line in `column`, and false for one of ngn's. */
+const taskLine = (column: string) =>
+  `(${column} NOT IN ${LIFECYCLE_IN} AND ${column} NOT LIKE '${LIFECYCLE_PREFIX}%')`;
+
+/**
+ * The `task_runs` columns later migrations added, as SQL to select them by.
+ *
+ * The UI never migrates, so a file the scheduler has not opened since an
+ * upgrade lacks them. Each one missing reads as NULL — which is what a run
+ * from before it existed would have held anyway. Asked on every query rather
+ * than cached: `ngn run` can migrate the file while the UI has it open.
+ */
+function runColumns(db: Db): { result: string; retryOf: string; skipReason: string } {
+  const present = new Set(
+    (db.prepare("SELECT name FROM pragma_table_info('task_runs')").all() as { name: string }[]).map(
+      (column) => column.name,
+    ),
+  );
+  const column = (name: string) => (present.has(name) ? name : "NULL");
+  return {
+    result: column("result"),
+    retryOf: column("retry_of"),
+    skipReason: column("skip_reason"),
+  };
+}
+
+function hasTable(db: Db, name: string): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name),
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Workspace
@@ -49,9 +81,9 @@ export function workspaceCounts(db: Db): WorkspaceCounts {
          (SELECT COUNT(*) FROM task_runs WHERE status = 'skipped')          AS skipped,
          (SELECT COUNT(*) FROM task_runs
             WHERE status IN ('running', 'pending'))                         AS open,
-         (SELECT COUNT(*) FROM logs WHERE value NOT IN ${LIFECYCLE_IN})     AS logs,
+         (SELECT COUNT(*) FROM logs WHERE ${taskLine("value")})          AS logs,
          (SELECT COUNT(*) FROM logs
-            WHERE status = 'error' AND value NOT IN ${LIFECYCLE_IN})        AS errorLogs,
+            WHERE status = 'error' AND ${taskLine("value")})             AS errorLogs,
          (SELECT COUNT(*) FROM logs WHERE status IN ('warn', 'warning'))    AS warnLogs,
          (SELECT COUNT(*) FROM timings)                                     AS timings,
          (SELECT COUNT(*) FROM kvs)                                         AS keys,
@@ -79,9 +111,13 @@ export interface TaskRow {
   success_count: number;
   failure_count: number;
   skipped_count: number;
+  /** Runs that were a retry of an earlier attempt in the same tick. */
+  retry_count: number;
   last_run_id: number | null;
   last_status: string | null;
   last_run_at: number | null;
+  /** Why the latest run was skipped, when it was and ngn recorded why. */
+  last_skip_reason: string | null;
   /**
    * The status of the latest run that got as far as a verdict. A skip says
    * nothing about health, so a failing task that is now being skipped is still
@@ -95,6 +131,7 @@ export interface TaskRow {
 
 /** Every task, most recently run first; tasks that never ran last. */
 export function listTasks(db: Db, taskId?: number): TaskRow[] {
+  const col = runColumns(db);
   return db
     .prepare(
       `WITH v AS (
@@ -107,6 +144,7 @@ export function listTasks(db: Db, taskId?: number): TaskRow[] {
                 SUM(status = 'success')   AS success_count,
                 SUM(status = 'failure')   AS failure_count,
                 SUM(status = 'skipped')   AS skipped_count,
+                SUM(${col.retryOf} IS NOT NULL) AS retry_count,
                 MAX(id)                   AS last_run_id,
                 MAX(CASE WHEN status IN ('success', 'failure') THEN id END) AS last_outcome_id,
                 AVG(ended_at - started_at) AS avg_ms,
@@ -120,9 +158,11 @@ export function listTasks(db: Db, taskId?: number): TaskRow[] {
               COALESCE(r.success_count, 0)  AS success_count,
               COALESCE(r.failure_count, 0)  AS failure_count,
               COALESCE(r.skipped_count, 0)  AS skipped_count,
+              COALESCE(r.retry_count, 0)    AS retry_count,
               r.last_run_id,
               lr.status                                AS last_status,
               COALESCE(lr.started_at, lr.created_at)   AS last_run_at,
+              ${col.skipReason === "NULL" ? "NULL" : "lr.skip_reason"} AS last_skip_reason,
               lo.status                                AS last_outcome,
               r.avg_ms, r.max_ms
        FROM file_tasks t
@@ -158,6 +198,15 @@ export interface RunRow {
   /** When it happened: the start, or for a skip (never started) when it was queued. */
   at: number;
   duration_ms: number | null;
+  /** The first run of the tick this one retries; null for a first attempt. */
+  retry_of: number | null;
+  /** Why ngn skipped it; null when it was not skipped, or the task's `shouldSkip` did. */
+  skip_reason: string | null;
+  /** Which try of its tick this was, from 1. */
+  attempt: number;
+  /** How many tries its tick took, as far as the file knows yet. */
+  attempts: number;
+  /** Lines the task wrote — ngn's own lifecycle lines are not counted. */
   log_count: number;
   /** Errors the task itself logged — ngn's own "Task failed" line is not counted. */
   error_count: number;
@@ -175,16 +224,22 @@ export interface RunFilter {
   limit?: number;
 }
 
-const RUN_COLUMNS = `
+/** A run row as the database has it, before its place in its tick is worked out. */
+type StoredRun = Omit<RunRow, "attempt" | "attempts">;
+
+const runSelect = (col: ReturnType<typeof runColumns>) => `
   r.id, r.file_task_id AS task_id, t.path, r.file_task_version_id AS version_id, v.version,
   r.status, r.created_at, r.started_at, r.ended_at,
   COALESCE(r.started_at, r.created_at)                        AS at,
   CASE WHEN r.ended_at IS NOT NULL AND r.started_at IS NOT NULL
        THEN r.ended_at - r.started_at END                     AS duration_ms,
-  (SELECT COUNT(*) FROM logs l WHERE l.task_run_id = r.id)    AS log_count,
+  ${col.retryOf === "NULL" ? "NULL" : "r.retry_of"}           AS retry_of,
+  ${col.skipReason === "NULL" ? "NULL" : "r.skip_reason"}     AS skip_reason,
+  (SELECT COUNT(*) FROM logs l
+     WHERE l.task_run_id = r.id AND ${taskLine("l.value")}) AS log_count,
   (SELECT COUNT(*) FROM logs l
      WHERE l.task_run_id = r.id AND l.status = 'error'
-       AND l.value NOT IN ${LIFECYCLE_IN})                    AS error_count,
+       AND ${taskLine("l.value")})                         AS error_count,
   (SELECT COUNT(*) FROM logs l
      WHERE l.task_run_id = r.id AND l.status IN ('warn', 'warning')) AS warn_count,
   (SELECT COUNT(*) FROM timings m WHERE m.task_run_id = r.id) AS timing_count`;
@@ -215,22 +270,78 @@ export function listRuns(db: Db, filter: RunFilter = {}): RunRow[] {
   // The live editor's throwaway files sit at the root and follow one pattern.
   if (filter.hideLive) where.push("NOT (t.parent_path = '.' AND t.path GLOB 'live-task-*')");
   const limit = Math.min(Math.max(filter.limit ?? 300, 1), 5000);
+  const col = runColumns(db);
 
-  return db
+  const rows = db
     .prepare(
-      `SELECT ${RUN_COLUMNS} ${RUN_FROM}
+      `SELECT ${runSelect(col)} ${RUN_FROM}
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY r.id DESC LIMIT ${limit}`,
     )
-    .all(...params) as RunRow[];
+    .all(...params) as StoredRun[];
+  return withAttempts(db, col, rows);
 }
 
 export function getRun(db: Db, runId: number): RunRow | null {
-  return (
-    (db.prepare(`SELECT ${RUN_COLUMNS} ${RUN_FROM} WHERE r.id = ?`).get(runId) as
-      | RunRow
-      | undefined) ?? null
-  );
+  const col = runColumns(db);
+  const row = db.prepare(`SELECT ${runSelect(col)} ${RUN_FROM} WHERE r.id = ?`).get(runId) as
+    | StoredRun
+    | undefined;
+  return row ? withAttempts(db, col, [row])[0]! : null;
+}
+
+/**
+ * Each run's place in its tick: attempt `n` of `m`.
+ *
+ * A retry names the tick's first run in `retry_of`, which has no index, so the
+ * attempts are read in one pass for the whole list rather than a lookup per
+ * row. Every retry comes after the run it retries, so the pass starts at the
+ * oldest first run in play and walks the primary key from there.
+ */
+function withAttempts(db: Db, col: ReturnType<typeof runColumns>, rows: StoredRun[]): RunRow[] {
+  const firsts = [...new Set(rows.map((row) => row.retry_of ?? row.id))];
+  const retries = new Map<number, number[]>();
+  if (col.retryOf !== "NULL" && firsts.length) {
+    const found = db
+      .prepare(
+        `SELECT id, retry_of FROM task_runs
+         WHERE id > ? AND retry_of IN (SELECT value FROM json_each(?))`,
+      )
+      .all(Math.min(...firsts), JSON.stringify(firsts)) as { id: number; retry_of: number }[];
+    for (const { id, retry_of } of found) {
+      retries.set(retry_of, [...(retries.get(retry_of) ?? []), id]);
+    }
+  }
+  return rows.map((row) => {
+    const ids = retries.get(row.retry_of ?? row.id) ?? [];
+    return {
+      ...row,
+      attempt: row.retry_of == null ? 1 : ids.filter((id) => id <= row.id).length + 1,
+      attempts: ids.length + 1,
+    };
+  });
+}
+
+export interface Attempt {
+  id: number;
+  status: string;
+  duration_ms: number | null;
+}
+
+/** Every try of the tick `run` belongs to, first first. One entry for a tick that was not retried. */
+export function tickAttempts(db: Db, run: Pick<RunRow, "id" | "retry_of">): Attempt[] {
+  const first = run.retry_of ?? run.id;
+  const retried = runColumns(db).retryOf !== "NULL";
+  return db
+    .prepare(
+      `SELECT id, status,
+              CASE WHEN ended_at IS NOT NULL AND started_at IS NOT NULL
+                   THEN ended_at - started_at END AS duration_ms
+       FROM task_runs
+       WHERE id = @first ${retried ? "OR (id > @first AND retry_of = @first)" : ""}
+       ORDER BY id`,
+    )
+    .all({ first }) as Attempt[];
 }
 
 /**
@@ -241,10 +352,7 @@ export function getRun(db: Db, runId: number): RunRow | null {
  * has no `result` column, which is the same as a run that returned nothing.
  */
 export function getRunResult(db: Db, runId: number): string | null {
-  const columns = db.prepare("SELECT name FROM pragma_table_info('task_runs')").all() as {
-    name: string;
-  }[];
-  if (!columns.some((column) => column.name === "result")) return null;
+  if (runColumns(db).result === "NULL") return null;
   const row = db.prepare("SELECT result FROM task_runs WHERE id = ?").get(runId) as
     | { result: string | null }
     | undefined;
@@ -269,6 +377,60 @@ export function runNeighbours(db: Db, taskId: number, runId: number): Neighbours
     .get({ task: taskId, id: runId }) as Neighbours;
 }
 
+export interface SkipCount {
+  /** As ngn wrote it; null for the task's own `shouldSkip`. */
+  reason: string | null;
+  count: number;
+}
+
+/** Why a task's runs were skipped, most common first. */
+export function skipReasons(db: Db, taskId: number): SkipCount[] {
+  const { skipReason } = runColumns(db);
+  return db
+    .prepare(
+      `SELECT ${skipReason} AS reason, COUNT(*) AS count FROM task_runs
+       WHERE file_task_id = ? AND status = 'skipped'
+       GROUP BY 1 ORDER BY count DESC, reason`,
+    )
+    .all(taskId) as SkipCount[];
+}
+
+// -----------------------------------------------------------------------------
+// Locks
+// -----------------------------------------------------------------------------
+
+export interface LockRow {
+  name: string;
+  /** `<pid>:<uuid>` — one token per acquisition. */
+  holder: string;
+  run_id: number | null;
+  /** The task whose run holds it, when the run is still in the file. */
+  task_id: number | null;
+  path: string | null;
+  acquired_at: number;
+  /** The lease is renewed while held; past this, anyone may take it. */
+  expires_at: number;
+}
+
+/**
+ * The named locks as the file has them. A row is only deleted on release, so
+ * one whose lease has run out is a lock its holder never let go of — most
+ * likely a process that stopped — and is free for the next taker.
+ */
+export function listLocks(db: Db): LockRow[] {
+  if (!hasTable(db, "locks")) return [];
+  return db
+    .prepare(
+      `SELECT k.name, k.holder, k.task_run_id AS run_id, r.file_task_id AS task_id, t.path,
+              k.acquired_at, k.expires_at
+       FROM locks k
+       LEFT JOIN task_runs r ON r.id = k.task_run_id
+       LEFT JOIN file_tasks t ON t.id = r.file_task_id
+       ORDER BY k.name`,
+    )
+    .all() as LockRow[];
+}
+
 // -----------------------------------------------------------------------------
 // Logs
 // -----------------------------------------------------------------------------
@@ -285,12 +447,8 @@ export interface LogRow {
 }
 
 export interface LogFilter {
-  /** Substring of the message, or of the task path. */
-  q?: string;
   taskId?: number;
   runId?: number;
-  /** Lowest level to include. */
-  level?: "warn" | "error";
   /** Include the lines ngn writes around every run. */
   lifecycle?: boolean;
   limit?: number;
@@ -300,11 +458,6 @@ export interface LogFilter {
 export function listLogs(db: Db, filter: LogFilter = {}): LogRow[] {
   const where: string[] = [];
   const params: unknown[] = [];
-  const q = filter.q?.trim();
-  if (q) {
-    where.push("(l.value LIKE ? OR t.path LIKE ?)");
-    params.push(`%${q}%`, `%${q}%`);
-  }
   if (filter.taskId !== undefined) {
     where.push("l.file_task_id = ?");
     params.push(filter.taskId);
@@ -313,9 +466,7 @@ export function listLogs(db: Db, filter: LogFilter = {}): LogRow[] {
     where.push("l.task_run_id = ?");
     params.push(filter.runId);
   }
-  if (filter.level === "error") where.push("l.status = 'error'");
-  if (filter.level === "warn") where.push("l.status IN ('warn', 'warning', 'error')");
-  if (!filter.lifecycle) where.push(`l.value NOT IN ${LIFECYCLE_IN}`);
+  if (!filter.lifecycle) where.push(taskLine("l.value"));
   const limit = Math.min(Math.max(filter.limit ?? 500, 1), 5000);
   const order = filter.runId === undefined ? "DESC" : "ASC";
 
@@ -502,6 +653,49 @@ export function listKeys(db: Db, taskId: number): KvRow[] {
 // Overview
 // -----------------------------------------------------------------------------
 
+export interface Outcome {
+  id: number;
+  status: string;
+}
+
+/** A task's latest `limit` runs, oldest first: the strip beside it on the overview. */
+export function recentOutcomes(db: Db, taskId: number, limit: number): Outcome[] {
+  return (
+    db
+      .prepare(
+        `SELECT id, status FROM task_runs WHERE file_task_id = ?
+         ORDER BY id DESC LIMIT ${Math.max(1, Math.floor(limit))}`,
+      )
+      .all(taskId) as Outcome[]
+  ).toReversed();
+}
+
+export interface FailingSpell {
+  /** The newest failed run, which the overview links to. */
+  last_run_id: number;
+  /** When the first failure since the latest success was queued. */
+  since: number;
+  /** Runs that failed since the latest success, retries included. */
+  failures: number;
+}
+
+/**
+ * How long a task has been failing: every failure since its latest success.
+ * Null for a task with no failure after its latest success.
+ */
+export function failingSpell(db: Db, taskId: number): FailingSpell | null {
+  const row = db
+    .prepare(
+      `SELECT MAX(id) AS last_run_id, MIN(created_at) AS since, COUNT(*) AS failures
+       FROM task_runs
+       WHERE file_task_id = @task AND status = 'failure'
+         AND id > COALESCE(
+           (SELECT MAX(id) FROM task_runs WHERE file_task_id = @task AND status = 'success'), 0)`,
+    )
+    .get({ task: taskId }) as FailingSpell | { last_run_id: null };
+  return row.last_run_id == null ? null : (row as FailingSpell);
+}
+
 export interface ActivityBucket {
   /** Start of the hour, unix ms. */
   from: number;
@@ -540,124 +734,6 @@ export function activity(db: Db, now: number, hours = 24): ActivityBucket[] {
     } else bucket.other += row.n;
   }
   return buckets;
-}
-
-// -----------------------------------------------------------------------------
-// Schema and the SQL console
-// -----------------------------------------------------------------------------
-
-export interface ColumnInfo {
-  name: string;
-  type: string;
-  notnull: boolean;
-  pk: boolean;
-}
-
-export interface RelationSchema {
-  name: string;
-  type: "table" | "view";
-  description: string | null;
-  columns: ColumnInfo[];
-}
-
-/** What each of ngn's tables holds, for the schema browser. */
-const DESCRIPTIONS: Record<string, string> = {
-  file_tasks: "One row per task file, by path relative to the project root.",
-  file_task_versions:
-    "Each distinct compiled version of a task, with its code. A new row whenever the file's hash changes.",
-  task_runs:
-    "One row per scheduled execution. status: pending | skipped | running | success | failure.",
-  logs: "ctx.log lines, plus the lifecycle lines ngn writes around every run. status: info | warning | error.",
-  timings: "ctx.timing spans: label and duration in ms, recorded when the span ends.",
-  kvs: "ctx.kv: each task's stored keys and their current value.",
-};
-
-export function listRelations(db: Db): RelationSchema[] {
-  const relations = db
-    .prepare(
-      `SELECT name, type FROM sqlite_master
-       WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
-       ORDER BY type = 'view', name`,
-    )
-    .all() as { name: string; type: "table" | "view" }[];
-
-  return relations.map(({ name, type }) => ({
-    name,
-    type,
-    description: DESCRIPTIONS[name] ?? null,
-    columns: (
-      db.prepare(`PRAGMA table_info(${quoteIdent(name)})`).all() as {
-        name: string;
-        type: string;
-        notnull: number;
-        pk: number;
-      }[]
-    ).map((c) => ({ name: c.name, type: c.type, notnull: c.notnull === 1, pk: c.pk > 0 })),
-  }));
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
-}
-
-export type Cell = string | number | null;
-
-export type QueryResult =
-  | {
-      ok: true;
-      columns: string[];
-      rows: Cell[][];
-      /** True when there were more rows than {@link MAX_QUERY_ROWS}. */
-      truncated: boolean;
-      ms: number;
-    }
-  | { ok: false; error: string };
-
-export const MAX_QUERY_ROWS = 1000;
-
-/**
- * Run one read statement and return at most {@link MAX_QUERY_ROWS} rows.
- *
- * Safety is not this function's job — the connection is read-only and
- * `query_only`, so SQLite itself refuses a write. What this adds is a clear
- * message for a statement that returns nothing to show, and a row cap enforced
- * by stepping the cursor rather than by rewriting the SQL with a LIMIT.
- */
-export function runQuery(db: Db, sql: string): QueryResult {
-  const started = performance.now();
-  try {
-    const statement = db.prepare(sql);
-    if (!statement.reader) {
-      return {
-        ok: false,
-        error:
-          "Only statements that return rows run here — SELECT, WITH, PRAGMA, EXPLAIN. " +
-          "The database is open read-only.",
-      };
-    }
-    const columns = statement.columns().map((c) => c.name);
-    const rows: Cell[][] = [];
-    let truncated = false;
-    for (const row of statement.raw(true).iterate() as IterableIterator<unknown[]>) {
-      if (rows.length === MAX_QUERY_ROWS) {
-        truncated = true;
-        break;
-      }
-      rows.push(row.map(cell));
-    }
-    return { ok: true, columns, rows, truncated, ms: performance.now() - started };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/** A value that survives the trip to the browser and says what it is. */
-function cell(value: unknown): Cell {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "number" || typeof value === "string") return value;
-  if (typeof value === "bigint") return value.toString();
-  if (Buffer.isBuffer(value)) return `<blob · ${value.length} bytes>`;
-  return String(value);
 }
 
 // -----------------------------------------------------------------------------

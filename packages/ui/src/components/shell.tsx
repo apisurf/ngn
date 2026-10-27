@@ -4,8 +4,8 @@
 //   ├ rail ┬ tasks ────────────┬ open tabs ──────────────────────────────────┤
 //   │  ⌂   │ tasks/api/        │ health.ts ×  sync-users.ts #41 ×  History × │
 //   │  ◷   │ sync-users.ts  41 ├─────────────────────────────────────────────┤
-//   │  ≡   │ health.ts     603 │ the page                                    │
-//   │ </>⛁ │                   │                                             │
+//   │ </>  │ health.ts     603 │ the page                                    │
+//   │      │                   │                                             │
 //   ├──────┴───────────────────┴─────────────────────────────────────────────┤
 //   └ status bar: path · size · counts · running · editor · live state ──────┘
 //
@@ -29,7 +29,6 @@ import {
   IconCode,
   IconDatabase,
   IconHistory,
-  IconLogs,
   IconMonitor,
   IconMoon,
   IconOverview,
@@ -83,7 +82,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 /**
  * `/` focuses a filter, as in most tools with one: the page's own when it has
- * one (History, Logs), else the task sidebar's.
+ * one (History), else the task sidebar's.
  */
 function useSlashToFilter(ref: React.RefObject<HTMLInputElement | null>) {
   const { prefs, set } = usePrefs();
@@ -242,9 +241,7 @@ const railButton = css({
 const PAGES = [
   { to: "/", label: "Overview", icon: <IconOverview size={18} />, exact: true },
   { to: "/history", label: "History", icon: <IconHistory size={18} />, exact: false },
-  { to: "/logs", label: "Logs", icon: <IconLogs size={18} />, exact: false },
   { to: "/live", label: "Editor", icon: <IconCode size={18} />, exact: false },
-  { to: "/query", label: "SQL", icon: <IconDatabase size={18} />, exact: false },
 ] as const;
 
 function Rail() {
@@ -502,10 +499,8 @@ function TabGlyph({ tab }: { tab: Tab }) {
   const glyph = {
     overview: <IconOverview size={13} />,
     history: <IconHistory size={13} />,
-    logs: <IconLogs size={13} />,
     task: <IconTask size={13} />,
     run: <IconRun size={12} />,
-    query: <IconDatabase size={13} />,
     live: <IconCode size={13} />,
   }[tab.icon];
   return (

@@ -71,8 +71,11 @@ export const LIFECYCLE_MESSAGES: readonly string[] = [
   "Task not found",
 ];
 
+/** ngn follows `Task skipped` with `Skipped: <reason>` when it decided the skip. */
+export const LIFECYCLE_PREFIX = "Skipped: ";
+
 export function isLifecycle(value: string): boolean {
-  return LIFECYCLE_MESSAGES.includes(value);
+  return LIFECYCLE_MESSAGES.includes(value) || value.startsWith(LIFECYCLE_PREFIX);
 }
 
 // -----------------------------------------------------------------------------
@@ -124,8 +127,172 @@ export function cronOf(code: string | null | undefined): string | null {
 /** Which optional hooks a task exports, from esbuild's export table. */
 export function hooksOf(code: string | null | undefined): string[] {
   if (!code) return [];
+  const exported = exportsOf(code);
+  return HOOKS.filter((hook) => exported.includes(hook));
+}
+
+/** How a task asked to be scheduled, as far as its compiled code says. */
+export interface TaskConfig {
+  /** `"skip"` unless the task exports `overlap = "allow"`. */
+  overlap: "skip" | "allow";
+  /** The `budget` export as written: `"2m"`, `1500`. */
+  budget: string | null;
+  /** Lock names held for the whole run. */
+  exclusive: string[];
+  /** The `retry` export, or null when it retries nothing. */
+  retry: {
+    attempts: number;
+    delay: string | null;
+    breaker: { after: number; maxSkip: number } | null;
+  } | null;
+  /**
+   * Exports that are present but not written as literals, so their value is
+   * not in the code to read: shown as set rather than guessed at.
+   */
+  computed: string[];
+}
+
+/** ngn's default `breaker.maxSkip`. */
+const DEFAULT_MAX_SKIP = 32;
+
+/**
+ * The scheduling exports — `overlap`, `budget`, `exclusive`, `retry` — read
+ * out of the compiled code the way `cronOf` reads `timing`: esbuild keeps a
+ * literal export as `var retry = { attempts: 3, … };`.
+ */
+export function configOf(code: string | null | undefined): TaskConfig {
+  const config: TaskConfig = {
+    overlap: "skip",
+    budget: null,
+    exclusive: [],
+    retry: null,
+    computed: [],
+  };
+  if (!code) return config;
+  const exported = exportsOf(code);
+  const read = (name: string): unknown => {
+    if (!exported.includes(name)) return undefined;
+    const value = literalOf(code, name);
+    if (value === undefined) config.computed.push(name);
+    return value;
+  };
+
+  if (read("overlap") === "allow") config.overlap = "allow";
+
+  const budget = read("budget");
+  if (typeof budget === "string" || typeof budget === "number") config.budget = String(budget);
+
+  const exclusive = read("exclusive");
+  if (typeof exclusive === "string") config.exclusive = [exclusive];
+  else if (Array.isArray(exclusive)) config.exclusive = exclusive.map(String);
+
+  config.retry = retryOf(read("retry"));
+  return config;
+}
+
+/** A literal `retry` export, or null when it is absent or retries nothing. */
+function retryOf(value: unknown): TaskConfig["retry"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { attempts, delay, breaker } = value as Record<string, unknown>;
+  const b = breaker && typeof breaker === "object" ? (breaker as Record<string, unknown>) : null;
+  const retry = {
+    attempts: typeof attempts === "number" ? attempts : 1,
+    delay: typeof delay === "string" || typeof delay === "number" ? String(delay) : null,
+    breaker:
+      b && typeof b.after === "number"
+        ? { after: b.after, maxSkip: typeof b.maxSkip === "number" ? b.maxSkip : DEFAULT_MAX_SKIP }
+        : null,
+  };
+  // `attempts: 1` with no breaker retries nothing, which is the same as no export.
+  return retry.attempts <= 1 && !retry.breaker ? null : retry;
+}
+
+/** Every name in esbuild's export table. */
+function exportsOf(code: string): string[] {
   const table = /__export\([^,]+,\s*\{([^}]*)\}\)/.exec(code)?.[1] ?? "";
-  return HOOKS.filter((hook) => new RegExp(`\\b${hook}\\s*:`).test(table));
+  return [...table.matchAll(/(\w+)\s*:/g)].map((m) => m[1]!);
+}
+
+/**
+ * The value of `var <name> = <literal>;`, when the literal is plain data: a
+ * string, a number, or an object or array of those. Anything else — a call, an
+ * identifier, a template with substitutions — is undefined.
+ */
+function literalOf(code: string, name: string): unknown {
+  const start = new RegExp(`\\b(?:var|let|const)\\s+${name}\\s*=\\s*`).exec(code);
+  if (!start) return undefined;
+  const rest = code.slice(start.index + start[0].length);
+  const end = literalEnd(rest);
+  if (end < 0) return undefined;
+  const json = rest
+    .slice(0, end)
+    .trim()
+    // 'single' and `plain template` strings to "double".
+    .replace(/'([^'\\\n]*)'|`([^`\\$\n]*)`/g, (_, a: string | undefined, b: string | undefined) =>
+      JSON.stringify(a ?? b ?? ""),
+    )
+    // Bare keys to quoted ones, and the trailing commas esbuild leaves on multi-line literals.
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+    .replace(/,(\s*[}\]])/g, "$1");
+  try {
+    return JSON.parse(json) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Where the literal at the start of `text` ends: its closing bracket, or the `;` ending its line. */
+function literalEnd(text: string): number {
+  if (text[0] !== "{" && text[0] !== "[") return text.search(/;\s*(?:\n|$)/);
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (quote) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+    else if (ch === "{" || ch === "[") depth++;
+    else if ((ch === "}" || ch === "]") && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+// -----------------------------------------------------------------------------
+// Why a run was skipped
+// -----------------------------------------------------------------------------
+
+export type SkipCause = "shouldSkip" | "overlap" | "breaker" | "lock" | "other";
+
+export interface SkipReading {
+  cause: SkipCause;
+  /** A few words, for a table cell. */
+  short: string;
+  /** The lock that was held, for `lock`. */
+  lock: string | null;
+}
+
+/** The `skip_reason`s ngn writes; anything else is shown as written. */
+const OVERLAP_REASON = "previous run still in progress";
+const BREAKER_REASON = "circuit open after repeated failures";
+const LOCK_REASON = /^lock "(.*)" is held$/;
+
+/**
+ * What a skipped run's `skip_reason` means. A null reason is the task's own
+ * `shouldSkip` — ngn only records a reason for the skips it decides on.
+ */
+export function readSkip(reason: string | null | undefined): SkipReading {
+  if (!reason) return { cause: "shouldSkip", short: "shouldSkip", lock: null };
+  if (reason === OVERLAP_REASON) return { cause: "overlap", short: "still running", lock: null };
+  if (reason === BREAKER_REASON) return { cause: "breaker", short: "circuit open", lock: null };
+  const lock = LOCK_REASON.exec(reason)?.[1];
+  if (lock !== undefined) return { cause: "lock", short: `lock ${lock}`, lock };
+  return { cause: "other", short: reason, lock: null };
+}
+
+/** The breaker is holding the task back: its latest run was a breaker skip. */
+export function circuitOpen(task: { last_status: string | null; last_skip_reason: string | null }) {
+  return task.last_status === "skipped" && readSkip(task.last_skip_reason).cause === "breaker";
 }
 
 /**
