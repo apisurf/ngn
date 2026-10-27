@@ -105,7 +105,7 @@ export function describeTask(path: string): TaskName {
 // Compiled code
 // -----------------------------------------------------------------------------
 
-export const HOOKS = ["shouldSkip", "onSuccess", "onError", "onComplete"] as const;
+export const HOOKS = ["shouldSkip", "shouldRetry", "onSuccess", "onError", "onComplete"] as const;
 
 /**
  * The cron pattern a task exports, read out of its compiled code.
@@ -194,7 +194,7 @@ const UNITS = ["second", "minute", "hour"] as const;
  * `every 15 minutes`, `hourly at :30` — or null when the pattern is anything
  * more particular, in which case the pattern itself is the clearest thing to
  * show. ngn's patterns have six fields, seconds first; five-field ones are read
- * as minutes first, the way node-cron does.
+ * as minutes first, the way the scheduler reads them.
  */
 export function describeCron(pattern: string): string | null {
   const fields = pattern.trim().split(/\s+/);

@@ -71,6 +71,10 @@ export class Entry {
       return {
         task: taskFunction as EntryExports["task"],
         timing: taskExports.timing as EntryExports["timing"],
+        overlap: taskExports.overlap as EntryExports["overlap"],
+        budget: taskExports.budget as EntryExports["budget"],
+        exclusive: taskExports.exclusive as EntryExports["exclusive"],
+        retry: taskExports.retry as EntryExports["retry"],
         shouldSkip: taskExports.shouldSkip as EntryExports["shouldSkip"],
         shouldRetry: taskExports.shouldRetry as EntryExports["shouldRetry"],
         onSuccess: taskExports.onSuccess as EntryExports["onSuccess"],

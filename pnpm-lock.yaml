@@ -38,12 +38,12 @@ importers:
       '@apisurf/ngn-schema':
         specifier: workspace:*
         version: link:../schema
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
       esbuild:
         specifier: ^0.27.1
         version: 0.27.1
-      node-cron:
-        specifier: ^3.0.3
-        version: 3.0.3
       tiny-invariant:
         specifier: ^1.3.3
         version: 1.3.3
@@ -54,12 +54,12 @@ importers:
       '@types/node':
         specifier: ^22.8.1
         version: 22.8.1
-      '@types/node-cron':
-        specifier: ^3.0.11
-        version: 3.0.11
       tsup:
         specifier: ^8.3.5
         version: 8.3.5(jiti@2.7.0)(postcss@8.5.28)(tsx@4.20.3)(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.8
+        version: 4.1.8(@types/node@22.8.1)(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))
 
   packages/ngn:
     dependencies:
@@ -84,9 +84,6 @@ importers:
       hono:
         specifier: ^4.8.12
         version: 4.8.12
-      node-cron:
-        specifier: ^3.0.3
-        version: 3.0.3
       outmatch:
         specifier: ^1.0.0
         version: 1.0.0
@@ -106,9 +103,6 @@ importers:
       '@types/node':
         specifier: ^22.8.1
         version: 22.8.1
-      '@types/node-cron':
-        specifier: ^3.0.11
-        version: 3.0.11
 
   packages/os:
     dependencies:
@@ -156,6 +150,9 @@ importers:
       tsup:
         specifier: ^8.3.5
         version: 8.3.5(jiti@2.7.0)(postcss@8.5.28)(tsx@4.20.3)(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.8
+        version: 4.1.8(@types/node@22.8.1)(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))
 
   packages/schema:
     dependencies:
@@ -871,9 +868,6 @@ packages:
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
     engines: {node: '>=6.0.0'}
-
-  '@jridgewell/sourcemap-codec@1.5.0':
-    resolution: {integrity: sha512-gv3ZRaISU3fjPAgNsriBRqGWQL6quFx04YMPW/zD8XMLsU32mhCCbfbO6KZFLjvYpCZ8zyDEgqsgf+PwPaM7GQ==}
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
@@ -1829,9 +1823,6 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/node-cron@3.0.11':
-    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
-
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
@@ -2102,6 +2093,10 @@ packages:
 
   cookie-es@3.1.1:
     resolution: {integrity: sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg==}
+
+  croner@10.0.1:
+    resolution: {integrity: sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==}
+    engines: {node: '>=18.0'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2654,10 +2649,6 @@ packages:
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
-  node-cron@3.0.3:
-    resolution: {integrity: sha512-dOal67//nohNgYWb+nWmg5dkFdIwDm8EpeGYMekPMrngV3637lqnX0lbUcCtgibHTz6SEz7DAIjKvKDFYCnO1A==}
-    engines: {node: '>=6.0.0'}
-
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
@@ -2772,10 +2763,6 @@ packages:
   picomatch@2.3.1:
     resolution: {integrity: sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==}
     engines: {node: '>=8.6'}
-
-  picomatch@4.0.2:
-    resolution: {integrity: sha512-M7BAV6Rlcy5u+m6oPhAPFgJTzAioX/6B0DxyvDlo9l8+T3nLKbrczg2WLUyzd45L8RqfUMyGPzekbMvX2Ldkwg==}
-    engines: {node: '>=12'}
 
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
@@ -3242,10 +3229,6 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
-
-  uuid@8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
-    hasBin: true
 
   vite@8.3.1:
     resolution: {integrity: sha512-/bvH9E9tmCXRGp2uXY3WbOldqpTwFkbha/8ANaEQ6VkxhH60KyqLwgZq6lG2y+4uT55x9+9eUHMpQ7uGnOCKjA==}
@@ -3927,7 +3910,7 @@ snapshots:
 
   '@jridgewell/gen-mapping@0.3.12':
     dependencies:
-      '@jridgewell/sourcemap-codec': 1.5.0
+      '@jridgewell/sourcemap-codec': 1.6.0
       '@jridgewell/trace-mapping': 0.3.29
 
   '@jridgewell/remapping@2.3.5':
@@ -3937,14 +3920,12 @@ snapshots:
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
-  '@jridgewell/sourcemap-codec@1.5.0': {}
-
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
   '@jridgewell/trace-mapping@0.3.29':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
-      '@jridgewell/sourcemap-codec': 1.5.0
+      '@jridgewell/sourcemap-codec': 1.6.0
 
   '@libsql/client@0.14.0':
     dependencies:
@@ -4735,8 +4716,6 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node-cron@3.0.11': {}
-
   '@types/node@12.20.55': {}
 
   '@types/node@22.14.0':
@@ -4811,6 +4790,14 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       vite: 8.3.1(@types/node@22.14.0)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3)
+
+  '@vitest/mocker@4.1.8(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))':
+    dependencies:
+      '@vitest/spy': 4.1.8
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3)
 
   '@vitest/pretty-format@4.1.8':
     dependencies:
@@ -4967,6 +4954,8 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   cookie-es@3.1.1: {}
+
+  croner@10.0.1: {}
 
   cross-spawn@7.0.6:
     dependencies:
@@ -5160,9 +5149,9 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  fdir@6.4.5(picomatch@4.0.2):
+  fdir@6.4.5(picomatch@4.0.7):
     optionalDependencies:
-      picomatch: 4.0.2
+      picomatch: 4.0.7
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
@@ -5501,10 +5490,6 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-cron@3.0.3:
-    dependencies:
-      uuid: 8.3.2
-
   node-domexception@1.0.0: {}
 
   node-fetch@3.3.2:
@@ -5618,8 +5603,6 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@2.3.1: {}
-
-  picomatch@4.0.2: {}
 
   picomatch@4.0.7: {}
 
@@ -5927,8 +5910,8 @@ snapshots:
 
   tinyglobby@0.2.14:
     dependencies:
-      fdir: 6.4.5(picomatch@4.0.2)
-      picomatch: 4.0.2
+      fdir: 6.4.5(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinyglobby@0.2.17:
     dependencies:
@@ -6089,8 +6072,6 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  uuid@8.3.2: {}
-
   vite@8.3.1(@types/node@22.14.0)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3):
     dependencies:
       lightningcss: 1.33.0
@@ -6100,6 +6081,20 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 22.14.0
+      esbuild: 0.27.1
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      tsx: 4.20.3
+
+  vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rolldown: 1.2.11
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 22.8.1
       esbuild: 0.27.1
       fsevents: 2.3.3
       jiti: 2.7.0
@@ -6133,6 +6128,33 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.14.0
+    transitivePeerDependencies:
+      - msw
+
+  vitest@4.1.8(@types/node@22.8.1)(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3)):
+    dependencies:
+      '@vitest/expect': 4.1.8
+      '@vitest/mocker': 4.1.8(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))
+      '@vitest/pretty-format': 4.1.8
+      '@vitest/runner': 4.1.8
+      '@vitest/snapshot': 4.1.8
+      '@vitest/spy': 4.1.8
+      '@vitest/utils': 4.1.8
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.2.1
+      pathe: 2.0.3
+      picomatch: 4.0.7
+      std-env: 4.2.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.1
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.1.1
+      vite: 8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 22.8.1
     transitivePeerDependencies:
       - msw
 

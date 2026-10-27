@@ -6,14 +6,15 @@ A CLI scheduler for Node tasks, over one SQLite file:
 
 - **[`@apisurf/ngn`](./packages/ngn)** (`packages/ngn`) — schedules and runs
   tasks, writing every run, log and timing into the database. `ngn sql` reads
-  it back from the terminal.
+  it back from the terminal. Tasks also get job queues, named locks, retries and
+  a per-run deadline, all kept in SQLite.
 
 It is built from four libraries, each published on its own so anything else
 can read or write the same database:
 
 | Package | Directory | What it is |
 | --- | --- | --- |
-| `@apisurf/ngn-core` | `packages/core` | Task compilation, scheduling, and the run/log/timing services |
+| `@apisurf/ngn-core` | `packages/core` | Task compilation, scheduling, the run/log/timing services, queues and locks |
 | `@apisurf/ngn-os` | `packages/os` | Filesystem and process helpers: discovery, watching, config, signals |
 | `@apisurf/ngn-persistence` | `packages/persistence` | SQLite client, connection pragmas and migrations |
 | `@apisurf/ngn-schema` | `packages/schema` | zod definitions for the tables ngn reads and writes |

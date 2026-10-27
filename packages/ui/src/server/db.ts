@@ -59,8 +59,9 @@ export const NGN_TABLES = [
 /**
  * What the queries here can be run against.
  *
- * ngn does not version its schema (`user_version` stays 0), so the check is
- * whether its tables are there. A file that is empty is `missing` — `ngn run`
+ * The check is whether ngn's tables are there, not which migrations ran (ngn
+ * tracks those in `ngn_migrations`): a file from before that table existed is
+ * just as readable. A file that is empty is `missing` — `ngn run`
  * creates the tables on first start. A file with other tables is `foreign`: the
  * likeliest one is a task's own `ctx.sqlite` database, opened by mistake.
  */

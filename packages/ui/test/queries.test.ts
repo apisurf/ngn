@@ -10,6 +10,7 @@ import { schemaState } from "../src/server/db";
 import {
   activity,
   failureMessage,
+  getRunResult,
   getTask,
   latestLiveRun,
   listKeys,
@@ -194,6 +195,21 @@ describe("tasks", () => {
 });
 
 describe("runs", () => {
+  it("reads what a run returned, and nothing from a file without the column", () => {
+    const writer = new Database(path);
+    writer.prepare("UPDATE task_runs SET result = ? WHERE id = 1").run('{"n":2}');
+    writer.close();
+    expect(getRunResult(db, 1)).toBe('{"n":2}');
+    expect(getRunResult(db, 2)).toBeNull();
+
+    // A file the scheduler has not migrated since the column was added.
+    const legacy = new Database(":memory:");
+    legacy.exec("CREATE TABLE task_runs (id INTEGER PRIMARY KEY)");
+    legacy.exec("INSERT INTO task_runs (id) VALUES (1)");
+    expect(getRunResult(legacy, 1)).toBeNull();
+    legacy.close();
+  });
+
   it("returns runs newest first with their counts", () => {
     const runs = listRuns(db, { taskId: 1 });
     expect(runs.map((r) => r.status)).toEqual(["skipped", "success", "failure", "success"]);

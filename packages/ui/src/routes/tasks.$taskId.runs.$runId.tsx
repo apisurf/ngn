@@ -16,6 +16,7 @@ import {
   IconClock,
   IconSkip,
 } from "~/components/icons";
+import { JsonView } from "~/components/json-view";
 import { KvTable } from "~/components/kv-table";
 import { LogList } from "~/components/log-list";
 import {
@@ -47,14 +48,15 @@ import {
   formatOffset,
   plural,
 } from "~/lib/format";
+import { parseStructured } from "~/lib/json";
 import { hooksOf, isLifecycle, isOpen, LEVEL_TONE, logLevel, runTone } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type { LogRow, RunPage as RunPageData, TimingRow } from "~/server/api";
 import { getRun } from "~/server/api";
 
-type RunTab = "timeline" | "logs" | "timings" | "details";
-const TABS: ReadonlySet<string> = new Set(["logs", "timings", "details"]);
+type RunTab = "timeline" | "logs" | "timings" | "result" | "details";
+const TABS: ReadonlySet<string> = new Set(["logs", "timings", "result", "details"]);
 
 export const Route = createFileRoute("/tasks/$taskId/runs/$runId")({
   validateSearch: (search: Record<string, unknown>): { tab?: RunTab; log?: number } => ({
@@ -132,6 +134,7 @@ function RunPage() {
             tone: run.error_count ? "bad" : problems ? "warn" : undefined,
           },
           { id: "timings", label: "Timings", count: timings.length },
+          ...(page.result != null ? [{ id: "result" as const, label: "Result" }] : []),
           { id: "details", label: "Details" },
         ]}
         dense
@@ -152,6 +155,7 @@ function RunPage() {
         />
       ) : null}
       {tab === "timings" ? <TimingsTab timings={timings} start={start} /> : null}
+      {tab === "result" ? <ResultTab result={page.result} /> : null}
       {tab === "details" ? <DetailsTab page={page} /> : null}
     </>
   );
@@ -652,6 +656,25 @@ function TimingsTab({ timings, start }: { timings: TimingRow[]; start: number })
           </Card>
         </section>
       </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+/** What the task returned: a tree for an object or array, the JSON text otherwise. */
+function ResultTab({ result }: { result: string | null }) {
+  if (result == null) return <Empty title="This run returned nothing" />;
+  const structured = parseStructured(result);
+  return (
+    <div className={cx(scrollPane, css({ bg: "well" }))}>
+      {structured !== undefined ? (
+        <JsonView value={structured} />
+      ) : (
+        <pre className={cx(mono, css({ p: "3", whiteSpace: "pre-wrap" }))}>{result}</pre>
+      )}
     </div>
   );
 }

@@ -233,6 +233,24 @@ export function getRun(db: Db, runId: number): RunRow | null {
   );
 }
 
+/**
+ * What the run's task returned, as stored JSON.
+ *
+ * Asked for apart from the row because the column came with a later migration
+ * and the UI never migrates: a file the scheduler has not opened since then
+ * has no `result` column, which is the same as a run that returned nothing.
+ */
+export function getRunResult(db: Db, runId: number): string | null {
+  const columns = db.prepare("SELECT name FROM pragma_table_info('task_runs')").all() as {
+    name: string;
+  }[];
+  if (!columns.some((column) => column.name === "result")) return null;
+  const row = db.prepare("SELECT result FROM task_runs WHERE id = ?").get(runId) as
+    | { result: string | null }
+    | undefined;
+  return row?.result ?? null;
+}
+
 export interface Neighbours {
   prev: number | null;
   next: number | null;

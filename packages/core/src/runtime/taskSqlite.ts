@@ -84,9 +84,10 @@ export interface TaskSqlite {
 const openClients = new Map<string, Client>();
 
 /**
- * Run migrations on a database client
+ * Run migrations on a database client, once each, tracked in `_ngn_migrations`
+ * inside that database.
  */
-async function runMigrations(client: Client, migrations: Migration[]): Promise<void> {
+export async function runMigrations(client: Client, migrations: Migration[]): Promise<void> {
   if (!migrations.length) return;
 
   // Create migrations tracking table

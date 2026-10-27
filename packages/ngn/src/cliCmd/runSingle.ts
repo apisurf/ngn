@@ -1,10 +1,11 @@
-import { validate, schedule, ScheduledTask } from "node-cron";
 import invariant from "tiny-invariant";
 import { getCwd, handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
 import {
   Compiler,
   Task,
   createControlsGenerator,
+  isCronPatternValid,
+  scheduleTask,
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
@@ -53,7 +54,7 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
   const rootDirAbs = getCwd(process.cwd(), options.root);
 
   // Bad input from the caller, not a broken invariant: report it without a stack.
-  if (!validate(options.timing)) {
+  if (!isCronPatternValid(options.timing)) {
     console.error(
       `ngn: invalid cron pattern "${options.timing}".\n` +
         "     Expected 6 fields, seconds first, e.g. '*/2 * * * * *'.",
@@ -63,7 +64,7 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
   }
 
   const config = await getSingleTaskConfig(rootDirAbs, filePath);
-  let scheduledTask: ScheduledTask | null = null;
+  let scheduledTask: ReturnType<typeof scheduleTask> | null = null;
 
   try {
     await setupDbClient(config.configFileOptions.dbPath);
@@ -96,16 +97,10 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
     await task.loadEntry();
     invariant(task.hasTaskExport(), `Task function is missing in ${filePath}`);
 
-    const wrappedUserTask = async () => {
-      try {
-        await task.execute();
-      } catch (error) {
-        console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
-      }
-    };
-
     // Schedule the task with the provided cron pattern
-    scheduledTask = schedule(options.timing, wrappedUserTask);
+    scheduledTask = scheduleTask(task, options.timing, (error) => {
+      console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
+    });
 
     console.log(`scheduled ${filePath} on ${options.timing}  (Ctrl-C to stop)`);
   } catch (error) {

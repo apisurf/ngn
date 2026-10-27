@@ -6,14 +6,21 @@ import {
 } from "@apisurf/ngn-os";
 import invariant from "tiny-invariant";
 import { Client } from "@apisurf/ngn-persistence";
-import { BuildCompiledTaskConfigFn, CompiledTaskCallbacks, TaskRuntimeCallbacks } from "./types.js";
+import {
+  BuildCompiledTaskConfigFn,
+  CompiledTaskCallbacks,
+  RunControls,
+  TaskRuntimeCallbacks,
+} from "./types.js";
 import { TaskContext } from "../source/types.js";
 import { createTaskSqlite } from "./taskSqlite.js";
 import { registerFileTask } from "../db/services/registerTask.js";
-import { TaskRunService } from "../db/services/taskRun.js";
+import { TaskRunService, serializeResult } from "../db/services/taskRun.js";
 import { LogService } from "../db/services/log.js";
 import { KVService } from "../db/services/kv.js";
 import { TimingService } from "../db/services/timing.js";
+import { LockService } from "../db/services/lock.js";
+import { createRunLocks } from "./locks.js";
 
 // higher order function that returns a function that builds a task config
 export function createControlsGenerator({
@@ -27,12 +34,13 @@ export function createControlsGenerator({
   const logService = new LogService(dbClient);
   const kvService = new KVService(dbClient);
   const timingService = new TimingService(dbClient);
+  const lockService = new LockService(dbClient);
 
   // wrap in a function to allow for partial application of dbClient
   const generateControls: BuildCompiledTaskConfigFn = ({ sourcePath, compiledPath }) => {
+    // Per task, not per run: every run of one file shares its task and version.
     let fileTaskId: number;
     let fileTaskVersionId: number;
-    let fileTaskRunId: number;
 
     const assertMandatoryIds = () => {
       invariant(!!fileTaskId, "Task ID not found");
@@ -54,13 +62,6 @@ export function createControlsGenerator({
           fileTaskVersionId,
         };
       },
-      async onTaskExecutionStart() {
-        assertMandatoryIds();
-        fileTaskRunId = await taskRunService.initTaskRun({
-          file_task_id: fileTaskId,
-          file_task_version_id: fileTaskVersionId,
-        });
-      },
       async onTaskCodeLoaded() {
         // console.log("Task code loaded");
       },
@@ -69,43 +70,87 @@ export function createControlsGenerator({
       },
     };
 
-    const runtimeCallbacks: TaskRuntimeCallbacks = {
-      async onNotFound() {
-        assertMandatoryIds();
-        await logService.logError(fileTaskId, fileTaskRunId, "Task not found");
-        logTaskCallback(`Task not found: ${fileTaskId}, run ID: ${fileTaskRunId}`);
-      },
-      async onSkip() {
-        assertMandatoryIds();
-        await taskRunService.skipTaskRun(fileTaskRunId);
-        await logService.logInfo(fileTaskId, fileTaskRunId, "Task skipped");
-        logTaskCallback(`Task skipped: ${fileTaskId}, run ID: ${fileTaskRunId}`);
-      },
-      async onStart() {
-        assertMandatoryIds();
-        await taskRunService.startTaskRun(fileTaskRunId);
-        await logService.logInfo(fileTaskId, fileTaskRunId, "Task started");
-        logTaskCallback(`Task started: ${fileTaskId}, run ID: ${fileTaskRunId}`);
-      },
-      async onFailure() {
-        assertMandatoryIds();
-        await taskRunService.endTaskRun(fileTaskRunId, "failure");
-        await logService.logError(fileTaskId, fileTaskRunId, "Task failed");
-        logTaskCallback(`Task failed: ${fileTaskId}, run ID: ${fileTaskRunId}`);
-      },
-      async onSuccess() {
-        assertMandatoryIds();
-        await taskRunService.endTaskRun(fileTaskRunId, "success");
-        await logService.logInfo(fileTaskId, fileTaskRunId, "Task succeeded");
-        logTaskCallback(`Task succeeded: ${fileTaskId}, run ID: ${fileTaskRunId}`);
-      },
-    };
+    async function startRun({
+      retryOf = null,
+    }: { retryOf?: number | null } = {}): Promise<RunControls> {
+      assertMandatoryIds();
+      // Captured here, so a later run of the same task cannot redirect this one.
+      const taskId = fileTaskId;
+      const runId = await taskRunService.initTaskRun({
+        file_task_id: taskId,
+        file_task_version_id: fileTaskVersionId,
+        retry_of: retryOf,
+      });
+
+      const callbacks: TaskRuntimeCallbacks = {
+        async onNotFound() {
+          await logService.logError(taskId, runId, "Task not found");
+          logTaskCallback(`Task not found: ${taskId}, run ID: ${runId}`);
+        },
+        async onSkip({ reason }) {
+          await taskRunService.skipTaskRun(runId, reason ?? null);
+          await logService.logInfo(taskId, runId, "Task skipped");
+          if (reason) await logService.logInfo(taskId, runId, `Skipped: ${reason}`);
+          logTaskCallback(`Task skipped: ${taskId}, run ID: ${runId}`);
+        },
+        async onStart() {
+          await taskRunService.startTaskRun(runId);
+          await logService.logInfo(taskId, runId, "Task started");
+          logTaskCallback(`Task started: ${taskId}, run ID: ${runId}`);
+        },
+        async onFailure() {
+          await taskRunService.endTaskRun(runId, "failure");
+          await logService.logError(taskId, runId, "Task failed");
+          logTaskCallback(`Task failed: ${taskId}, run ID: ${runId}`);
+        },
+        async onSuccess({ result }) {
+          await taskRunService.endTaskRun(runId, "success", serializeResult(result));
+          await logService.logInfo(taskId, runId, "Task succeeded");
+          logTaskCallback(`Task succeeded: ${taskId}, run ID: ${runId}`);
+        },
+      };
+
+      return {
+        id: runId,
+        callbacks,
+        locks: createRunLocks(lockService, runId),
+        log: {
+          async info(value: string) {
+            logTaskConsoleInfo(value);
+            await logService.logInfo(taskId, runId, value);
+          },
+          async error(value: string) {
+            logTaskConsoleError(value);
+            await logService.logError(taskId, runId, value);
+          },
+          async warning(value: string) {
+            logTaskConsoleWarn(value);
+            await logService.logWarning(taskId, runId, value);
+          },
+        },
+        timing: {
+          start(label) {
+            return timingService.start(taskId, runId, label);
+          },
+        },
+      };
+    }
 
     return {
       compiledPath,
       sourcePath,
       taskCallbacks: taskCallbacks,
-      runtimeCallbacks: runtimeCallbacks,
+      startRun,
+      history: {
+        recentTickOutcomes(limit: number) {
+          assertMandatoryIds();
+          return taskRunService.recentTickOutcomes(fileTaskId, limit);
+        },
+        countSkipsSince(reason: string, afterId: number) {
+          assertMandatoryIds();
+          return taskRunService.countSkipsSince(fileTaskId, reason, afterId);
+        },
+      },
       env,
       // Scoped to this task's own folder — see createTaskSqlite
       sqlite: createTaskSqlite(sourcePath),
@@ -118,25 +163,6 @@ export function createControlsGenerator({
         },
         async delete(key: string) {
           await kvService.deleteValue(fileTaskId, key);
-        },
-      },
-      log: {
-        async info(value: string) {
-          logTaskConsoleInfo(value);
-          await logService.logInfo(fileTaskId, fileTaskRunId, value);
-        },
-        async error(value: string) {
-          logTaskConsoleError(value);
-          await logService.logError(fileTaskId, fileTaskRunId, value);
-        },
-        async warning(value: string) {
-          logTaskConsoleWarn(value);
-          await logService.logWarning(fileTaskId, fileTaskRunId, value);
-        },
-      },
-      timing: {
-        start(label) {
-          return timingService.start(fileTaskId, fileTaskRunId, label);
         },
       },
     };

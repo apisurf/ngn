@@ -1,4 +1,14 @@
-const migrate1 = `
+/**
+ * One step of ngn's own schema. Applied once each, in array order, and tracked
+ * by `id` in `ngn_migrations`. Never edit one that has shipped: add another.
+ */
+export interface NgnMigration {
+  id: string;
+  up: string;
+}
+
+// The schema 0.2.x wrote when it created a file, before migrations were tracked.
+const initial = `
 CREATE TABLE IF NOT EXISTS file_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     path TEXT NOT NULL UNIQUE,
@@ -80,4 +90,25 @@ CREATE INDEX timings_task_run_id_idx ON timings(task_run_id);
 CREATE INDEX timings_created_at_idx ON timings(created_at);
 `;
 
-export const migration = [migrate1];
+export const migrations: NgnMigration[] = [
+  { id: "0001-initial", up: initial },
+  // What `task` returned, as JSON. NULL for a run that returned nothing or never finished.
+  { id: "0002-task-run-result", up: "ALTER TABLE task_runs ADD COLUMN result TEXT" },
+  // Named leases held by runs (ctx.lock, `exclusive`). A row past expires_at is free to take.
+  {
+    id: "0003-locks",
+    up: `CREATE TABLE IF NOT EXISTS locks (
+      name TEXT PRIMARY KEY NOT NULL,
+      holder TEXT NOT NULL,
+      task_run_id INTEGER,
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+  },
+  // A retry points at the run it retries (the first of its tick); a skip says why.
+  {
+    id: "0004-task-run-retry-and-skip-reason",
+    up: `ALTER TABLE task_runs ADD COLUMN retry_of INTEGER REFERENCES task_runs(id) ON DELETE CASCADE;
+    ALTER TABLE task_runs ADD COLUMN skip_reason TEXT`,
+  },
+];

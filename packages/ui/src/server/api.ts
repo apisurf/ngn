@@ -292,6 +292,8 @@ export interface RunPage {
   neighbours: Neighbours;
   /** The code this run executed. */
   code: VersionCode | null;
+  /** What the task returned, as JSON; null when it returned nothing. */
+  result: string | null;
 }
 
 /** The task a run belongs to, so a bare run link can be sent to it. */
@@ -320,6 +322,7 @@ export const getRun = createServerFn({ method: "GET" })
       failure: run.status === "failure" ? q.failureMessage(logs) : null,
       neighbours: q.runNeighbours(db, run.task_id, run.id),
       code: q.getVersionCode(db, run.task_id, run.version_id),
+      result: q.getRunResult(db, run.id),
     };
   });
 

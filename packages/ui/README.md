@@ -113,7 +113,8 @@ logged — ngn records that a run failed, not what it threw, so this is whatever
 - **Timeline**: log lines and timing spans on one clock, with a waterfall
 - **Logs**: the run's lines, filterable, with JSON messages opening into a tree
 - **Timings**: spans folded by label, then every span
-- **Details**: every field of the row
+- **Result**: what `task` returned, as a JSON tree; only on a run that returned something
+- **Details**: the run's ids, version and times
 
 The code that ran is not repeated: the run links to its version in the task's
 **Versions** tab, and says so when the task has moved on since.

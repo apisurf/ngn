@@ -1,8 +1,9 @@
-import { validate, schedule, ScheduledTask } from "node-cron";
+import { Cron } from "croner";
 import invariant from "tiny-invariant";
 import { logTaskLibraryScheduler, logTaskLibrarySchedulerError } from "@apisurf/ngn-os";
 import { Task } from "./task.js";
 import { TaskLibrary } from "./taskLibrary.js";
+import { isCronPatternValid, scheduleTask } from "./schedule.js";
 
 type Options = {
   taskLibrary: TaskLibrary;
@@ -10,7 +11,7 @@ type Options = {
 
 export class TaskLibraryScheduler {
   private taskLibrary: TaskLibrary;
-  private scheduledTasks: Map<string, ScheduledTask> = new Map();
+  private scheduledTasks: Map<string, Cron> = new Map();
 
   constructor(options: Options) {
     this.taskLibrary = options.taskLibrary;
@@ -55,10 +56,10 @@ export class TaskLibraryScheduler {
       `Invalid cron pattern: ${task.timingPattern} for ${task.taskPath}`,
     );
 
-    const wrappedUserTask = async () => task.execute();
-
-    // schedule task
-    const scheduledTask = schedule(task.timingPattern, wrappedUserTask);
+    const scheduledTask = scheduleTask(task, task.timingPattern, (error) => {
+      logTaskLibrarySchedulerError(`Run failed: ${task.taskPath}`);
+      logTaskLibrarySchedulerError(error);
+    });
     this.scheduledTasks.set(task.taskPath, scheduledTask);
     logTaskLibraryScheduler(`Scheduled: ${task.taskPath}`);
   }
@@ -77,7 +78,7 @@ export class TaskLibraryScheduler {
   }
 
   isCronPatternValid(cronPattern: string) {
-    return validate(cronPattern);
+    return isCronPatternValid(cronPattern);
   }
 
   // startScheduledTask(path: string) {

@@ -20,7 +20,8 @@ import { TaskContext } from "@apisurf/ngn";
 export const timing = "*/5 * * * * *";
 
 export const task = async (ctx: TaskContext) => {
-  const result = await fetch("https://example.com").then(res => res.text());
+  // ctx.run.signal aborts shortly before the next tick is due
+  const result = await fetch("https://example.com", { signal: ctx.run.signal }).then(res => res.text());
 
   // ctx.sqlite is this task's own database, kept next to this file
   await ctx.sqlite.execute(
@@ -33,6 +34,7 @@ export const task = async (ctx: TaskContext) => {
 
   await ctx.log.info(\`fetched \${result.length} bytes\`);
 
+  // Stored with the run, in task_runs.result
   return { length: result.length };
 };`;
 

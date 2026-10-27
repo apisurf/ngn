@@ -26,11 +26,14 @@ Examples
 Blocking: run, run:single hold the terminal until Ctrl-C. All others exit.
 
 Task file
-  export const timing = "*/5 * * * * *"    // cron, 6 fields, seconds first
-  export const task = async (ctx) => {}    // required
-  optional: shouldSkip, onSuccess, onError, onComplete
+  export const timing = "*/5 * * * * *"    // cron: 6 fields seconds first, or 5
+  export const task = async (ctx) => {}    // required; its return is stored
+  optional: overlap ("skip" | "allow"), budget ("4m"), retry ({ attempts, delay,
+            breaker }), exclusive (lock names), shouldSkip, shouldRetry,
+            onSuccess, onError, onComplete
   ctx: log.info/error/warning, kv.get/set/delete, timing.start, env, meta,
-       sqlite (own db per task file, no setup)
+       sqlite (own db per task file, no setup), run (id, deadline, signal),
+       queue(name, { db }), lock(name, fn)
   Only your file is bundled; imports resolve from your node_modules.
 
 ngn.config.ts
@@ -143,11 +146,13 @@ Tables
   file_tasks           id, path, parent_path, status, created_at, updated_at
   file_task_versions   id, file_task_id, version, md5_hash, compiled_code
   task_runs            id, file_task_id, file_task_version_id, started_at,
-                       ended_at, created_at
+                       ended_at, created_at, result (what task returned, JSON),
+                       retry_of (first run of a retried tick), skip_reason
                        status: pending | skipped | running | success | failure
   logs                 id, file_task_id, task_run_id, status, value, created_at
   timings              id, file_task_id, task_run_id, label, value, created_at
   kvs                  id, file_task_id, key, value, created_at
+  locks                name, holder, task_run_id, acquired_at, expires_at
 
   Times are unix milliseconds. Rows -> stdout; counts and errors -> stderr.
 

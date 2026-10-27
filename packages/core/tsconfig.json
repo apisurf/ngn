@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    // Array#toSorted and friends; every Node ngn supports has them.
+    "lib": ["ES2023"],
     "outDir": "./dist",
     "rootDir": "./src"
   },

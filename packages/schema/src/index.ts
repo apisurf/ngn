@@ -50,6 +50,12 @@ export const $taskRun = z.object({
   status: z.enum(["pending", "skipped", "running", "success", "failure"]),
   file_task_id: z.number(),
   file_task_version_id: z.number(),
+  /** What the task returned, as JSON. */
+  result: z.string().nullable(),
+  /** The first run of the tick this run retries; null for a first attempt. */
+  retry_of: z.number().nullable(),
+  /** Why ngn skipped the run; null when it was not skipped, or `shouldSkip` did it. */
+  skip_reason: z.string().nullable(),
 });
 
 export const $taskRunInsert = $taskRun.omit({
@@ -57,6 +63,9 @@ export const $taskRunInsert = $taskRun.omit({
   created_at: true,
   started_at: true,
   ended_at: true,
+  result: true,
+  retry_of: true,
+  skip_reason: true,
 });
 
 export const $timing = z.object({
