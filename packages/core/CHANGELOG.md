@@ -1,5 +1,15 @@
 # ngn-core
 
+## 0.2.8
+
+### Patch Changes
+
+- Extend tasks runtime API
+- Updated dependencies
+  - @apisurf/ngn-os@0.2.8
+  - @apisurf/ngn-persistence@0.2.8
+  - @apisurf/ngn-schema@0.2.8
+
 ## 0.2.7
 
 ### Patch Changes
