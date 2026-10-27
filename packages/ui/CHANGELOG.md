@@ -1,5 +1,11 @@
 # @apisurf/ngnui
 
+## 0.2.9
+
+### Patch Changes
+
+- Simplify ui
+
 ## 0.2.8
 
 ### Patch Changes
