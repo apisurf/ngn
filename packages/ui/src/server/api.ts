@@ -12,7 +12,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { dirname } from "node:path";
 import type { TaskName } from "../lib/ngn";
-import { cronOf, describeCron, describeTask } from "../lib/ngn";
+import { cronOf, describeCron, describeTask, parseRunQuery } from "../lib/ngn";
 import type { Db, SchemaState } from "./db";
 import { dbPath, fileBytes, getDb, schemaState } from "./db";
 import type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
@@ -20,8 +20,10 @@ import { executeLive, liveTarget, probeLive } from "./live";
 import type {
   ActivityBucket,
   Attempt,
+  FacetCounts,
   FailingSpell,
   KvRow,
+  RunActivity,
   LockRow,
   LogFilter,
   LogRow,
@@ -30,6 +32,7 @@ import type {
   RunFilter,
   RunRow,
   SkipCount,
+  StalledRun,
   TaskRow,
   TimingRow,
   TimingStat,
@@ -44,6 +47,8 @@ export type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
 export type {
   ActivityBucket,
   Attempt,
+  FacetCounts,
+  RunActivity,
   FailingSpell,
   Outcome,
   KvRow,
@@ -51,6 +56,7 @@ export type {
   LogRow,
   RunRow,
   SkipCount,
+  StalledRun,
   TaskRow,
   TimingRow,
   TimingStat,
@@ -59,8 +65,8 @@ export type {
   WorkspaceCounts,
 } from "./queries";
 
-/** A row carrying how its task path reads, resolved once, server-side. */
-export type TaskItem = TaskRow & TaskName;
+/** A task with how its path reads, and its newest Stalled run, if it has one. */
+export type TaskItem = TaskRow & TaskName & { stalled_run_id: number | null };
 export type RunItem = RunRow & TaskName;
 export type LogItem = LogRow & TaskName;
 
@@ -110,6 +116,18 @@ function describe<T extends { path: string }>(row: T): T & TaskName {
   return { ...row, ...describeTask(row.path) };
 }
 
+/** A task row as pages get it: described, and with its newest Stalled run. */
+function taskItem(row: TaskRow, stalled: ReadonlyMap<number, StalledRun>): TaskItem {
+  let newest: number | null = null;
+  for (const run of stalled.values()) {
+    if (run.task_id === row.id && (newest == null || run.run_id > newest)) newest = run.run_id;
+  }
+  return { ...describe(row), stalled_run_id: newest };
+}
+
+/** The workspace's counts, with Stalled runs counted apart from the ones still running. */
+export type Counts = WorkspaceCounts & { stalled: number };
+
 // -----------------------------------------------------------------------------
 // Workspace: what the frame draws on every page
 // -----------------------------------------------------------------------------
@@ -121,7 +139,7 @@ export interface Workspace {
   root: string;
   bytes: number;
   schema: { state: SchemaState; missing: string[] };
-  counts: WorkspaceCounts | null;
+  counts: Counts | null;
   /** Every task, most recently run first. */
   tasks: TaskItem[];
   /** The `--live` endpoint this server forwards to, or null when the editor is off. */
@@ -146,11 +164,13 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
     if (!db) {
       return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [] };
     }
+    const stalled = q.stalledRuns(db, base.now);
+    const counts = q.workspaceCounts(db);
     return {
       ...base,
       bytes: fileBytes(),
-      counts: q.workspaceCounts(db),
-      tasks: q.listTasks(db).map(describe),
+      counts: { ...counts, open: counts.open - stalled.size, stalled: stalled.size },
+      tasks: q.listTasks(db).map((task) => taskItem(task, stalled)),
     };
   },
 );
@@ -170,9 +190,14 @@ export interface OverviewTask {
   failing: (FailingSpell & { message: string | null }) | null;
 }
 
+/** A Stalled run, as Needs attention lists it. */
+export type StalledItem = StalledRun & { path: string } & TaskName;
+
 export interface Overview {
-  /** Every scheduled task — the live editor's are left out. */
+  /** Every scheduled task — the editor's are left out. */
   tasks: OverviewTask[];
+  /** Runs that will never finish, newest first. */
+  stalled: StalledItem[];
   activity: ActivityBucket[];
   /** Every named lock in the file, held or left behind. */
   locks: LockRow[];
@@ -184,10 +209,15 @@ const RECENT_RUNS = 24;
 export const getOverview = createServerFn({ method: "GET" }).handler(
   async (): Promise<Overview> => {
     const db = readable();
-    if (!db) return { tasks: [], activity: [], locks: [] };
-    const tasks = q
-      .listTasks(db)
-      .filter((task) => !describeTask(task.path).live)
+    if (!db) return { tasks: [], stalled: [], activity: [], locks: [] };
+    const all = q.listTasks(db);
+    const paths = new Map(all.map((task) => [task.id, task.path]));
+    const stalled = [...q.stalledRuns(db).values()]
+      .filter((run) => paths.has(run.task_id))
+      .toSorted((a, b) => b.run_id - a.run_id)
+      .map((run) => describe({ ...run, path: paths.get(run.task_id)! }));
+    const tasks = all
+      .filter((task) => !describeTask(task.path).editor)
       .map((task): OverviewTask => {
         const cron = cronOf(q.getVersionCode(db, task.id)?.compiled_code);
         const spell = task.last_outcome === "failure" ? q.failingSpell(db, task.id) : null;
@@ -203,7 +233,7 @@ export const getOverview = createServerFn({ method: "GET" }).handler(
           },
         };
       });
-    return { tasks, activity: q.activity(db, Date.now()), locks: q.listLocks(db) };
+    return { tasks, stalled, activity: q.activity(db, Date.now()), locks: q.listLocks(db) };
   },
 );
 
@@ -217,14 +247,21 @@ function runFilter(input: unknown): RunFilter {
     r.status === "failure" ||
     r.status === "success" ||
     r.status === "skipped" ||
-    r.status === "open"
+    r.status === "open" ||
+    r.status === "stalled"
       ? r.status
       : undefined;
   return {
     q: optionalString(r.q),
     taskId: optionalId(r.taskId, "taskId"),
     status,
-    hideLive: r.hideLive === true,
+    // `hideLive` is what asking for scheduled runs only was called before `origin`.
+    origin:
+      r.origin === "scheduled" || r.origin === "editor"
+        ? r.origin
+        : r.hideLive === true
+          ? ("scheduled" as const)
+          : undefined,
     limit: optionalLimit(r.limit),
   };
 }
@@ -234,6 +271,50 @@ export const getRuns = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<RunItem[]> => {
     const db = readable();
     return db ? q.listRuns(db, data).map(describe) : [];
+  });
+
+export interface RunsPage {
+  runs: RunItem[];
+  facets: FacetCounts;
+  /** Runs over time under every filter but the time ones, for the chart to scrub. */
+  activity: RunActivity;
+  /** What in the filter could not be read, for the filter bar to show. */
+  errors: string[];
+}
+
+/**
+ * The Runs view: runs matching a filter in the language `ngn runs` takes, and
+ * how many each status and origin would give. `taskId` scopes it to one task,
+ * which is how a task's Runs tab is the same view.
+ */
+export const getRunsPage = createServerFn({ method: "GET" })
+  .validator((input: unknown) => {
+    const r = record(input);
+    return {
+      query: optionalString(r.query) ?? "",
+      taskId: optionalId(r.taskId, "taskId"),
+      limit: optionalLimit(r.limit),
+    };
+  })
+  .handler(async ({ data }): Promise<RunsPage> => {
+    const now = Date.now();
+    const { tokens, errors } = parseRunQuery(data.query, now);
+    const db = readable();
+    if (!db) {
+      return {
+        runs: [],
+        facets: q.facetCounts(null, [], now),
+        activity: q.runActivity(null, [], now),
+        errors,
+      };
+    }
+    const scoped = data.taskId === undefined ? {} : { taskId: data.taskId };
+    return {
+      runs: q.listRuns(db, { ...scoped, tokens, limit: data.limit }, now).map(describe),
+      facets: q.facetCounts(db, tokens, now, data.taskId),
+      activity: q.runActivity(db, tokens, now, data.taskId),
+      errors,
+    };
   });
 
 function logFilter(input: unknown): LogFilter {
@@ -271,7 +352,7 @@ export const getTask = createServerFn({ method: "GET" })
     if (!db) return null;
     const task = q.getTask(db, data.taskId);
     if (!task) return null;
-    return { task: describe(task), latest: q.getVersionCode(db, task.id) };
+    return { task: taskItem(task, q.stalledRuns(db)), latest: q.getVersionCode(db, task.id) };
   });
 
 /** A task's tabs: its run history, timings, keys and versions. */
@@ -280,6 +361,8 @@ export interface TaskDetails {
   timings: TimingStat[];
   versions: VersionRow[];
   keys: KvRow[];
+  /** Lines the task wrote itself, across every run. */
+  logCount: number;
   /** Why its runs were skipped, most common first. */
   skips: SkipCount[];
   /** The version picked in the Versions tab, or the newest. */
@@ -303,6 +386,7 @@ export const getTaskDetails = createServerFn({ method: "GET" })
       timings: q.timingStats(db, taskId),
       versions: q.listVersions(db, taskId),
       keys: q.listKeys(db, taskId),
+      logCount: q.countTaskLines(db, taskId),
       skips: q.skipReasons(db, taskId),
       code:
         (data.versionId === undefined ? null : q.getVersionCode(db, taskId, data.versionId)) ??
@@ -332,6 +416,8 @@ export interface RunPage {
   attempts: Attempt[];
   /** Locks this run holds now, or left behind. */
   locks: LockRow[];
+  /** Why the run is Stalled, when it is. */
+  stall: StalledRun | null;
 }
 
 /** The task a run belongs to, so a bare run link can be sent to it. */
@@ -352,9 +438,10 @@ export const getRun = createServerFn({ method: "GET" })
     const task = q.getTask(db, run.task_id);
     if (!task) return null;
     const logs = q.listLogs(db, { runId: run.id, lifecycle: true, limit: 5000 });
+    const stalled = q.stalledRuns(db);
     return {
       run: describe(run),
-      task: describe(task),
+      task: taskItem(task, stalled),
       logs,
       timings: q.listRunTimings(db, run.id),
       failure: run.status === "failure" ? q.failureMessage(logs) : null,
@@ -363,6 +450,7 @@ export const getRun = createServerFn({ method: "GET" })
       result: q.getRunResult(db, run.id),
       attempts: q.tickAttempts(db, run),
       locks: q.listLocks(db).filter((lock) => lock.run_id === run.id),
+      stall: stalled.get(run.id) ?? null,
     };
   });
 
@@ -396,7 +484,8 @@ export const runLive = createServerFn({ method: "POST" })
     if (!target) {
       return {
         ok: false,
-        error: "The live editor is off. Restart ngnui with --live <url of a running ngn run>.",
+        error:
+          "The editor is off: no ngn.config.ts where ngnui started. Restart it with --live <url of a running ngn run>.",
         ms: 0,
         runId: null,
       };

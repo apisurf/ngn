@@ -2,12 +2,19 @@
 //
 //   Runs       every execution, with a strip of durations so a bad afternoon
 //              shows up before anyone reads a number; a row opens that run
-//   Timings    each `ctx.timing` label's record: count, p50, p95, the trend
 //   Logs       every line it wrote, across runs
-//   Store      its `ctx.kv` keys, as they stand now
+//   Timings    each `ctx.timing` label's record: count, p50, p95, the trend
+//   Stored     what it keeps between runs with `ctx.kv`, as it stands now
 //   Versions   each distinct build of the file, how its runs went, its code
 
-import { createFileRoute, getRouteApi, notFound, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  getRouteApi,
+  Link,
+  Navigate,
+  notFound,
+  useNavigate,
+} from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import { DurationStrip, Sparkline } from "~/components/charts";
@@ -17,15 +24,11 @@ import { KvTable } from "~/components/kv-table";
 import { LogList } from "~/components/log-list";
 import {
   Card,
-  Dot,
   Empty,
-  LogCount,
   mono,
   pagePad,
-  RunOutcome,
   scrollPane,
   SectionTitle,
-  Segmented,
   Stat,
   StatGrid,
   TabList,
@@ -34,7 +37,7 @@ import {
 } from "~/components/primitives";
 import { formatAgo, formatCount, formatDateTime, formatMs, plural } from "~/lib/format";
 import { prettyJson } from "~/lib/json";
-import { percentile, readSkip, runTone } from "~/lib/ngn";
+import { percentile, readSkip } from "~/lib/ngn";
 import { useNow, usePrefs } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type {
@@ -46,29 +49,59 @@ import type {
   TaskItem,
   TimingStat,
 } from "~/server/api";
-import { getLogs, getTaskDetails } from "~/server/api";
+import { getLogs, getRunsPage, getTaskDetails } from "~/server/api";
+import { RunsView } from "~/components/runs-view";
 
-type TaskTab = "runs" | "timings" | "logs" | "store" | "versions";
-const TABS: ReadonlySet<string> = new Set(["timings", "logs", "store", "versions"]);
+type TaskTab = "runs" | "logs" | "timings" | "keys" | "versions";
+const TABS: ReadonlySet<string> = new Set(["logs", "timings", "keys", "versions"]);
 
 const layout = getRouteApi("/tasks/$taskId");
 
+/** Runs the task's Runs tab lists; its figures above are drawn from the details' window. */
+const TASK_RUNS = 500;
+
 export const Route = createFileRoute("/tasks/$taskId/")({
-  validateSearch: (search: Record<string, unknown>): { tab?: TaskTab; v?: number } => ({
-    // "runs" is the default, so it never appears in the URL.
-    tab: TABS.has(search.tab as string) ? (search.tab as TaskTab) : undefined,
+  validateSearch: (search: Record<string, unknown>): { tab?: TaskTab; v?: number; q?: string } => ({
+    // "runs" is the default, so it never appears in the URL. `store` is what
+    // Keys was called, and still opens it.
+    tab:
+      search.tab === "store"
+        ? "keys"
+        : TABS.has(search.tab as string)
+          ? (search.tab as TaskTab)
+          : undefined,
     v: typeof search.v === "number" && Number.isInteger(search.v) ? search.v : undefined,
+    // The Runs tab's filter, in the language the Runs page and `ngn runs` take.
+    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
   }),
-  loaderDeps: ({ search }) => ({ v: search.v }),
+  loaderDeps: ({ search }) => ({ v: search.v, q: search.q }),
   loader: async ({ params, deps }) => {
-    const details = await getTaskDetails({ data: { taskId: params.taskId, versionId: deps.v } });
+    const [details, runsPage] = await Promise.all([
+      getTaskDetails({ data: { taskId: params.taskId, versionId: deps.v } }),
+      getRunsPage({ data: { query: deps.q ?? "", taskId: params.taskId, limit: TASK_RUNS } }),
+    ]);
     if (!details) throw notFound();
-    return details;
+    return { ...details, runsPage };
   },
   component: TaskPage,
 });
 
 function TaskPage() {
+  const { task } = layout.useLoaderData();
+  // An editor run's "task" is its throwaway file, with one run: show the run.
+  if (task.editor && task.last_run_id != null) {
+    return (
+      <Navigate
+        to="/tasks/$taskId/runs/$runId"
+        params={{ taskId: String(task.id), runId: String(task.last_run_id) }}
+        replace
+      />
+    );
+  }
+  return <ProjectTaskPage />;
+}
+
+function ProjectTaskPage() {
   const { task } = layout.useLoaderData();
   const details = Route.useLoaderData();
   const { timings, versions, keys } = details;
@@ -77,7 +110,7 @@ function TaskPage() {
   const now = useNow(Date.now());
   useTab({
     key: tabKey.task(task.id),
-    title: task.live ? "Live editor task" : task.file,
+    title: task.editor ? "Editor run" : task.file,
     icon: "task",
     failed: task.last_outcome === "failure",
   });
@@ -87,9 +120,9 @@ function TaskPage() {
       <TabList
         items={[
           { id: "runs", label: "Runs", count: task.run_count },
+          { id: "logs", label: "Logs", count: details.logCount },
           { id: "timings", label: "Timings", count: timings.length },
-          { id: "logs", label: "Logs" },
-          { id: "store", label: "Store", count: keys.length },
+          { id: "keys", label: "Stored values", count: keys.length },
           { id: "versions", label: "Versions", count: versions.length },
         ]}
         value={tab}
@@ -98,13 +131,7 @@ function TaskPage() {
         }
       />
 
-      {tab === "runs" ? (
-        <div className={scrollPane}>
-          <div className={pagePad}>
-            <RunsTab task={task} runs={details.runs} skips={details.skips} now={now} />
-          </div>
-        </div>
-      ) : null}
+      {tab === "runs" ? <RunsTab task={task} details={details} now={now} /> : null}
       {tab === "timings" ? (
         <div className={scrollPane}>
           <div className={pagePad}>
@@ -113,10 +140,10 @@ function TaskPage() {
         </div>
       ) : null}
       {tab === "logs" ? <LogsTab taskId={task.id} /> : null}
-      {tab === "store" ? (
+      {tab === "keys" ? (
         <div className={scrollPane}>
           <div className={pagePad}>
-            <StoreTab keys={keys} now={now} />
+            <KeysTab keys={keys} now={now} />
           </div>
         </div>
       ) : null}
@@ -129,81 +156,60 @@ function TaskPage() {
 // Runs
 // -----------------------------------------------------------------------------
 
-type Show = "all" | "failure" | "skipped";
-
+/**
+ * The task's figures, then the Runs view scoped to it: the same filter, facets
+ * and rows as the Runs page, with `task:` fixed. Its filter can be carried to
+ * the Runs page, where `task:` becomes an ordinary token.
+ */
 function RunsTab({
   task,
-  runs,
-  skips,
+  details,
   now,
 }: {
   task: TaskItem;
-  runs: RunRow[];
-  skips: SkipCount[];
+  details: ReturnType<typeof Route.useLoaderData>;
   now: number;
 }) {
-  const navigate = useNavigate();
-  const [show, setShow] = React.useState<Show>("all");
-  if (runs.length === 0) return <Empty title="This task has not run yet" />;
-
-  const visible = show === "all" ? runs : runs.filter((r) => r.status === show);
+  const { q = "" } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const onChange = React.useCallback(
+    (next: string) =>
+      void navigate({ search: (s) => ({ ...s, q: next || undefined }), replace: true }),
+    [navigate],
+  );
+  if (details.runs.length === 0) return <Empty title="This task has not run yet" />;
 
   return (
-    <>
-      <TaskStats task={task} runs={runs} skips={skips} now={now} />
-
-      <section>
-        <SectionTitle>Duration per run</SectionTitle>
-        <DurationStrip runs={runs} />
-      </section>
-
-      {skips.length > 1 ? <SkipBreakdown skips={skips} /> : null}
-
-      <section>
-        <SectionTitle
-          right={
-            // Filters only for what there is to filter to.
-            task.failure_count || task.skipped_count ? (
-              <Segmented
-                items={[
-                  { id: "all" as const, label: "All" },
-                  ...(task.failure_count
-                    ? [{ id: "failure" as const, label: `Failed ${task.failure_count}` }]
-                    : []),
-                  ...(task.skipped_count
-                    ? [{ id: "skipped" as const, label: `Skipped ${task.skipped_count}` }]
-                    : []),
-                ]}
-                value={show}
-                onSelect={setShow}
-              />
-            ) : null
-          }
+    <RunsView
+      page={details.runsPage}
+      value={q}
+      onChange={onChange}
+      now={now}
+      limit={TASK_RUNS}
+      locked={`task:${task.path}`}
+      showTask={false}
+      showVersion={task.version_count > 1}
+      aside={
+        <Link
+          to="/runs"
+          search={{ q: [`task:${task.path}`, q].filter(Boolean).join(" ") }}
+          className={css({ fontSize: "12px", color: "accent" })}
         >
-          History
-        </SectionTitle>
-        <Card>
-          <RunsTable
-            runs={visible}
-            now={now}
-            latestVersion={task.version}
-            versions={task.version_count}
-            onOpen={(id) =>
-              void navigate({
-                to: "/tasks/$taskId/runs/$runId",
-                params: { taskId: String(task.id), runId: String(id) },
-              })
-            }
-          />
-        </Card>
-        {runs.length < task.run_count ? (
-          <p className={css({ color: "faint", fontSize: "12px", mt: "2", mb: "0" })}>
-            Showing the latest {formatCount(runs.length)} of {formatCount(task.run_count)} runs.{" "}
-            <code>ngn sql</code> reaches the rest.
-          </p>
-        ) : null}
-      </section>
-    </>
+          Open in Runs
+        </Link>
+      }
+      lead={
+        <>
+          <TaskStats task={task} runs={details.runs} skips={details.skips} now={now} />
+          <section>
+            <SectionTitle>Duration per run</SectionTitle>
+            <DurationStrip runs={details.runs} />
+          </section>
+          {details.skips.length > 1 ? <SkipBreakdown skips={details.skips} /> : null}
+          <SectionTitle>All runs</SectionTitle>
+        </>
+      }
+    />
   );
 }
 
@@ -298,80 +304,6 @@ function SkipBreakdown({ skips }: { skips: SkipCount[] }) {
         ))}
       </div>
     </section>
-  );
-}
-
-function RunsTable({
-  runs,
-  now,
-  latestVersion,
-  versions,
-  onOpen,
-}: {
-  runs: RunRow[];
-  now: number;
-  latestVersion: number;
-  versions: number;
-  onOpen: (id: number) => void;
-}) {
-  if (runs.length === 0) return <Empty title="No runs match" />;
-  // Columns that would say the same thing on every row are left out.
-  const showVersion = versions > 1;
-  const showLogs = runs.some((run) => run.log_count > 0);
-  const showTimings = runs.some((run) => run.timing_count > 0);
-  return (
-    <table className={table}>
-      <thead>
-        <tr>
-          <th>Run</th>
-          <th>Result</th>
-          {showVersion ? <th>Version</th> : null}
-          {showLogs ? <th className="num">Logs</th> : null}
-          {showTimings ? <th className="num">Timings</th> : null}
-          <th className="num">Duration</th>
-          <th className="num">Started</th>
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((run) => (
-          <tr key={run.id} data-link onClick={() => onOpen(run.id)}>
-            <td>
-              <div className={css({ display: "flex", alignItems: "center", gap: "2" })}>
-                <Dot tone={runTone(run.status)} />
-                <span className={mono}>#{run.id}</span>
-              </div>
-            </td>
-            <td className={css({ maxW: "280px" })}>
-              <RunOutcome run={run} />
-            </td>
-            {showVersion ? (
-              <td
-                className={cx(
-                  mono,
-                  run.version != null && run.version < latestVersion
-                    ? css({ color: "faint" })
-                    : undefined,
-                )}
-              >
-                {run.version != null ? `v${run.version}` : "—"}
-              </td>
-            ) : null}
-            {showLogs ? (
-              <td className="num">
-                <LogCount run={run} />
-              </td>
-            ) : null}
-            {showTimings ? (
-              <td className={cx("num", run.timing_count ? undefined : css({ color: "faint" }))}>
-                {run.timing_count ? formatCount(run.timing_count) : "—"}
-              </td>
-            ) : null}
-            <td className={cx("num", mono)}>{formatMs(run.duration_ms)}</td>
-            <td className={cx("num", css({ color: "muted" }))}>{formatDateTime(now, run.at)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 
@@ -470,10 +402,10 @@ function LogsTab({ taskId }: { taskId: number }) {
 }
 
 // -----------------------------------------------------------------------------
-// Store
+// Keys
 // -----------------------------------------------------------------------------
 
-function StoreTab({ keys, now }: { keys: KvRow[]; now: number }) {
+function KeysTab({ keys, now }: { keys: KvRow[]; now: number }) {
   if (keys.length === 0) {
     return (
       <Empty title="Nothing stored" icon={<IconKey size={22} />}>

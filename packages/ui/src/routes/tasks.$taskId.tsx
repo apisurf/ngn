@@ -8,13 +8,22 @@
 // exclusive locks) and its hooks are read out of the newest version's
 // compiled code: ngn keeps them nowhere else.
 
-import { createFileRoute, notFound, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, Outlet, useParams } from "@tanstack/react-router";
+import { Breadcrumb, crumbLink } from "~/components/breadcrumb";
 import { css, cx } from "styled-system/css";
 import { IconClock, IconCode, IconTask } from "~/components/icons";
 import { mono, Pill, truncate } from "~/components/primitives";
 import { useUnreadable } from "~/components/states";
 import { formatAgo } from "~/lib/format";
-import { circuitOpen, configOf, cronOf, describeCron, hooksOf } from "~/lib/ngn";
+import {
+  circuitOpen,
+  configOf,
+  cronOf,
+  describeCron,
+  hooksOf,
+  readSkip,
+  runStateLabel,
+} from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import type { TaskPage as TaskPageData } from "~/server/api";
 import { getTask } from "~/server/api";
@@ -42,8 +51,48 @@ function TaskLayout() {
   );
 }
 
+/**
+ * An editor run is not one of the project's tasks: its header leads back to the
+ * Editor it came from, and says when it was sent rather than naming its
+ * throwaway file.
+ */
+function EditorRunHeader({ page, now }: { page: TaskPageData; now: number }) {
+  const { task } = page;
+  const runId = useRunId();
+  return (
+    <header className={css({ px: "5", pt: "4", pb: "3", flexShrink: 0 })}>
+      <Breadcrumb>
+        <Link to="/live" className={crumbLink} title="Back to the Editor and its recent runs">
+          Editor
+        </Link>
+        {runId ? <span>Run #{runId}</span> : <span>Editor run</span>}
+      </Breadcrumb>
+      <div className={css({ display: "flex", alignItems: "center", gap: "2" })}>
+        <span className={css({ color: "faint", display: "inline-flex" })}>
+          <IconCode size={18} />
+        </span>
+        <h1 className={cx(truncate, css({ fontSize: "18px", fontWeight: "600", m: "0" }))}>
+          Editor run
+        </h1>
+      </div>
+      <div className={line}>
+        <span title={task.path}>
+          {task.last_run_at ? `sent ${formatAgo(now, task.last_run_at)}` : "never ran"}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+/** The run on screen under this task, when a run is. */
+function useRunId(): string | undefined {
+  return (useParams({ strict: false }) as { runId?: string }).runId;
+}
+
 function TaskHeader({ page, now }: { page: TaskPageData; now: number }) {
   const { task, latest } = page;
+  const runId = useRunId();
+  if (task.editor) return <EditorRunHeader page={page} now={now} />;
   const code = latest?.compiled_code;
   const cron = cronOf(code);
   const cadence = cron ? describeCron(cron) : null;
@@ -51,14 +100,43 @@ function TaskHeader({ page, now }: { page: TaskPageData; now: number }) {
 
   return (
     <header className={css({ px: "5", pt: "4", pb: "3", flexShrink: 0 })}>
+      <Breadcrumb>
+        <Link to="/" className={crumbLink} title="Every task, on the Overview">
+          Tasks
+        </Link>
+        {runId ? (
+          <Link
+            to="/tasks/$taskId"
+            params={{ taskId: String(task.id) }}
+            className={crumbLink}
+            title="The task's runs"
+          >
+            {task.file}
+          </Link>
+        ) : (
+          <span>{task.file}</span>
+        )}
+        {runId ? <span>Run #{runId}</span> : null}
+      </Breadcrumb>
       <div className={css({ display: "flex", alignItems: "center", gap: "2" })}>
         <span className={css({ color: "faint", display: "inline-flex" })}>
-          {task.live ? <IconCode size={18} /> : <IconTask size={18} />}
+          <IconTask size={18} />
         </span>
         <h1 className={cx(truncate, css({ fontSize: "18px", fontWeight: "600", m: "0" }))}>
-          {task.live ? "Live editor task" : task.file}
+          {task.file}
         </h1>
         {/* Only a state that needs attention gets a pill; healthy is the quiet default. */}
+        {task.stalled_run_id != null ? (
+          <Link
+            to="/tasks/$taskId/runs/$runId"
+            params={{ taskId: String(task.id), runId: String(task.stalled_run_id) }}
+            className={css({ textDecoration: "none" })}
+          >
+            <Pill tone="warn" title={`Run #${task.stalled_run_id} has no end and will not finish`}>
+              Stalled
+            </Pill>
+          </Link>
+        ) : null}
         {open ? (
           <Pill tone="bad" title="ngn is skipping ticks after repeated failures">
             Circuit open
@@ -84,9 +162,31 @@ function TaskHeader({ page, now }: { page: TaskPageData; now: number }) {
           </span>
         ) : null}
         {task.last_run_at ? <span>last ran {formatAgo(now, task.last_run_at)}</span> : null}
+        <LatestRun task={task} />
       </div>
       <Behaviour code={code} />
     </header>
+  );
+}
+
+/**
+ * The latest run, and why when it was skipped: where "why did it skip?" starts.
+ * A skip is a run like any other; this puts it in sight rather than in Logs.
+ */
+function LatestRun({ task }: { task: TaskPageData["task"] }) {
+  if (task.last_run_id == null || !task.last_status || task.last_status === "success") return null;
+  const skip = task.last_status === "skipped" ? readSkip(task.last_skip_reason).short : null;
+  return (
+    <Link
+      to="/tasks/$taskId/runs/$runId"
+      params={{ taskId: String(task.id), runId: String(task.last_run_id) }}
+      className={css({ color: "muted", textDecoration: "none", _hover: { color: "accent" } })}
+      title="Open the latest run"
+    >
+      latest #{task.last_run_id}{" "}
+      {runStateLabel(task.last_status, task.stalled_run_id === task.last_run_id).toLowerCase()}
+      {skip ? `: ${skip}` : ""}
+    </Link>
   );
 }
 

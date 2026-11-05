@@ -25,6 +25,8 @@ import { parseArgs } from "node:util";
 const HOST = "127.0.0.1";
 const DEFAULT_DB = "ngn.sqlite";
 const DEFAULT_PORT = 3000;
+/** ngn's own default for `port` in ngn.config.ts: where `ngn run` serves the editor. */
+const DEFAULT_RUNTIME_PORT = 4545;
 /** How far above the default port to look when it is taken. */
 const PORT_SCAN = 20;
 const CONFIG_FILES = ["ngn.config.ts", "ngn.config.js"];
@@ -56,8 +58,9 @@ same file, and it prints rows and exits.
 Options
   --db <path>     Database file to read. Default: dbPath from ./ngn.config.ts,
                   else ./${DEFAULT_DB}
-  --live <url>    A running \`ngn run\` to send the live editor's code to, e.g.
-                  http://127.0.0.1:4545. Without it the editor is disabled
+  --live <url>    A running \`ngn run\` to send the editor's code to, e.g.
+                  http://127.0.0.1:4545. Without it, ngnui looks for one on the
+                  \`port\` in ./ngn.config.ts serving the same database
   --port <n>      Port to serve on. Default ${DEFAULT_PORT}. Without --port, the next free
                   port up to ${DEFAULT_PORT + PORT_SCAN} is used instead of failing
   -h, --help      Show this help
@@ -69,7 +72,8 @@ Examples
   ngnui --db ./ngn.sqlite --live http://127.0.0.1:4545 --port 4000
 
 Notes
-  \`ngn run\` prints the exact ngnui command for its project when it starts.
+  Run from a project folder, ngnui needs no flags: the database and the
+  runtime port both come from ./ngn.config.ts.
   A missing database is not an error — the UI starts empty and fills in.
   Read-only, so leaving it open while tasks run is fine; toggle Live to follow it.
 `;
@@ -119,8 +123,11 @@ async function main(argv) {
     process.stderr.write(`ngnui: no database at ${dbPath} yet — ${empty}.\n`);
   }
 
-  const live = liveUrl(parsed.values.live);
-  if (live === null) return 1;
+  const flagged = liveUrl(parsed.values.live);
+  if (flagged === null) return 1;
+  // A runtime found through the config is only a candidate: the server probes
+  // it on every visit to the editor, so starting `ngn run` later still works.
+  const live = flagged ?? configRuntime(process.cwd());
 
   const wanted = port(parsed.values.port);
   if (wanted === null) return 1;
@@ -136,15 +143,7 @@ async function main(argv) {
     return 1;
   }
 
-  process.env.NGN_DB = dbPath;
-  if (live) process.env.NGN_LIVE = live;
-  else delete process.env.NGN_LIVE;
-  // NITRO_* wins over the plain names inside the server, so set both: an
-  // inherited NITRO_PORT from some other project must not redirect this one.
-  process.env.PORT = String(listening);
-  process.env.NITRO_PORT = String(listening);
-  process.env.HOST = HOST;
-  process.env.NITRO_HOST = HOST;
+  serverEnv({ dbPath, live, flagged: Boolean(flagged), listening });
 
   swallowServerBanner();
   await import(SERVER_ENTRY.href);
@@ -155,12 +154,27 @@ async function main(argv) {
     `\n  ngnui\n\n` +
       `  open       ${url}\n` +
       `  database   ${dbPath}\n` +
-      `  live       ${live ?? "off — pass --live <url of a running ngn run> to enable the editor"}\n\n` +
+      `  runtime    ${await describeRuntime(live, Boolean(flagged), dbPath)}\n\n` +
       `  Ctrl-C to stop.\n\n`,
   );
 
   // Nothing more to do here: the server holds the process open until Ctrl-C.
   return new Promise(() => {});
+}
+
+/** What the server bundle reads its settings from. */
+function serverEnv({ dbPath, live, flagged, listening }) {
+  process.env.NGN_DB = dbPath;
+  if (live) process.env.NGN_LIVE = live;
+  else delete process.env.NGN_LIVE;
+  if (live && !flagged) process.env.NGN_LIVE_SOURCE = "config";
+  else delete process.env.NGN_LIVE_SOURCE;
+  // NITRO_* wins over the plain names inside the server, so set both: an
+  // inherited NITRO_PORT from some other project must not redirect this one.
+  process.env.PORT = String(listening);
+  process.env.NITRO_PORT = String(listening);
+  process.env.HOST = HOST;
+  process.env.NITRO_HOST = HOST;
 }
 
 /**
@@ -222,6 +236,56 @@ function configDbPath(dir) {
     };
   }
   return undefined;
+}
+
+/**
+ * Where this project's `ngn run` would serve the editor, from the `port` in its
+ * config, or undefined when there is no config to say. Always loopback: a
+ * config can name a port, never a host.
+ */
+function configRuntime(dir) {
+  for (const name of CONFIG_FILES) {
+    const config = join(dir, name);
+    if (!existsSync(config)) continue;
+    let source;
+    try {
+      source = readFileSync(config, "utf8");
+    } catch {
+      return undefined;
+    }
+    const match = /\bport\s*:\s*(\d+)\b/.exec(source);
+    const value = match ? Number(match[1]) : DEFAULT_RUNTIME_PORT;
+    if (!Number.isInteger(value) || value < 1 || value > 65535) return undefined;
+    return `http://${HOST}:${value}`;
+  }
+  return undefined;
+}
+
+/** The readout's runtime line: what the editor is connected to, or why it is not. */
+async function describeRuntime(live, flagged, dbPath) {
+  if (!live) return "off — no ngn.config.ts here; pass --live <url of a running ngn run>";
+  const meta = await probeRuntime(live);
+  if (!meta) {
+    return flagged
+      ? `${live} (not answering yet — the editor connects once it does)`
+      : `none on ${live} yet — start \`ngn run\` here and the editor connects`;
+  }
+  if (!flagged && typeof meta.db === "string" && meta.db !== dbPath) {
+    return `off — the ngn run on ${live} serves another database (${meta.db})`;
+  }
+  return `${live} (ngn ${typeof meta.version === "string" ? meta.version : "run"})`;
+}
+
+/** `GET /api/meta` on a runtime: its answer when it is an ngn live endpoint, else null. */
+async function probeRuntime(live) {
+  try {
+    const response = await fetch(`${live}/api/meta`, { signal: AbortSignal.timeout(1000) });
+    if (!response.ok) return null;
+    const meta = await response.json();
+    return meta && meta.live === true ? meta : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Parse --live. Undefined when not given; null (after reporting) when unusable. */

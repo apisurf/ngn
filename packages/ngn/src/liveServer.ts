@@ -30,6 +30,8 @@ const liveTaskSchema = z.object({
 export interface LiveServerOptions {
   port: number;
   version: string;
+  /** Absolute path of the run database, or null for :memory:. */
+  db: string | null;
   executeLiveTask: ExecuteLiveTask;
 }
 
@@ -37,8 +39,11 @@ export async function runLiveServer(options: LiveServerOptions) {
   const app = new Hono();
   const api = new Hono();
 
-  // ngnui probes this to decide whether to enable its live editor.
-  api.get("/meta", (c) => c.json({ runtime: "ngn", version: options.version, live: true }));
+  // ngnui probes this to decide whether to enable its editor. `db` lets an
+  // ngnui that found this port in a config check it is the same project.
+  api.get("/meta", (c) =>
+    c.json({ runtime: "ngn", version: options.version, live: true, db: options.db }),
+  );
 
   api.post("/live", async (c) => {
     const parsed = liveTaskSchema.safeParse(await c.req.json());

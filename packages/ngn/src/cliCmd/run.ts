@@ -7,8 +7,10 @@ import {
   // absOrJoinWithRoot,
   // extractSourceDirsFromGlobs,
 } from "@apisurf/ngn-os";
+import { describeCron } from "@apisurf/ngn-schema/describe";
 import {
   Compiler,
+  type ScheduleReport,
   TaskLibrary,
   TaskLibraryScheduler,
   createControlsGenerator,
@@ -20,18 +22,26 @@ import { getRunConfig } from "../config.js";
 import { runLiveServer, LIVE_HOST } from "../liveServer.js";
 import { runLiveTask } from "../util/runLiveTask.js";
 import { describeDbPath } from "../util/dbPath.js";
+import { describeNoMatch } from "../util/matchTasks.js";
 import { VERSION } from "../version.js";
 
 /**
- * What a run is, at the moment it starts. The scheduler is headless, so the
- * readout prints the exact `ngnui` invocation for this project — including
- * `--live`, without which the editor in that UI has nothing to run against.
+ * What a run is, at the moment it starts: which tasks it scheduled and when
+ * they run, in the same words ngnui uses, and where it records them. The
+ * scheduler is headless, so the readout also prints how to look.
  */
-function printReadout(dbPath: string, port: number) {
+function printReadout(dbPath: string, port: number, report: ScheduleReport, match: string[]) {
   const db = describeDbPath(dbPath);
   const live = `http://${LIVE_HOST}:${port}`;
 
-  const lines = [``, `  ngn ${VERSION}`, ``, `  live       ${live}`];
+  const lines = [
+    ``,
+    `  ngn ${VERSION}`,
+    ``,
+    ...taskLines(report, match),
+    ``,
+    `  runtime    ${live}`,
+  ];
 
   if (db.isMemory) {
     lines.push(`  database   :memory: (not persisted — set dbPath to a file: URL to keep runs)`);
@@ -39,14 +49,29 @@ function printReadout(dbPath: string, port: number) {
     lines.push(
       `  database   ${db.absolute}`,
       ``,
-      `  browse     ngnui --db ${db.absolute} --live ${live}`,
+      `  browse     ngn ui`,
       `  query      ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`,
-      ``,
-      `  (ngnui: npm install -g @apisurf/ngnui, or run it with npx)`,
     );
   }
 
   console.log(`${lines.join("\n")}\n`);
+}
+
+/** One line per task: what it runs on, or why it is not running at all. */
+function taskLines(report: ScheduleReport, match: string[]): string[] {
+  const rows = [
+    ...report.scheduled.map((t) => [t.path, describeCron(t.pattern) ?? t.pattern] as const),
+    ...report.failed.map((t) => [t.path, `not scheduled: ${t.reason}`] as const),
+  ];
+  if (rows.length === 0) {
+    return [
+      `  tasks      none — \`match\` in ngn.config.ts (${match.join(", ")}) finds no task files`,
+    ];
+  }
+  const width = Math.max(...rows.map(([path]) => path.length));
+  return rows.map(
+    ([path, when], i) => `  ${i === 0 ? "tasks    " : "         "}  ${path.padEnd(width)}  ${when}`,
+  );
 }
 
 // async function watchSourceDirectories(
@@ -70,10 +95,16 @@ function printReadout(dbPath: string, port: number) {
 //   await Promise.all(watchPromises);
 // }
 
-export const run = async (options: { root?: string; match?: string }) => {
+export const run = async (options: { root?: string; tasks?: string[] }) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
 
-  const config = await getRunConfig(rootDirAbs, options.match);
+  const config = await getRunConfig(rootDirAbs, options.tasks);
+  // Scheduling nothing because a name was mistyped would look like success.
+  const unmatched = config.taskMatches.filter((match) => match.paths.length === 0);
+  if (unmatched.length) {
+    for (const match of unmatched) console.error(describeNoMatch(match));
+    process.exit(1);
+  }
   const taskLibrary = new TaskLibrary();
   let liveServer: Awaited<ReturnType<typeof runLiveServer>>;
   let scheduler: TaskLibraryScheduler;
@@ -106,15 +137,21 @@ export const run = async (options: { root?: string; match?: string }) => {
 
     scheduler = new TaskLibraryScheduler({
       taskLibrary,
+      // One line per failed tick, pointing at the command that explains it.
+      onRunError: (path, _error, runId) =>
+        console.error(
+          runId == null ? `failed  ${path}` : `failed  ${path} #${runId} → ngn show ${runId}`,
+        ),
     });
 
-    scheduler.start();
+    const report = await scheduler.start();
 
     const port = config.configFileOptions.port;
 
     liveServer = await runLiveServer({
       port,
       version: VERSION,
+      db: describeDbPath(config.configFileOptions.dbPath).absolute,
       executeLiveTask: async (code: string, language: "typescript" | "javascript") => {
         return runLiveTask({
           root: rootDirAbs,
@@ -125,7 +162,7 @@ export const run = async (options: { root?: string; match?: string }) => {
       },
     });
 
-    printReadout(config.configFileOptions.dbPath, port);
+    printReadout(config.configFileOptions.dbPath, port, report, config.configFileOptions.match);
   } catch (error) {
     console.error(`ngn: run failed: ${error instanceof Error ? error.stack : String(error)}`);
     closeTaskDatabases();

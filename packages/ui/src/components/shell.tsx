@@ -1,24 +1,25 @@
-// The frame every page renders inside, laid out the way wireui's is:
+// The frame every page renders inside:
 //
-//   ┌ top bar: file · Live · refresh · layout · theme ─────────────────────────┐
-//   ├ rail ┬ tasks ────────────┬ open tabs ──────────────────────────────────┤
-//   │  ⌂   │ tasks/api/        │ health.ts ×  sync-users.ts #41 ×  History × │
-//   │  ◷   │ sync-users.ts  41 ├─────────────────────────────────────────────┤
-//   │ </>  │ health.ts     603 │ the page                                    │
-//   │      │                   │                                             │
-//   ├──────┴───────────────────┴─────────────────────────────────────────────┤
-//   └ status bar: path · size · counts · running · editor · live state ──────┘
+//   ┌ top bar: ngnui / file · Follow · Refresh · Settings ─────────────────────┐
+//   ├ sidebar ────────────────┬ the page ───────────────────────────────────────┤
+//   │ Overview                │ Tasks / extract.ts / Run #2                    │
+//   │ Runs                    │                                                │
+//   │ Editor                  │                                                │
+//   │ Tasks      [filter]     │                                                │
+//   │  tasks/api/             │                                                │
+//   │   sync-users.ts      ●  │                                                │
+//   ├─────────────────────────┴────────────────────────────────────────────────┤
+//   └ status bar: runtime · running · stalled · Follow state ─────────────────┘
 //
-// Every rail item is a page, opened beside the others as a tab. The sidebar is
-// only ever the task list; collapsed, it leaves a strip to expand it from. Nothing
-// in the frame remounts on navigation, so it keeps its scroll and its filter
-// while the page beside it changes.
+// One navigation column: the global pages on top, the project's tasks below.
+// Collapsed, it leaves a strip with the pages' icons and a way back. The tab
+// strip is opt-in (Settings); every view has its own URL either way. Nothing in
+// the frame remounts on navigation, so it keeps its scroll and its filter.
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
-import { basename, formatAgo, formatBytes, formatCount, plural } from "~/lib/format";
-import type { ThemePref } from "~/lib/prefs";
+import { basename, formatAgo, formatCount } from "~/lib/format";
 import { useNow, usePrefs } from "~/lib/prefs";
 import type { Tab } from "~/lib/tabs";
 import { useTabs } from "~/lib/tabs";
@@ -27,34 +28,28 @@ import {
   IconChevronRight,
   IconClose,
   IconCode,
-  IconDatabase,
   IconHistory,
-  IconMonitor,
-  IconMoon,
   IconOverview,
   IconRefresh,
   IconRun,
-  IconSplitSide,
-  IconSplitStacked,
-  IconSun,
   IconTask,
 } from "./icons";
 import { IconButton, mono, truncate } from "./primitives";
+import { CommandPalette } from "./command-palette";
+import { SettingsMenu } from "./settings-menu";
 import { TasksPanel } from "./sidebar-tasks";
 
 const root = getRouteApi("__root__");
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { prefs } = usePrefs();
-  const filterRef = React.useRef<HTMLInputElement | null>(null);
-  useSlashToFilter(filterRef);
+  useSlashToFilter();
 
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "100vh", bg: "chrome" })}>
       <TopBar />
       <div className={css({ display: "flex", flex: "1", minH: "0" })}>
-        <Rail />
-        {prefs.sidebarOpen ? <Sidebar filterRef={filterRef} /> : <CollapsedSidebar />}
+        {prefs.sidebarOpen ? <Sidebar /> : <CollapsedSidebar />}
         <main
           className={css({
             display: "flex",
@@ -69,23 +64,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
             overflow: "hidden",
           })}
         >
-          <TabStrip />
+          {prefs.tabs ? <TabStrip /> : null}
           <div className={css({ flex: "1", minH: "0", display: "flex", flexDir: "column" })}>
             {children}
           </div>
         </main>
       </div>
       <StatusBar />
+      <CommandPalette />
     </div>
   );
 }
 
 /**
- * `/` focuses a filter, as in most tools with one: the page's own when it has
- * one (History), else the task sidebar's.
+ * `/` focuses the page's own filter (Runs has one), as in most tools with one,
+ * and nothing else: getting to a task is ⌘K's job.
  */
-function useSlashToFilter(ref: React.RefObject<HTMLInputElement | null>) {
-  const { prefs, set } = usePrefs();
+function useSlashToFilter() {
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -94,27 +89,23 @@ function useSlashToFilter(ref: React.RefObject<HTMLInputElement | null>) {
         return;
       event.preventDefault();
       const own = document.querySelector<HTMLInputElement>("main input[data-page-filter]");
-      if (own) {
-        own.focus();
-        return;
-      }
-      if (!prefs.sidebarOpen) set("sidebarOpen", true);
-      window.requestAnimationFrame(() => ref.current?.focus());
+      if (!own) return;
+      event.preventDefault();
+      own.focus();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [prefs.sidebarOpen, set, ref]);
+  }, []);
 }
 
 // -----------------------------------------------------------------------------
 // Top bar
 // -----------------------------------------------------------------------------
 
-const THEME_NEXT: Record<ThemePref, ThemePref> = { system: "light", light: "dark", dark: "system" };
-
 function TopBar() {
   const ws = root.useLoaderData();
   const { prefs, set, refresh } = usePrefs();
+  const [settings, setSettings] = React.useState(false);
 
   return (
     <header
@@ -143,18 +134,39 @@ function TopBar() {
         </span>
       </Link>
       <span className={css({ color: "lineStrong" })}>/</span>
-      <span title={ws.path} className={cx(mono, truncate, css({ color: "muted", minW: "0" }))}>
+      {/* The database's name; its full path and size are in Settings. */}
+      <button
+        type="button"
+        title={`${ws.path} — open Settings`}
+        aria-label={`Database ${basename(ws.path)}: open Settings`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setSettings((was) => !was)}
+        className={cx(
+          mono,
+          truncate,
+          css({
+            minW: "0",
+            border: "none",
+            bg: "transparent",
+            p: "0",
+            color: "muted",
+            cursor: "pointer",
+            fontSize: "inherit",
+            _hover: { color: "fg", textDecoration: "underline" },
+          }),
+        )}
+      >
         {basename(ws.path)}
-      </span>
+      </button>
 
       <div className={css({ ml: "auto", display: "flex", alignItems: "center", gap: "1.5" })}>
         <button
           type="button"
-          aria-pressed={prefs.live}
-          onClick={() => set("live", !prefs.live)}
+          aria-pressed={prefs.follow}
+          onClick={() => set("follow", !prefs.follow)}
           title={
-            prefs.live
-              ? "Live: re-reading the file every 2 s"
+            prefs.follow
+              ? "Following: re-reading the file every 2 s"
               : "Follow the file as runs write to it"
           }
           className={css({
@@ -178,36 +190,15 @@ function TopBar() {
           <span
             className={cx(
               css({ w: "7px", h: "7px", rounded: "full", bg: "faint" }),
-              prefs.live && css({ bg: "ok", animation: "pulse 1.6s ease-in-out infinite" }),
+              prefs.follow && css({ bg: "ok", animation: "pulse 1.6s ease-in-out infinite" }),
             )}
           />
-          Live
+          Follow
         </button>
         <IconButton label="Refresh" onClick={refresh}>
           <IconRefresh />
         </IconButton>
-        <IconButton
-          label={
-            prefs.layout === "side"
-              ? "Editor: stack code above result"
-              : "Editor: code and result side by side"
-          }
-          onClick={() => set("layout", prefs.layout === "side" ? "stacked" : "side")}
-        >
-          {prefs.layout === "side" ? <IconSplitSide /> : <IconSplitStacked />}
-        </IconButton>
-        <IconButton
-          label={`Theme: ${prefs.theme}`}
-          onClick={() => set("theme", THEME_NEXT[prefs.theme])}
-        >
-          {prefs.theme === "system" ? (
-            <IconMonitor />
-          ) : prefs.theme === "light" ? (
-            <IconSun />
-          ) : (
-            <IconMoon />
-          )}
-        </IconButton>
+        <SettingsMenu open={settings} setOpen={setSettings} />
       </div>
     </header>
   );
@@ -217,58 +208,65 @@ function TopBar() {
 // Rail and sidebar
 // -----------------------------------------------------------------------------
 
-const railButton = css({
+const navItem = css({
   display: "flex",
-  flexDir: "column",
   alignItems: "center",
-  gap: "0.5",
-  w: "56px",
-  py: "1.5",
-  rounded: "md",
-  border: "none",
-  bg: "transparent",
-  color: "muted",
-  cursor: "pointer",
-  fontSize: "10px",
-  fontWeight: "500",
+  gap: "2",
+  h: "28px",
+  px: "2",
+  rounded: "sm",
+  color: "fg",
   textDecoration: "none",
-  _hover: { color: "fg", bg: "hover" },
-  "&[data-active=true]": { color: "fg", bg: "hover" },
+  fontSize: "13px",
+  fontWeight: "500",
+  _hover: { bg: "hover" },
+  "& svg": { color: "muted" },
+  "&[data-active=true]": { bg: "selected" },
   "&[data-active=true] svg": { color: "accent" },
 });
 
-/** The pages, in the order the rail lists them. */
+/** The global pages, in the order the sidebar lists them. */
 const PAGES = [
-  { to: "/", label: "Overview", icon: <IconOverview size={18} />, exact: true },
-  { to: "/history", label: "History", icon: <IconHistory size={18} />, exact: false },
-  { to: "/live", label: "Editor", icon: <IconCode size={18} />, exact: false },
+  {
+    to: "/",
+    label: "Overview",
+    hint: "Is anything wrong, and every task's health",
+    icon: IconOverview,
+    exact: true,
+  },
+  {
+    to: "/runs",
+    label: "Runs",
+    hint: "Every run of every task, filtered",
+    icon: IconHistory,
+    exact: false,
+  },
+  {
+    to: "/live",
+    label: "Editor",
+    hint: "Run code once in this project's ngn run, with its config and env",
+    icon: IconCode,
+    exact: false,
+  },
 ] as const;
 
-function Rail() {
+function PageLinks() {
   return (
     <nav
-      aria-label="Sections"
-      className={css({
-        display: "flex",
-        flexDir: "column",
-        alignItems: "center",
-        gap: "1",
-        w: "64px",
-        pt: "1",
-        pb: "2",
-        flexShrink: 0,
-      })}
+      aria-label="Pages"
+      className={css({ display: "flex", flexDir: "column", gap: "0.5", px: "1.5" })}
     >
-      {PAGES.map((page) => (
+      {PAGES.map(({ to, label, hint, icon: Icon, exact }) => (
         <Link
-          key={page.to}
-          to={page.to}
-          className={railButton}
+          key={to}
+          to={to}
+          title={hint}
+          className={navItem}
           activeProps={{ "data-active": true }}
-          activeOptions={{ exact: page.exact, includeSearch: false }}
+          activeOptions={{ exact, includeSearch: false }}
         >
-          {page.icon}
-          {page.label}
+          <Icon size={15} />
+          {label}
         </Link>
       ))}
     </nav>
@@ -278,7 +276,7 @@ function Rail() {
 const MIN_SIDEBAR = 220;
 const MAX_SIDEBAR = 560;
 
-function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | null> }) {
+function Sidebar() {
   const { prefs, set } = usePrefs();
   const [dragging, setDragging] = React.useState(false);
   const [width, setWidth] = React.useState(prefs.sidebarWidth);
@@ -299,21 +297,32 @@ function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | 
       <div
         className={css({
           display: "flex",
+          justifyContent: "flex-end",
+          pr: "1.5",
+          flexShrink: 0,
+        })}
+      >
+        <IconButton label="Collapse the sidebar" onClick={() => set("sidebarOpen", false)}>
+          <IconChevronLeft size={14} />
+        </IconButton>
+      </div>
+      <PageLinks />
+      <div
+        className={css({
+          display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           h: "30px",
+          mt: "3",
           pl: "3",
           pr: "1.5",
           flexShrink: 0,
         })}
       >
         <span className={css({ fontWeight: "600", fontSize: "12px" })}>Tasks</span>
-        <IconButton label="Collapse tasks" onClick={() => set("sidebarOpen", false)}>
-          <IconChevronLeft size={14} />
-        </IconButton>
       </div>
       <div className={css({ flex: "1", minH: "0" })}>
-        <TasksPanel filterRef={filterRef} />
+        <TasksPanel />
       </div>
       <div
         role="separator"
@@ -354,43 +363,43 @@ function Sidebar({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | 
   );
 }
 
-/** What the sidebar leaves when collapsed: a strip that expands it again. */
+/**
+ * What the sidebar leaves when collapsed: the pages as icons, so they stay a
+ * click away, and a button to bring the sidebar back.
+ */
 function CollapsedSidebar() {
   const { set } = usePrefs();
   return (
-    <button
-      type="button"
-      aria-label="Expand tasks"
-      title="Expand tasks"
-      onClick={() => set("sidebarOpen", true)}
+    <div
       className={css({
         display: "flex",
         flexDir: "column",
         alignItems: "center",
-        gap: "2",
-        w: "28px",
-        pt: "2",
+        gap: "1",
+        w: "40px",
+        pt: "1",
         flexShrink: 0,
-        border: "none",
-        bg: "transparent",
-        color: "muted",
-        cursor: "pointer",
-        rounded: "md",
-        _hover: { color: "fg", bg: "hover" },
       })}
     >
-      <IconChevronRight size={14} />
-      <span
-        className={css({
-          writingMode: "vertical-rl",
-          fontSize: "12px",
-          fontWeight: "600",
-          letterSpacing: "0.02em",
-        })}
-      >
-        Tasks
-      </span>
-    </button>
+      <IconButton label="Expand the sidebar" onClick={() => set("sidebarOpen", true)}>
+        <IconChevronRight size={14} />
+      </IconButton>
+      <nav aria-label="Pages" className={css({ display: "flex", flexDir: "column", gap: "1" })}>
+        {PAGES.map(({ to, label, hint, icon: Icon, exact }) => (
+          <Link
+            key={to}
+            to={to}
+            aria-label={label}
+            title={`${label}: ${hint}`}
+            className={cx(navItem, css({ w: "28px", px: "0", justifyContent: "center" }))}
+            activeProps={{ "data-active": true }}
+            activeOptions={{ exact, includeSearch: false }}
+          >
+            <Icon size={15} />
+          </Link>
+        ))}
+      </nav>
+    </div>
   );
 }
 
@@ -498,7 +507,7 @@ function TabStrip() {
 function TabGlyph({ tab }: { tab: Tab }) {
   const glyph = {
     overview: <IconOverview size={13} />,
-    history: <IconHistory size={13} />,
+    runs: <IconHistory size={13} />,
     task: <IconTask size={13} />,
     run: <IconRun size={12} />,
     live: <IconCode size={13} />,
@@ -512,6 +521,13 @@ function TabGlyph({ tab }: { tab: Tab }) {
 // Status bar
 // -----------------------------------------------------------------------------
 
+const statusLink = css({ textDecoration: "none", _hover: { textDecoration: "underline" } });
+
+/**
+ * What the system is doing, and nothing else: the live runtime, runs that are
+ * going or stalled (each a link to them), and whether the page is following the
+ * file. Where the file is lives in the settings menu.
+ */
 function StatusBar() {
   const ws = root.useLoaderData();
   const { prefs, lastRefresh } = usePrefs();
@@ -540,25 +556,35 @@ function StatusBar() {
         overflow: "hidden",
       })}
     >
-      <span className={cx(item, mono, truncate, css({ minW: "0", flexShrink: 1 }))} title={ws.path}>
-        <IconDatabase size={12} />
-        {ws.path}
-      </span>
-      <span className={item}>{formatBytes(ws.bytes)}</span>
-      {c ? (
-        <span className={item}>
-          {plural(c.tasks, "task")} · {plural(c.runs, "run")}
-        </span>
-      ) : null}
-      {c?.open ? (
-        <span className={cx(item, css({ color: "info" }))}>{formatCount(c.open)} running</span>
-      ) : null}
-      <span className={item} title={ws.live ?? "Start ngnui with --live to enable the editor"}>
+      <span className={item} title={ws.live ?? "No live runtime: the editor is off"}>
         <IconCode size={12} />
-        {ws.live ? `editor → ${ws.live.replace(/^https?:\/\//, "")}` : "editor off"}
+        {ws.live ? `runtime ${ws.live.replace(/^https?:\/\//, "")}` : "runtime off"}
       </span>
+      {c?.open ? (
+        <Link
+          to="/runs"
+          search={{ q: "status:running" }}
+          className={cx(item, statusLink, css({ color: "info" }))}
+        >
+          {formatCount(c.open)} running
+        </Link>
+      ) : null}
+      {c?.stalled ? (
+        <Link
+          to="/runs"
+          search={{ q: "status:stalled" }}
+          className={cx(item, statusLink, css({ color: "warn" }))}
+          title="No end recorded, long past when they should have finished"
+        >
+          {formatCount(c.stalled)} stalled
+        </Link>
+      ) : null}
       <span className={cx(item, css({ ml: "auto" }))}>
-        {prefs.live ? <span className={css({ color: "ok" })}>● Live</span> : <span>Read-only</span>}
+        {prefs.follow ? (
+          <span className={css({ color: "ok" })}>● Following</span>
+        ) : (
+          <span>Read-only</span>
+        )}
         {lastRefresh ? (
           <span className={css({ color: "faint" })}>· read {formatAgo(now, lastRefresh)}</span>
         ) : null}

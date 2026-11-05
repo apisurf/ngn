@@ -72,6 +72,9 @@ importers:
       '@apisurf/ngn-persistence':
         specifier: workspace:*
         version: link:../persistence
+      '@apisurf/ngn-schema':
+        specifier: workspace:*
+        version: link:../schema
       '@hono/node-server':
         specifier: ^1.18.1
         version: 1.18.1(hono@4.8.12)
@@ -103,6 +106,9 @@ importers:
       '@types/node':
         specifier: ^22.8.1
         version: 22.8.1
+      vitest:
+        specifier: 4.1.8
+        version: 4.1.8(@types/node@22.8.1)(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))
 
   packages/os:
     dependencies:
@@ -166,6 +172,9 @@ importers:
       tsup:
         specifier: ^8.3.5
         version: 8.3.5(jiti@2.7.0)(postcss@8.5.28)(tsx@4.20.3)(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.8
+        version: 4.1.8(@types/node@22.8.1)(vite@8.3.1(@types/node@22.8.1)(esbuild@0.27.1)(jiti@2.7.0)(tsx@4.20.3))
 
   packages/ui:
     dependencies:
@@ -176,6 +185,9 @@ importers:
       '@apisurf/ngn-persistence':
         specifier: workspace:*
         version: link:../persistence
+      '@apisurf/ngn-schema':
+        specifier: workspace:*
+        version: link:../schema
       '@pandacss/dev':
         specifier: 2.0.1
         version: 2.0.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(postcss@8.5.28)

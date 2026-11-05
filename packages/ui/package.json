@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngnui",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "ngnui — browse an ngn run database in a local web UI: tasks, runs, logs, timings, stored keys, versions, plus a live task editor.",
   "keywords": [
     "cron",
@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@apisurf/ngn-persistence": "workspace:*",
+    "@apisurf/ngn-schema": "workspace:*",
     "@pandacss/dev": "2.0.1",
     "@pandacss/preset-base": "2.0.1",
     "@pandacss/preset-panda": "2.0.1",

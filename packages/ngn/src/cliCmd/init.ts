@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import type { ConfigFileOptions } from "../configSchema.js";
 import {
   DEFAULT_DB_PATH,
+  DEFAULT_INIT_DB_PATH,
   DEFAULT_API_PORT,
   DEFAULT_ENV_FILE,
   DEFAULT_TASKS_DIR,
@@ -71,34 +72,68 @@ function message(error: unknown): string {
 }
 
 /**
- * `--dbFile ./ngn.db` used to fall through to `:memory:` because it lacked the
+ * No flag means a file, so `ngn sql` and ngnui have something to read after the
+ * first run; `:memory:` is there for whoever asks for it.
+ *
+ * `--db ./ngn.db` used to fall through to `:memory:` because it lacked the
  * `file:` prefix the schema requires — the flag looked accepted and persisted
  * nothing. Add the prefix instead of discarding the value.
  */
-function normalizeDbPath(dbFile: string | undefined): ConfigFileOptions["dbPath"] {
-  if (!dbFile || dbFile === DEFAULT_DB_PATH) return DEFAULT_DB_PATH;
-  return dbFile.startsWith("file:") ? (dbFile as `file:${string}`) : `file:${dbFile}`;
+function normalizeDbPath(db: string | undefined): ConfigFileOptions["dbPath"] {
+  if (!db) return DEFAULT_INIT_DB_PATH;
+  if (db === DEFAULT_DB_PATH) return DEFAULT_DB_PATH;
+  return db.startsWith("file:") ? (db as `file:${string}`) : `file:${db}`;
 }
 
-export const init = async (options: {
+/** The flags `ngn init` takes, under their current names and the ones they had before. */
+export interface InitFlags {
   root?: string;
-  configFile?: string;
-  dbFile?: string;
-  apiPort?: number;
+  db?: string;
+  port?: string;
   match?: string;
+  config?: string;
   envFile?: string;
-}) => {
-  const cwd = getCwd(process.cwd(), options.root || process.cwd());
-  const configFilePath = options.configFile || NGN_CONFIG_FILENAME_TS;
-  const absConfigFilePath = absOrJoinWithRoot(configFilePath, cwd);
-  const normalizedOptions: ConfigFileOptions = {
-    dbPath: normalizeDbPath(options.dbFile),
-    port: options.apiPort || DEFAULT_API_PORT,
-    match: [options.match || DEFAULT_MATCH_PATTERN],
-    envFile: options.envFile || DEFAULT_ENV_FILE,
-  };
+  /** Before `--db`. */
+  dbFile?: string;
+  /** Before `--port`. */
+  apiPort?: string;
+  /** Before `--config`. */
+  configFile?: string;
+}
 
-  await createConfigFile(absConfigFilePath, cwd, normalizedOptions);
+/**
+ * The config `ngn init` writes, and where, from its flags. A current name wins
+ * over an old one given alongside it. Null (after reporting) for a bad port.
+ */
+export function initOptions(
+  flags: InitFlags,
+): { configFile: string; options: ConfigFileOptions } | null {
+  const rawPort = flags.port ?? flags.apiPort;
+  const port = rawPort === undefined ? DEFAULT_API_PORT : Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`ngn: --port expects a number between 1 and 65535 (got "${rawPort}")`);
+    return null;
+  }
+  return {
+    configFile: flags.config ?? flags.configFile ?? NGN_CONFIG_FILENAME_TS,
+    options: {
+      dbPath: normalizeDbPath(flags.db ?? flags.dbFile),
+      port,
+      match: [flags.match || DEFAULT_MATCH_PATTERN],
+      envFile: flags.envFile || DEFAULT_ENV_FILE,
+    },
+  };
+}
+
+export const init = async (flags: InitFlags) => {
+  const resolved = initOptions(flags);
+  if (!resolved) {
+    process.exitCode = 1;
+    return;
+  }
+  const cwd = getCwd(process.cwd(), flags.root || process.cwd());
+  const absConfigFilePath = absOrJoinWithRoot(resolved.configFile, cwd);
+  await createConfigFile(absConfigFilePath, cwd, resolved.options);
   await createTasksDir(cwd);
   console.log("next: ngn add task.ts");
 };

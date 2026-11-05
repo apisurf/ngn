@@ -7,14 +7,17 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "../src/server/db";
 import { schemaState } from "../src/server/db";
+import { parseRunQuery } from "../src/lib/ngn";
 import {
   activity,
+  facetCounts,
   failingSpell,
   failureMessage,
   getRun,
   getRunResult,
   getTask,
   latestLiveRun,
+  countTaskLines,
   listKeys,
   listLocks,
   listLogs,
@@ -22,8 +25,10 @@ import {
   listTasks,
   listVersions,
   recentOutcomes,
+  runActivity,
   runNeighbours,
   skipReasons,
+  stalledRuns,
   tickAttempts,
   timingStats,
   workspaceCounts,
@@ -230,12 +235,13 @@ describe("runs", () => {
     expect(runs[0]).toMatchObject({ started_at: null, duration_ms: null, at: T0 + 7000 });
   });
 
-  it("filters by status, path and the live editor", () => {
+  it("filters by status, path and origin", () => {
     expect(listRuns(db, { status: "failure" }).map((r) => r.id)).toEqual([2]);
     expect(listRuns(db, { q: "api/" })).toHaveLength(4);
-    expect(listRuns(db, { hideLive: true }).some((r) => r.path.startsWith("live-task-"))).toBe(
-      false,
-    );
+    const scheduled = listRuns(db, { origin: "scheduled" });
+    expect(scheduled).toHaveLength(4);
+    expect(scheduled.some((r) => r.path.startsWith("live-task-"))).toBe(false);
+    expect(listRuns(db, { origin: "editor" }).map((r) => r.id)).toEqual([5]);
   });
 
   it("walks a task's runs in order", () => {
@@ -246,6 +252,109 @@ describe("runs", () => {
   it("finds the run the live editor just made", () => {
     expect(latestLiveRun(db, T0 + 9000)).toBe(5);
     expect(latestLiveRun(db, T0 + 60_000)).toBeNull();
+  });
+});
+
+describe("stalled runs", () => {
+  /**
+   * sync.ts ticks every 3 s. A run starts and never ends; two ticks behind it
+   * are skipped as still running; a later run starts and is still in its window.
+   */
+  function seedStall() {
+    const w = new Database(path);
+    const run = w.prepare(
+      `INSERT INTO task_runs (file_task_id, file_task_version_id, status, created_at, started_at, ended_at, skip_reason)
+       VALUES (1, 2, ?, ?, ?, ?, ?)`,
+    );
+    const stuck = Number(run.run("running", T0 + 30_000, T0 + 30_000, null, null).lastInsertRowid);
+    const skip = run.run(
+      "skipped",
+      T0 + 33_000,
+      null,
+      T0 + 33_000,
+      "previous run still in progress",
+    );
+    run.run("skipped", T0 + 36_000, null, T0 + 36_000, "previous run still in progress");
+    w.close();
+    return { stuck, skipped: Number(skip.lastInsertRowid) };
+  }
+
+  it("calls a run Stalled once it is twice past its task's window", () => {
+    const { stuck } = seedStall();
+    // The window is the 3 s schedule: 5 s in it is still running, 7 s in it is not.
+    expect(stalledRuns(db, T0 + 35_000).size).toBe(0);
+    const stalled = stalledRuns(db, T0 + 37_000);
+    expect(stalled.get(stuck)).toMatchObject({
+      task_id: 1,
+      window_ms: 3000,
+      lease_expired: false,
+      skipped_since: 2,
+    });
+    expect(getRun(db, stuck, T0 + 37_000)?.stalled).toBe(true);
+    expect(getRun(db, stuck, T0 + 35_000)?.stalled).toBe(false);
+    expect(getRun(db, 1, T0 + 37_000)?.stalled).toBe(false);
+  });
+
+  it("calls a run Stalled at once when its lock's lease ran out", () => {
+    const { stuck } = seedStall();
+    const w = new Database(path);
+    w.prepare(
+      "INSERT INTO locks (name, holder, task_run_id, acquired_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("browser", "1:x", stuck, T0 + 30_000, T0 + 31_000);
+    w.close();
+    expect(stalledRuns(db, T0 + 32_000).get(stuck)).toMatchObject({ lease_expired: true });
+  });
+
+  it("filters Stalled runs apart from the ones still running", () => {
+    const { stuck } = seedStall();
+    const ids = (status: "open" | "stalled", now: number) =>
+      listRuns(db, { status }, now).map((r) => r.id);
+    expect(ids("open", T0 + 35_000)).toEqual([stuck]);
+    expect(ids("stalled", T0 + 35_000)).toEqual([]);
+    expect(ids("open", T0 + 37_000)).toEqual([]);
+    expect(ids("stalled", T0 + 37_000)).toEqual([stuck]);
+  });
+
+  it("filters by the shared filter language and counts each facet's values", () => {
+    const { stuck } = seedStall();
+    const now = T0 + 37_000;
+    const tokens = (q: string) => parseRunQuery(q, now).tokens;
+    const ids = (q: string) => listRuns(db, { tokens: tokens(q) }, now).map((r) => r.id);
+    expect(ids("status:stalled")).toEqual([stuck]);
+    expect(ids("task:sync -status:skipped status:stalled")).toEqual([stuck]);
+    expect(ids("origin:editor")).toEqual([5]);
+    // Each facet ignores its own filter, so its counts say what picking a value would show.
+    const facets = facetCounts(db, tokens("task:sync status:stalled"), now);
+    expect(facets.status).toMatchObject({ stalled: 1, skipped: 3, succeeded: 2, failed: 1 });
+    expect(facets.origin).toEqual({ scheduled: 1, editor: 0 });
+  });
+
+  it("buckets runs over time under every filter but the time ones", () => {
+    seedStall();
+    const now = T0 + 37_000;
+    const scrub = runActivity(db, parseRunQuery("task:sync since:1m", now).tokens, now);
+    // Under a minute of history: one-minute buckets, every sync.ts run counted.
+    expect(scrub.bucketMs).toBe(60_000);
+    const totals = scrub.buckets.reduce(
+      (sum, b) => ({
+        ok: sum.ok + b.success,
+        bad: sum.bad + b.failure,
+        skip: sum.skip + b.skipped,
+        other: sum.other + b.other,
+      }),
+      { ok: 0, bad: 0, skip: 0, other: 0 },
+    );
+    expect(totals).toEqual({ ok: 2, bad: 1, skip: 3, other: 1 });
+    expect(
+      runActivity(db, parseRunQuery("task:nothing-like-this", now).tokens, now).buckets,
+    ).toEqual([]);
+  });
+
+  it("links a still-running skip to the run it waited on", () => {
+    const { stuck, skipped } = seedStall();
+    const byId = new Map(listRuns(db, { taskId: 1 }).map((r) => [r.id, r]));
+    expect(byId.get(skipped)?.blocked_by).toBe(stuck);
+    expect(byId.get(1)?.blocked_by).toBeNull();
   });
 });
 
@@ -361,6 +470,10 @@ describe("logs", () => {
       "synced 3 users",
     ]);
     expect(listLogs(db, { runId: 2, lifecycle: true }).map((l) => l.value)[0]).toBe("Task started");
+  });
+
+  it("counts the lines a task wrote itself, across its runs", () => {
+    expect(countTaskLines(db, 1)).toBe(3);
   });
 
   it("names a failed run by the last error the task logged", () => {

@@ -18,7 +18,7 @@ import {
   DEFAULT_ENV_FILE,
 } from "./constants.js";
 import { glob } from "glob";
-import outmatch from "outmatch";
+import { matchTasks } from "./util/matchTasks.js";
 
 const defaults: ConfigFileOptions = {
   dbPath: DEFAULT_DB_PATH,
@@ -76,7 +76,14 @@ export async function readConfig(path: string): Promise<ConfigFileOptions> {
   return normalizeConfig(config);
 }
 
-export async function getRunConfig(rootDir: string, filePathMatch?: string): Promise<CliOptions> {
+/**
+ * The project's config and the tasks to run: every task its `match` covers, or,
+ * when task names are given, the ones they resolve to (see util/matchTasks).
+ */
+export async function getRunConfig(
+  rootDir: string,
+  patterns: readonly string[] = [],
+): Promise<CliOptions> {
   const configFilePath = findConfigFile(rootDir);
 
   if (!configFilePath) {
@@ -92,8 +99,11 @@ export async function getRunConfig(rootDir: string, filePathMatch?: string): Pro
     ignore: ["**/node_modules/**", "**/.git/**", "**/_*", "**/_*/**"],
   });
 
-  const filteredEntryFiles = filePathMatch
-    ? entryFiles.filter(outmatch(filePathMatch, { flags: "i" })) // case insensitive matching by user provided pattern
+  // glob returns paths in no particular order; sort so "the first match" means something.
+  entryFiles.sort();
+  const taskMatches = patterns.map((pattern) => matchTasks(entryFiles, pattern));
+  const filteredEntryFiles = patterns.length
+    ? [...new Set(taskMatches.flatMap((match) => match.paths))]
     : entryFiles;
 
   const envFileAbsPath = join(rootDir, configuration.envFile);
@@ -121,6 +131,7 @@ export async function getRunConfig(rootDir: string, filePathMatch?: string): Pro
     },
     env: await readEnvFile(envFileAbsPath),
     timing: null, // default to no override(read from task files)
+    taskMatches,
   };
 }
 

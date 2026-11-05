@@ -1,4 +1,4 @@
-// The live editor: write a task, run it once in the project's own runtime, and
+// The Editor: write a task, run it once in the project's own runtime, and
 // read what it returned next to what it logged.
 //
 // ngnui does not execute anything. The code goes to the `ngn run` named by
@@ -9,15 +9,24 @@
 // Code and result sit side by side or stacked, per the layout toggle in the top
 // bar. The draft is kept in this browser, so a reload does not lose it.
 
-import { createFileRoute, getRouteApi, Link } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
-import { IconAlert, IconCode, IconPlay, IconRefresh, IconRun } from "~/components/icons";
+import {
+  IconAlert,
+  IconCode,
+  IconPlay,
+  IconRefresh,
+  IconRun,
+  IconSplitSide,
+  IconSplitStacked,
+} from "~/components/icons";
 import { JsonView } from "~/components/json-view";
 import { LogList } from "~/components/log-list";
 import {
   Button,
   Callout,
+  Card,
   CopyButton,
   Empty,
   IconButton,
@@ -25,17 +34,20 @@ import {
   mono,
   Pill,
   RunBadge,
+  RunOutcome,
+  SectionTitle,
   Segmented,
   TabList,
+  table,
 } from "~/components/primitives";
 import { Split } from "~/components/split";
 import { command } from "~/components/states";
-import { formatMs } from "~/lib/format";
+import { formatDateTime, formatMs } from "~/lib/format";
 import type { JsonValue } from "~/lib/json";
-import { usePrefs } from "~/lib/prefs";
+import { useNow, usePrefs } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
-import type { LiveLanguage, LiveRun, LiveStatus, RunPage } from "~/server/api";
-import { getLiveStatus, getRun, runLive } from "~/server/api";
+import type { LiveLanguage, LiveRun, LiveStatus, RunItem, RunPage } from "~/server/api";
+import { getLiveStatus, getRun, getRuns, runLive } from "~/server/api";
 
 const root = getRouteApi("__root__");
 
@@ -43,7 +55,7 @@ const TEMPLATES: Record<LiveLanguage, string> = {
   typescript: `import type { TaskContext } from "@apisurf/ngn";
 
 export const task = async (ctx: TaskContext) => {
-  await ctx.log.info("hello from the live editor");
+  await ctx.log.info("hello from the editor");
 
   const end = ctx.timing.start("work");
   await new Promise((resolve) => setTimeout(resolve, 120));
@@ -53,7 +65,7 @@ export const task = async (ctx: TaskContext) => {
 };
 `,
   javascript: `export const task = async (ctx) => {
-  await ctx.log.info("hello from the live editor");
+  await ctx.log.info("hello from the editor");
   return { now: new Date().toISOString() };
 };
 `,
@@ -66,17 +78,26 @@ interface Draft {
   language: LiveLanguage;
 }
 
+/** Editor runs the page lists. Older ones are under Runs, filtered to the Editor. */
+const RECENT_RUNS = 30;
+
 export const Route = createFileRoute("/live")({
-  loader: () => getLiveStatus(),
+  loader: async () => {
+    const [status, recent] = await Promise.all([
+      getLiveStatus(),
+      getRuns({ data: { origin: "editor", limit: RECENT_RUNS } }),
+    ]);
+    return { status, recent };
+  },
   staleTime: 0,
   component: LivePage,
 });
 
 function LivePage() {
-  useTab({ key: tabKey.live(), title: "Live editor", icon: "live" });
+  useTab({ key: tabKey.live(), title: "Editor", icon: "live" });
   const ws = root.useLoaderData();
-  const initialStatus = Route.useLoaderData();
-  const { prefs } = usePrefs();
+  const { status: initialStatus, recent } = Route.useLoaderData();
+  const { prefs, set } = usePrefs();
   const [status, setStatus] = React.useState<LiveStatus>(initialStatus);
   const [draft, setDraft] = useDraft();
   const [outcome, setOutcome] = React.useState<{ live: LiveRun; run: RunPage | null } | null>(null);
@@ -154,8 +175,20 @@ function LivePage() {
         >
           Template
         </Button>
-        <span className={css({ ml: "auto" })}>
+        <span
+          className={css({ ml: "auto", display: "inline-flex", alignItems: "center", gap: "1" })}
+        >
           <Connection status={status} onProbe={() => void probe()} />
+          <IconButton
+            label={
+              prefs.layout === "side"
+                ? "Stack the code above the result"
+                : "Put the code and the result side by side"
+            }
+            onClick={() => set("layout", prefs.layout === "side" ? "stacked" : "side")}
+          >
+            {prefs.layout === "side" ? <IconSplitSide /> : <IconSplitStacked />}
+          </IconButton>
         </span>
       </div>
       <textarea
@@ -194,6 +227,13 @@ function LivePage() {
 
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "full", minH: "0" })}>
+      <header className={css({ px: "5", pt: "4", pb: "3", flexShrink: 0 })}>
+        <h1 className={css({ fontSize: "18px", fontWeight: "600", m: "0" })}>Editor</h1>
+        <p className={css({ color: "muted", fontSize: "12px", m: "0", mt: "0.5" })}>
+          Run code once in this project's <span className={mono}>ngn run</span>, with its config and
+          env. Each run is recorded as an editor run.
+        </p>
+      </header>
       {status.state !== "up" ? <Offline status={status} dbPath={ws.path} /> : null}
       <div className={css({ flex: "1", minH: "0", display: "flex" })}>
         <Split
@@ -201,7 +241,7 @@ function LivePage() {
           storageKey={`live-${prefs.layout}`}
           initial={0.5}
           first={editorPane}
-          second={<Result outcome={outcome} running={running} />}
+          second={<Result outcome={outcome} running={running} recent={recent} />}
         />
       </div>
     </div>
@@ -233,6 +273,22 @@ function Connection({ status, onProbe }: { status: LiveStatus; onProbe: () => vo
 }
 
 function Offline({ status, dbPath }: { status: LiveStatus; dbPath: string }) {
+  if (status.state === "down" && status.source === "config") {
+    const port = new URL(status.url).port;
+    return (
+      <div className={css({ px: "3", pt: "3", flexShrink: 0 })}>
+        <Callout
+          tone="info"
+          icon={<IconCode size={15} />}
+          title={`No ngn run for this project on port ${port || status.url}`}
+        >
+          The editor sends code to the project's own <span className={mono}>ngn run</span> to
+          execute. Start it in the project folder and check again: ngnui found its port in{" "}
+          <span className={mono}>ngn.config.ts</span>. ({status.error})
+        </Callout>
+      </div>
+    );
+  }
   return (
     <div className={css({ px: "3", pt: "3", flexShrink: 0 })}>
       {status.state === "down" ? (
@@ -242,7 +298,7 @@ function Offline({ status, dbPath }: { status: LiveStatus; dbPath: string }) {
           title={`ngn run at ${status.url} ${status.error}`}
         >
           The editor sends code to that process to execute. Start it again in the project, or
-          restart ngnui with the <span className={mono}>live</span> URL it prints.
+          restart ngnui with the <span className={mono}>--live</span> URL it prints.
         </Callout>
       ) : (
         <Callout
@@ -251,8 +307,8 @@ function Offline({ status, dbPath }: { status: LiveStatus; dbPath: string }) {
           title="The editor needs a running ngn run"
         >
           ngnui only reads; running a task takes the project's compiler, config and env, which live
-          in <span className={mono}>ngn run</span>. It prints the command to connect the two when it
-          starts:
+          in <span className={mono}>ngn run</span>. Start ngnui from the project folder and it finds
+          the runtime itself, or point it at one:
           <code className={cx(command, css({ mt: "2" }))}>
             {`ngnui --db ${dbPath} --live http://127.0.0.1:4545`}
           </code>
@@ -262,26 +318,39 @@ function Offline({ status, dbPath }: { status: LiveStatus; dbPath: string }) {
   );
 }
 
-type ResultTab = "result" | "logs";
+type ResultTab = "result" | "logs" | "recent";
 
 function Result({
   outcome,
   running,
+  recent,
 }: {
   outcome: { live: LiveRun; run: RunPage | null } | null;
   running: boolean;
+  recent: RunItem[];
 }) {
   const [tab, setTab] = React.useState<ResultTab>("result");
 
   if (!outcome) {
     return (
-      <Empty
-        title={running ? "Running…" : "Run the task to see what it returns"}
-        icon={<IconPlay size={22} />}
-      >
-        It runs once, in the process <span className={mono}>ngn run</span> is, and is recorded like
-        any other task — with its logs and timings.
-      </Empty>
+      <div className={css({ display: "flex", flexDir: "column", h: "full", minH: "0" })}>
+        {/* Centred in the pane alone; above the recent runs when there are some. */}
+        <div className={recent.length ? css({ flexShrink: 0 }) : css({ flex: "1", minH: "0" })}>
+          <Empty
+            title={running ? "Running…" : "Run the task to see what it returns"}
+            icon={<IconPlay size={22} />}
+          >
+            It runs once, in the process <span className={mono}>ngn run</span> is, and is recorded
+            as an editor run — with its logs and timings.
+          </Empty>
+        </div>
+        {recent.length ? (
+          <div className={css({ flex: "1", minH: "0", overflow: "auto", px: "3", pb: "3" })}>
+            <SectionTitle>Recent runs</SectionTitle>
+            <RecentRuns runs={recent} />
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -303,6 +372,7 @@ function Result({
         items={[
           { id: "result", label: "Result" },
           { id: "logs", label: "Logs", count: logCount, hidden: !run },
+          { id: "recent", label: "Recent runs", count: recent.length, hidden: !recent.length },
         ]}
         value={tab}
         onSelect={setTab}
@@ -331,12 +401,66 @@ function Result({
           </>
         }
       />
-      {tab === "logs" && run ? (
+      {tab === "recent" ? (
+        <div className={css({ flex: "1", minH: "0", overflow: "auto", p: "3" })}>
+          <RecentRuns runs={recent} />
+        </div>
+      ) : tab === "logs" && run ? (
         <LogList logs={run.logs} start={run.run.started_at} empty="The task logged nothing" />
       ) : (
         <ResultBody live={live} run={run} />
       )}
     </div>
+  );
+}
+
+/** Editor runs, newest first, each opening its run page. */
+function RecentRuns({ runs }: { runs: RunItem[] }) {
+  const now = useNow(Date.now(), 60_000);
+  const navigate = useNavigate();
+  return (
+    <Card>
+      <table className={table}>
+        <thead>
+          <tr>
+            <th>Sent</th>
+            <th>Result</th>
+            <th className="num">Duration</th>
+            <th className="num">Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr
+              key={run.id}
+              data-link
+              onClick={() =>
+                void navigate({
+                  to: "/tasks/$taskId/runs/$runId",
+                  params: { taskId: String(run.task_id), runId: String(run.id) },
+                })
+              }
+            >
+              <td className={css({ color: "muted", whiteSpace: "nowrap" })}>
+                {formatDateTime(now, run.at)}
+              </td>
+              <td>
+                <RunOutcome run={run} />
+              </td>
+              <td className={cx("num", mono)}>{formatMs(run.duration_ms)}</td>
+              <td className={cx("num", mono)}>#{run.id}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={css({ m: "0", px: "3", py: "2", color: "faint", fontSize: "12px" })}>
+        Older ones are under{" "}
+        <Link to="/runs" search={{ q: "origin:editor" }}>
+          Runs
+        </Link>
+        .
+      </p>
+    </Card>
   );
 }
 

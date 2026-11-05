@@ -38,6 +38,14 @@ interface TickAttempts {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The run each error a task threw was recorded under, for whoever reports it. */
+const failedRuns = new WeakMap<object, number>();
+
+/** The `task_runs.id` of the run that threw `error`, when a task run did. */
+export function failedRunId(error: unknown): number | null {
+  return error && typeof error === "object" ? (failedRuns.get(error) ?? null) : null;
+}
+
 export class Task {
   private taskCallbacks: CompiledTaskCallbacks | undefined;
   private startRun: TaskConfig["startRun"];
@@ -207,6 +215,7 @@ export class Task {
       await hooks.onSuccess?.(taskContext);
       return taskReturnValue;
     } catch (err) {
+      if (err && typeof err === "object") failedRuns.set(err, run.id);
       await run.callbacks.onFailure?.({ path });
       await hooks.onError?.(err as Error, taskContext);
       throw err;

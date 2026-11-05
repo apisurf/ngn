@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { css, cx } from "styled-system/css";
 import { formatClock, formatMs, plural } from "~/lib/format";
 import type { Tone } from "~/lib/ngn";
-import { runLabel, runTone } from "~/lib/ngn";
+import { runLabel, runStateLabel, runTone } from "~/lib/ngn";
 import type { ActivityBucket, RunRow } from "~/server/api";
 import { Card, TONE_BAR } from "./primitives";
 
@@ -31,7 +31,7 @@ export function DurationStrip({ runs }: { runs: RunRow[] }) {
           <button
             key={run.id}
             type="button"
-            title={`#${run.id} · ${runLabel(run.status)}${run.duration_ms != null ? ` · ${formatMs(run.duration_ms)}` : ""}`}
+            title={`#${run.id} · ${runStateLabel(run.status, run.stalled)}${run.duration_ms != null ? ` · ${formatMs(run.duration_ms)}` : ""}`}
             onClick={() =>
               void navigate({
                 to: "/tasks/$taskId/runs/$runId",
@@ -56,7 +56,7 @@ export function DurationStrip({ runs }: { runs: RunRow[] }) {
             <span
               className={cx(
                 css({ display: "block", w: "full", roundedTop: "sm" }),
-                TONE_BAR[runTone(run.status)],
+                TONE_BAR[runTone(run.status, run.stalled)],
               )}
               style={{ height: `${Math.max((durations[i]! / max) * 100, 3)}%` }}
             />
@@ -75,17 +75,21 @@ export function DurationStrip({ runs }: { runs: RunRow[] }) {
       >
         <span>max {formatMs(max)}</span>
         {/* Only the colours the strip actually uses. */}
-        {[...new Set(shown.map((run) => run.status))]
+        {[...new Set(shown.map((run) => (run.stalled ? "stalled" : run.status)))]
           .toSorted((a, b) => STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b))
-          .map((status) => (
-            <Legend key={status} tone={runTone(status)} label={runLabel(status)} />
+          .map((state) => (
+            <Legend
+              key={state}
+              tone={runTone(state, state === "stalled")}
+              label={runStateLabel(state, state === "stalled")}
+            />
           ))}
       </div>
     </Card>
   );
 }
 
-const STATUS_ORDER = ["success", "failure", "skipped", "running", "pending"];
+const STATUS_ORDER = ["success", "failure", "skipped", "running", "pending", "stalled"];
 
 export function Legend({ tone, label }: { tone: Tone; label: string }) {
   return (

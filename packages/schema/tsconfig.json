@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    // The describe module uses Array#findLastIndex and friends; Node 20 has them.
+    "lib": ["ES2023"],
     "outDir": "./dist",
     "rootDir": "./src"
   },

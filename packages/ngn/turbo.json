@@ -5,7 +5,8 @@
       "dependsOn": [
         "@apisurf/ngn-core#build",
         "@apisurf/ngn-os#build",
-        "@apisurf/ngn-persistence#build"
+        "@apisurf/ngn-persistence#build",
+        "@apisurf/ngn-schema#build"
       ],
       "outputs": ["dist/**"]
     },
@@ -13,7 +14,8 @@
       "dependsOn": [
         "@apisurf/ngn-core#build",
         "@apisurf/ngn-os#build",
-        "@apisurf/ngn-persistence#build"
+        "@apisurf/ngn-persistence#build",
+        "@apisurf/ngn-schema#build"
       ],
       "persistent": true,
       "cache": false

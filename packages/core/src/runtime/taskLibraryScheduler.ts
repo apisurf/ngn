@@ -1,36 +1,51 @@
 import { Cron } from "croner";
 import invariant from "tiny-invariant";
 import { logTaskLibraryScheduler, logTaskLibrarySchedulerError } from "@apisurf/ngn-os";
-import { Task } from "./task.js";
+import { failedRunId, Task } from "./task.js";
 import { TaskLibrary } from "./taskLibrary.js";
 import { isCronPatternValid, scheduleTask } from "./schedule.js";
 
 type Options = {
   taskLibrary: TaskLibrary;
+  /** Called when a scheduled run throws, with the run it was recorded as when there is one. */
+  onRunError?: (path: string, error: unknown, runId: number | null) => void;
 };
+
+/** What `start()` did with each task: scheduled on its pattern, or left out and why. */
+export interface ScheduleReport {
+  scheduled: { path: string; pattern: string }[];
+  failed: { path: string; reason: string }[];
+}
 
 export class TaskLibraryScheduler {
   private taskLibrary: TaskLibrary;
+  private onRunError: Options["onRunError"];
   private scheduledTasks: Map<string, Cron> = new Map();
 
   constructor(options: Options) {
     this.taskLibrary = options.taskLibrary;
+    this.onRunError = options.onRunError;
   }
 
-  async start() {
+  async start(): Promise<ScheduleReport> {
     logTaskLibraryScheduler("Starting scheduler");
+    const report: ScheduleReport = { scheduled: [], failed: [] };
     const scheduledTasks = this.taskLibrary.getTasks().map(async (task) => {
       try {
-        const res = await this.scheduleTask(task);
-        return res;
+        await this.scheduleTask(task);
+        report.scheduled.push({ path: task.taskPath, pattern: task.timingPattern ?? "" });
       } catch (error) {
         logTaskLibrarySchedulerError(`Error scheduling task: ${task.taskPath}`);
         logTaskLibrarySchedulerError(error);
+        report.failed.push({ path: task.taskPath, reason: reasonOf(error, task.taskPath) });
       }
     });
 
     await Promise.all(scheduledTasks);
     logTaskLibraryScheduler("Scheduler started");
+    report.scheduled.sort(byPath);
+    report.failed.sort(byPath);
+    return report;
   }
 
   async stop() {
@@ -59,6 +74,7 @@ export class TaskLibraryScheduler {
     const scheduledTask = scheduleTask(task, task.timingPattern, (error) => {
       logTaskLibrarySchedulerError(`Run failed: ${task.taskPath}`);
       logTaskLibrarySchedulerError(error);
+      this.onRunError?.(task.taskPath, error, failedRunId(error));
     });
     this.scheduledTasks.set(task.taskPath, scheduledTask);
     logTaskLibraryScheduler(`Scheduled: ${task.taskPath}`);
@@ -96,4 +112,17 @@ export class TaskLibraryScheduler {
   //   }
   //   task.stop();
   // }
+}
+
+function byPath(a: { path: string }, b: { path: string }) {
+  return a.path.localeCompare(b.path);
+}
+
+/** An error as a short reason: without tiny-invariant's prefix or the task's own path. */
+function reasonOf(error: unknown, path: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/^Invariant failed: /, "")
+    .replace(` for ${path}`, "")
+    .replace(`: ${path}`, "");
 }

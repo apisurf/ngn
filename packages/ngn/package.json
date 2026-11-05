@@ -1,6 +1,6 @@
 {
   "name": "@apisurf/ngn",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "type": "module",
   "bin": {
     "ngn": "dist/cli.js"
@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run"
   },
   "author": "Luka Vidakovic",
   "description": "CLI scheduler for Node tasks. Automate and monitor Javascript and Typescript tasks.",
@@ -34,6 +35,7 @@
     "@apisurf/ngn-core": "workspace:*",
     "@apisurf/ngn-os": "workspace:*",
     "@apisurf/ngn-persistence": "workspace:*",
+    "@apisurf/ngn-schema": "workspace:*",
     "@hono/node-server": "^1.18.1",
     "commander": "^12.1.0",
     "glob": "^11.0.3",
@@ -45,7 +47,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/node": "^22.8.1"
+    "@types/node": "^22.8.1",
+    "vitest": "4.1.8"
   },
   "exports": {
     ".": {

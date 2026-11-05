@@ -10,7 +10,11 @@ import {
   getDbClient,
   closeTaskDatabases,
 } from "@apisurf/ngn-core";
+import { existsSync } from "node:fs";
 import { CliOptions } from "../types.js";
+import { getRunConfig } from "../config.js";
+import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
+import { describeDbPath } from "../util/dbPath.js";
 import {
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
@@ -47,10 +51,41 @@ async function getSingleTaskConfig(rootDir: string, filePath: string): Promise<C
     },
     env: {}, // No environment variables loaded
     timing: null,
+    taskMatches: [],
   };
 }
 
-export const runSingle = async (filePath: string, options: { root?: string; timing: string }) => {
+/**
+ * One task on a pattern of the caller's choosing, with everything else the
+ * project's: its config, env and database, so its runs are recorded like any
+ * other. The task is found the way `ngn run` finds one; a file outside the
+ * config's `match` is taken by its path. Null (after reporting) when the name
+ * fits several tasks or nothing at all.
+ */
+async function getConfiguredTaskConfig(
+  rootDir: string,
+  filePath: string,
+): Promise<CliOptions | null> {
+  const config = await getRunConfig(rootDir, [filePath]);
+  const match = config.taskMatches[0]!;
+  if (match.paths.length === 1) return config;
+  if (match.paths.length > 1) {
+    console.error(describeAmbiguous(match));
+    return null;
+  }
+  const descriptor = createFileDescriptor({ rootDir, path: filePath });
+  if (!existsSync(descriptor.path.absolute)) {
+    console.error(describeNoMatch(match));
+    return null;
+  }
+  const sourcePath = descriptor.path.absolute;
+  return { ...config, sourcePaths: [sourcePath], descriptors: { [sourcePath]: descriptor } };
+}
+
+export const runSingle = async (
+  filePath: string,
+  options: { root?: string; timing: string; config?: boolean },
+) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
 
   // Bad input from the caller, not a broken invariant: report it without a stack.
@@ -63,7 +98,15 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
     return;
   }
 
-  const config = await getSingleTaskConfig(rootDirAbs, filePath);
+  // `--no-config` is the old run:single: nothing loaded, nothing recorded.
+  const config =
+    options.config === false
+      ? await getSingleTaskConfig(rootDirAbs, filePath)
+      : await getConfiguredTaskConfig(rootDirAbs, filePath);
+  if (!config) {
+    process.exitCode = 1;
+    return;
+  }
   let scheduledTask: ReturnType<typeof scheduleTask> | null = null;
 
   try {
@@ -102,7 +145,10 @@ export const runSingle = async (filePath: string, options: { root?: string; timi
       console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
     });
 
-    console.log(`scheduled ${filePath} on ${options.timing}  (Ctrl-C to stop)`);
+    const db = describeDbPath(config.configFileOptions.dbPath);
+    console.log(
+      `scheduled ${filePath} on ${options.timing}, recording to ${db.absolute ?? ":memory: (kept nowhere)"}  (Ctrl-C to stop)`,
+    );
   } catch (error) {
     console.error(`ngn: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

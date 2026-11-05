@@ -51,8 +51,8 @@ import {
   plural,
 } from "~/lib/format";
 import { parseStructured } from "~/lib/json";
-import type { SkipCause } from "~/lib/ngn";
 import {
+  failureTitle,
   hooksOf,
   isLifecycle,
   isOpen,
@@ -61,19 +61,27 @@ import {
   readSkip,
   runLabel,
   runTone,
+  SKIP_TITLES,
 } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
+import { hasContent, pickRunTab, RUN_TABS, type RunContent, type RunTab } from "~/lib/run-tabs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type { LogRow, RunPage as RunPageData, TimingRow } from "~/server/api";
 import { getRun } from "~/server/api";
 
-type RunTab = "timeline" | "logs" | "timings" | "result" | "details";
-const TABS: ReadonlySet<string> = new Set(["logs", "timings", "result", "details"]);
+const TABS: ReadonlySet<string> = new Set(RUN_TABS);
+const asTab = (value: unknown): RunTab | undefined =>
+  TABS.has(value as string) ? (value as RunTab) : undefined;
 
 export const Route = createFileRoute("/tasks/$taskId/runs/$runId")({
-  validateSearch: (search: Record<string, unknown>): { tab?: RunTab; log?: number } => ({
-    // "timeline" is the default, so it never appears in the URL.
-    tab: TABS.has(search.tab as string) ? (search.tab as RunTab) : undefined,
+  // `tab` is one picked by name. `prefer` is the tab the previous run was on,
+  // carried by `[` and `]`, and only kept when this run has something there.
+  // With neither, the run opens on its own most useful tab.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: RunTab; prefer?: RunTab; log?: number } => ({
+    tab: asTab(search.tab),
+    prefer: asTab(search.prefer),
     log: typeof search.log === "number" && Number.isInteger(search.log) ? search.log : undefined,
   }),
   loader: async ({ params, location }) => {
@@ -96,14 +104,26 @@ export const Route = createFileRoute("/tasks/$taskId/runs/$runId")({
 function RunPage() {
   const page = Route.useLoaderData();
   const { run, logs, timings, neighbours } = page;
-  const { tab = "timeline", log } = Route.useSearch();
+  const search = Route.useSearch();
+  const { log } = search;
   const navigate = useNavigate({ from: Route.fullPath });
   useTab({
     key: tabKey.run(run.id),
-    title: `${run.live ? "Live editor" : run.file} #${run.id}`,
+    title: `${run.editor ? "Editor run" : run.file} #${run.id}`,
     icon: "run",
     failed: run.status === "failure",
   });
+
+  const taskLines = logs.filter((l) => !isLifecycle(l.value));
+  const problems = taskLines.filter((l) => logLevel(l.status) !== "info").length;
+  const start = run.started_at ?? run.created_at;
+  const content: RunContent = {
+    failed: run.status === "failure",
+    taskLines: taskLines.length,
+    timings: timings.length,
+    hasResult: page.result != null,
+  };
+  const tab = pickRunTab(content, search.tab, search.prefer);
 
   // Walk the task's runs without leaving the pane being read.
   const go = React.useCallback(
@@ -112,10 +132,10 @@ function RunPage() {
       void navigate({
         to: "/tasks/$taskId/runs/$runId",
         params: (p) => ({ ...p, runId: String(id) }),
-        search: (s) => ({ tab: s.tab }),
+        search: { prefer: tab },
       });
     },
-    [navigate],
+    [navigate, tab],
   );
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -128,32 +148,37 @@ function RunPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [go, neighbours.prev, neighbours.next]);
 
-  const taskLines = logs.filter((l) => !isLifecycle(l.value));
-  const problems = taskLines.filter((l) => logLevel(l.status) !== "info").length;
-  const start = run.started_at ?? run.created_at;
-
   return (
     <>
       <RunHeader page={page} go={go} />
 
       <TabList
         items={[
-          { id: "timeline", label: "Timeline", count: taskLines.length + timings.length },
+          {
+            id: "timeline",
+            label: "Timeline",
+            count: taskLines.length + timings.length,
+            empty: !hasContent("timeline", content),
+          },
           {
             id: "logs",
             label: "Logs",
             count: taskLines.length,
             tone: run.error_count ? "bad" : problems ? "warn" : undefined,
+            empty: !hasContent("logs", content),
           },
-          { id: "timings", label: "Timings", count: timings.length },
-          ...(page.result != null ? [{ id: "result" as const, label: "Result" }] : []),
+          {
+            id: "timings",
+            label: "Timings",
+            count: timings.length,
+            empty: !hasContent("timings", content),
+          },
+          { id: "result", label: "Result", empty: !hasContent("result", content) },
           { id: "details", label: "Details" },
         ]}
         dense
         value={tab}
-        onSelect={(next) =>
-          void navigate({ search: { tab: next === "timeline" ? undefined : next } })
-        }
+        onSelect={(next) => void navigate({ search: { tab: next } })}
       />
 
       {tab === "timeline" ? <TimelineTab page={page} /> : null}
@@ -226,20 +251,11 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
           fontSize: "13px",
         })}
       >
-        <Link
-          to="/tasks/$taskId"
-          params={{ taskId }}
-          className={subtleLink}
-          title="Back to the task's runs"
-        >
-          <IconChevronLeft size={14} />
-          Runs
-        </Link>
-        <span className={css({ color: "faint" })}>/</span>
+        {/* The way back up is the breadcrumb above. */}
         <h2 className={css({ fontFamily: "mono", fontSize: "14px", fontWeight: "600", m: "0" })}>
           #{run.id}
         </h2>
-        <RunBadge status={run.status} pill />
+        <RunBadge status={run.status} stalled={run.stalled} pill />
         <span className={css({ color: "muted", fontSize: "12px" })}>
           {formatDateTime(now, run.at)}
         </span>
@@ -334,7 +350,9 @@ function Attempts({ page }: { page: RunPageData }) {
 /** Why a run is not simply a success, when it is not. */
 function RunCallout({ page }: { page: RunPageData }) {
   if (page.run.status === "failure") return <FailureCallout page={page} />;
-  if (page.run.status === "skipped") return <SkipCallout reason={page.run.skip_reason} />;
+  if (page.run.status === "skipped") {
+    return <SkipCallout reason={page.run.skip_reason} blockedBy={page.run.blocked_by} />;
+  }
   if (isOpen(page.run.status)) return <OpenCallout page={page} />;
   return null;
 }
@@ -344,11 +362,7 @@ function FailureCallout({ page }: { page: RunPageData }) {
   const hasOnError = hooksOf(code?.compiled_code).includes("onError");
   const retried = attempts.some((a) => a.id > run.id);
   const recovered = attempts[attempts.length - 1]?.status === "success";
-  const title = retried
-    ? `Try ${run.attempt} of ${attempts.length} failed — ${recovered ? "a retry succeeded" : "retried"}`
-    : attempts.length > 1
-      ? `Failed after ${attempts.length} tries`
-      : "The task failed";
+  const title = failureTitle(run, attempts);
   return (
     <Callout
       tone={retried && recovered ? "warn" : "bad"}
@@ -369,10 +383,10 @@ function FailureCallout({ page }: { page: RunPageData }) {
   );
 }
 
-function SkipCallout({ reason }: { reason: string | null }) {
+function SkipCallout({ reason, blockedBy }: { reason: string | null; blockedBy: number | null }) {
   const skip = readSkip(reason);
   return (
-    <Callout tone="neutral" icon={<IconSkip size={15} />} title={SKIP_TITLE[skip.cause]}>
+    <Callout tone="neutral" icon={<IconSkip size={15} />} title={SKIP_TITLES[skip.cause]}>
       {skip.cause === "shouldSkip" ? (
         <>
           The task's <span className={mono}>shouldSkip</span> returned true, so neither the task nor
@@ -380,8 +394,17 @@ function SkipCallout({ reason }: { reason: string | null }) {
         </>
       ) : skip.cause === "overlap" ? (
         <>
-          The previous run was still going when this tick fired. Export{" "}
-          <span className={mono}>overlap = "allow"</span> to start one beside it instead.
+          {blockedBy != null ? (
+            <>
+              <Link to="/runs/$runId" params={{ runId: String(blockedBy) }}>
+                Run #{blockedBy}
+              </Link>{" "}
+              was still going when this tick fired.
+            </>
+          ) : (
+            "The previous run was still going when this tick fired."
+          )}{" "}
+          Export <span className={mono}>overlap = "allow"</span> to start one beside it instead.
         </>
       ) : skip.cause === "breaker" ? (
         <>
@@ -401,13 +424,29 @@ function SkipCallout({ reason }: { reason: string | null }) {
 }
 
 function OpenCallout({ page }: { page: RunPageData }) {
-  const { run, locks } = page;
+  const { run, locks, stall } = page;
   const now = useNow(Date.now(), 5_000);
+  if (stall && !stall.lease_expired) {
+    return (
+      <Callout tone="warn" icon={<IconClock size={15} />} title="Stalled — no end recorded">
+        It started {formatAgo(now, stall.started_at)} and should have finished within{" "}
+        {formatMs(stall.window_ms)}, the longer of its budget and its schedule. The process running
+        it most likely stopped before it could record an end; ngn will not record one now.
+        {stall.skipped_since ? (
+          <>
+            {" "}
+            It has held back {plural(stall.skipped_since, "tick")} since, each skipped as still
+            running. Restarting <span className={mono}>ngn run</span> lets the next tick through.
+          </>
+        ) : null}
+      </Callout>
+    );
+  }
   // A lease is renewed while its run is alive, so one that ran out says the process stopped.
   const stale = locks.filter((lock) => lock.expires_at <= now);
   if (stale.length) {
     return (
-      <Callout tone="warn" icon={<IconClock size={15} />} title="No end recorded — likely stopped">
+      <Callout tone="warn" icon={<IconClock size={15} />} title="Stalled — its lock was let go">
         Its lock <span className={mono}>{stale.map((l) => l.name).join(", ")}</span> stopped being
         renewed {formatAgo(now, Math.min(...stale.map((l) => l.expires_at)))}, which happens when
         the process running it exits. ngn will not record an end for it.
@@ -423,60 +462,75 @@ function OpenCallout({ page }: { page: RunPageData }) {
           and holds <span className={mono}>{locks.map((l) => l.name).join(", ")}</span>
         </>
       ) : null}
-      , or the process running it stopped before it could record an end. Turn on <b>Live</b> to
+      , or the process running it stopped before it could record an end. Turn on <b>Follow</b> to
       follow it.
     </Callout>
   );
 }
 
-const SKIP_TITLE: Record<SkipCause, string> = {
-  shouldSkip: "Skipped by shouldSkip",
-  overlap: "Skipped — the previous run was still going",
-  breaker: "Skipped — circuit open",
-  lock: "Skipped — a lock was busy",
-  other: "Skipped",
-};
-
 function RunStats({ page }: { page: RunPageData }) {
   const { run, timings } = page;
-  const now = useNow(Date.now(), 1000);
-  const running = isOpen(run.status) && run.started_at != null ? now - run.started_at : null;
   const taskLines = page.logs.filter((l) => !isLifecycle(l.value));
-  const warns = taskLines.filter((l) => logLevel(l.status) === "warn").length;
-  const timed = timings.reduce((sum, t) => sum + t.value, 0);
-  const noisy = run.error_count > 0 || warns > 0;
+  // What the run did not record goes in one quiet line, not a card of zeros.
+  const nothing = [
+    taskLines.length ? null : "no log lines",
+    timings.length ? null : "no ctx.timing calls",
+  ].filter(Boolean);
 
   return (
-    <StatGrid>
-      <Stat
-        label="Duration"
-        value={formatMs(run.duration_ms ?? running)}
-        sub={
-          run.duration_ms != null ? "start to end" : running != null ? "so far" : "never started"
-        }
-        tone={running != null ? "info" : undefined}
-      />
-      <Stat
-        label="Logs"
-        value={formatCount(taskLines.length)}
-        tone={run.error_count ? "bad" : warns ? "warn" : undefined}
-        sub={
-          noisy
-            ? `${plural(warns, "warning")} · ${plural(run.error_count, "error")}`
-            : "no warnings or errors"
-        }
-      />
-      <Stat
-        label="Timed spans"
-        value={formatCount(timings.length)}
-        sub={timings.length ? `${formatMs(timed)} in total` : "no ctx.timing calls"}
-      />
-      <Stat
-        label="Started"
-        value={run.started_at != null ? formatClockMs(run.started_at).slice(0, 8) : "—"}
-        sub={run.ended_at != null ? `ended ${formatClockMs(run.ended_at)}` : "no end recorded"}
-      />
-    </StatGrid>
+    <>
+      <StatGrid>
+        <DurationStat run={run} />
+        {taskLines.length ? <LogsStat run={run} lines={taskLines} /> : null}
+        {timings.length ? (
+          <Stat
+            label="Timed spans"
+            value={formatCount(timings.length)}
+            sub={`${formatMs(timings.reduce((sum, t) => sum + t.value, 0))} in total`}
+          />
+        ) : null}
+        <Stat
+          label="Started"
+          value={run.started_at != null ? formatClockMs(run.started_at).slice(0, 8) : "—"}
+          sub={run.ended_at != null ? `ended ${formatClockMs(run.ended_at)}` : "no end recorded"}
+        />
+      </StatGrid>
+      {nothing.length ? (
+        <p className={css({ m: "0", color: "faint", fontSize: "12px" })}>
+          {nothing.join(" · ").replace(/^n/, "N")}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function DurationStat({ run }: { run: RunPageData["run"] }) {
+  const now = useNow(Date.now(), 1000);
+  const running = isOpen(run.status) && run.started_at != null ? now - run.started_at : null;
+  return (
+    <Stat
+      label="Duration"
+      value={formatMs(run.duration_ms ?? running)}
+      sub={run.duration_ms != null ? "start to end" : running != null ? "so far" : "never started"}
+      tone={run.stalled ? "warn" : running != null ? "info" : undefined}
+    />
+  );
+}
+
+function LogsStat({ run, lines }: { run: RunPageData["run"]; lines: LogRow[] }) {
+  const warns = lines.filter((l) => logLevel(l.status) === "warn").length;
+  const noisy = run.error_count > 0 || warns > 0;
+  return (
+    <Stat
+      label="Logs"
+      value={formatCount(lines.length)}
+      tone={run.error_count ? "bad" : warns ? "warn" : undefined}
+      sub={
+        noisy
+          ? `${plural(warns, "warning")} · ${plural(run.error_count, "error")}`
+          : "no warnings or errors"
+      }
+    />
   );
 }
 

@@ -60,7 +60,7 @@ export function useUnreadable(): React.ReactNode {
         <p className={css({ m: "0" })}>
           ngnui is reading <span className={mono}>{ws.path}</span>, which has nothing in it yet.
           Start the scheduler with <span className={mono}>dbPath</span> pointing at this file and
-          runs appear here — turn on <b>Live</b> to watch them land.
+          runs appear here — turn on <b>Follow</b> to watch them land.
         </p>
         <code className={command}>ngn run</code>
       </Empty>

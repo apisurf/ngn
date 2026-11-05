@@ -9,7 +9,7 @@ import { getRunConfig } from "../config.js";
  */
 export const compile = async (options: { root?: string; match?: string }) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
-  const config = await getRunConfig(rootDirAbs, options.match);
+  const config = await getRunConfig(rootDirAbs, options.match ? [options.match] : []);
 
   try {
     const compiler = new Compiler({

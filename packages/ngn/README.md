@@ -26,12 +26,17 @@ Cheat sheet:
 
 ```bash
 ngn --version # check current version
-ngn init # initialize ngn inside current folder
+ngn init # initialize ngn inside current folder (runs are kept in ./ngn.sqlite)
 ngn add test.ts # add a task file
 ngn run # start running all tasks (blocks until Ctrl-C)
-ngn run --match "tasks/test.ts" # run a subset — match the path, and quote the glob
-ngn run:once tasks/test.ts # run one task now, then exit
-ngn run:single tasks/test.ts -t "*/2 * * * * *" # schedule one task on your own pattern
+ngn run test.ts # run a subset: task names, or quoted globs
+ngn run test.ts --once # run one task now, then exit
+ngn run test.ts -t "*/2 * * * * *" # schedule one task on your own pattern
+ngn status # is anything wrong: the verdict, then each task's health
+ngn runs --status failed --since 24h # run history, filtered
+ngn show 41 # one run: why, its logs, timings and result
+ngn logs scrape --level warn # a task's log lines across its runs
+ngn ui # open the dashboard on this project (ngn ui 41 opens run 41)
 ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20" # query a run history
 ```
 
@@ -250,7 +255,7 @@ export const task = async (ctx: TaskContext) => {
 
 The deadline is a tenth of the period before the next tick, and never more than
 five seconds before it. `export const budget = "2m"` brings it closer.
-`ngn run:once` has no next tick, so it gets a deadline only from a budget. The
+`ngn run --once` has no next tick, so it gets a deadline only from a budget. The
 signal is a request: ngn does not stop a run that ignores it.
 
 ### When a run fails
@@ -277,7 +282,7 @@ through; if that fails too it skips two, then four, up to `maxSkip` (32 by
 default). One tick that succeeds closes it. Skipped ticks are recorded with
 `skip_reason = 'circuit open after repeated failures'`. The streak is read from
 the run history, so restarting `ngn run` does not reset it. Only scheduled ticks
-are held back: `ngn run:once` always runs.
+are held back: `ngn run --once` always runs.
 
 ## Queues
 
@@ -426,7 +431,7 @@ shows a queue from the terminal.
 ## Keeping tasks out of each other's way
 
 Two tasks that must not work on the same thing at once can share a lock, by
-name. Locks live in ngn's database, so they also hold against `ngn run:once` in
+name. Locks live in ngn's database, so they also hold against `ngn run --once` in
 a second terminal.
 
 ```ts
@@ -452,8 +457,8 @@ time it throws a `LockBusyError`; check `error.name === "LockBusyError"`.
 ## Reading what your tasks did
 
 Runs, logs and timings go into one SQLite file — whatever `dbPath` in
-`ngn.config.ts` points at. Set it to a `file:` URL; the default (`:memory:`)
-keeps nothing once the process exits.
+`ngn.config.ts` points at. `ngn init` writes `file:./ngn.sqlite`. A config
+without `dbPath`, or with `":memory:"`, keeps nothing once the process exits.
 
 ```ts
 // ngn.config.ts
@@ -467,12 +472,28 @@ export default defineConfig({
 });
 ```
 
-There are two ways to read that file, and neither needs the scheduler running.
+There are three ways to read that file, and none needs the scheduler running.
 
-**From the terminal** — `ngn sql` takes any query SQLite accepts and prints a
+**With the read commands** — the same answers ngnui gives, in the same words,
+with `--json` on each for scripts and agents:
+
+```bash
+ngn status                                  # verdict + one row per task; exits 2 if unhealthy
+ngn runs "task:extract status:failed since:24h"   # or --task, --status, --since…
+ngn show 41                                 # why it failed or skipped, then logs, timings, result
+ngn logs extract --level warn               # a task's lines across runs, or a run's by id
+```
+
+`ngn runs` takes the filter language ngnui's Runs page uses: `key:value` tokens
+(`task`, `status`, `origin`, `since`, `until`, `version`), a leading `-` to
+exclude, and plain words to match task paths. A run that has no end and is long
+past its window reads as **Stalled** in all of them. When a scheduled run fails,
+`ngn run` prints `failed  tasks/x.ts #41 → ngn show 41`.
+
+**From the terminal, in SQL** — `ngn sql` takes any query SQLite accepts and prints a
 table, or `--json` / `--csv`. Rows go to stdout and counts to stderr, so piping
 into `jq` works. It opens the file without migrating it, so a query can never
-change the schema. `ngn sql --help` lists the tables and their columns.
+change the schema. `ngn help schema` (or `ngn sql --help`) lists the tables and their columns.
 
 ```bash
 ngn sql "SELECT status, COUNT(*) FROM task_runs GROUP BY status"
@@ -484,13 +505,27 @@ ngn sql "SELECT id, skip_reason FROM task_runs WHERE status = 'skipped' ORDER BY
 is a separate CLI that serves a prebuilt dashboard over the same file:
 
 ```bash
-npx @apisurf/ngnui --db ./ngn.sqlite
+ngn ui        # the project's own ngnui, else one on PATH, else npx
+ngn ui 41     # straight to run 41
 ```
 
-`ngn run` prints the exact command for your project when it starts. The live
-task editor in that UI needs a runtime to execute against, which only a running
-`ngn run` has — pass `--live http://127.0.0.1:4545` (or whatever `port` is set
-to in your config) to connect the two.
+It starts in the project folder with the database chosen. The editor in that UI
+needs a runtime to execute against, which only a running `ngn run` has; ngnui
+finds it on the config's `port` and connects whenever one is up.
+
+## Upgrading from 0.2.9
+
+- **`ngn init` writes `dbPath: "file:./ngn.sqlite"`** instead of `":memory:"`,
+  so a new project keeps its runs and `ngn sql` and ngnui have something to read.
+  Existing configs are not touched. Pass `--db :memory:` to get the old default.
+- **One `run` command.** `ngn run <task> --once` is what `ngn run:once` was, and
+  `ngn run <file> --timing <cron>` is what `ngn run:single` was, except that it
+  now uses the project's config, env and database, so its runs are recorded; add
+  `--no-config` for the old behaviour. Tasks are named as arguments
+  (`ngn run scrape.ts api/**`) rather than with `--match`. The old forms still work.
+- **`ngn init`'s flags are kebab-case and named like everywhere else:** `--db`
+  (was `--dbFile`), `--port` (was `--apiPort`), `--config` (was `--configFile`)
+  and `--env-file` (was `--envFile`). The old names still work.
 
 ## Upgrading from 0.2.x
 

@@ -9,19 +9,16 @@ import {
   closeTaskDatabases,
 } from "@apisurf/ngn-core";
 import { getRunConfig } from "../config.js";
+import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
 
 export const runOnce = async (pattern: string, options: { root?: string }) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
 
-  const config = await getRunConfig(rootDirAbs, pattern);
+  const config = await getRunConfig(rootDirAbs, [pattern]);
 
-  if (config.sourcePaths.length === 0) {
-    console.error(
-      `ngn: no task matched "${pattern}".\n` +
-        "     The pattern is tested against the task path relative to root and must\n" +
-        "     include the directory, e.g. tasks/scrape.ts. Only tasks covered by\n" +
-        "     `match` in ngn.config.ts are candidates.",
-    );
+  const [match] = config.taskMatches;
+  if (match && match.paths.length !== 1) {
+    console.error(match.paths.length === 0 ? describeNoMatch(match) : describeAmbiguous(match));
     process.exitCode = 1;
     return;
   }

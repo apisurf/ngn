@@ -6,10 +6,11 @@
 // Panda extracts styles statically, so colour-by-value is done with lookup
 // tables of pre-built classes rather than `css({ color: variable })`.
 
+import { Link } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import type { LogLevel, Tone } from "~/lib/ngn";
-import { LEVEL_TONE, logLevel, readSkip, runLabel, runTone, seriesSlot } from "~/lib/ngn";
+import { LEVEL_TONE, logLevel, readSkip, runStateLabel, runTone, seriesSlot } from "~/lib/ngn";
 import { IconCheck, IconCopy, IconSearch } from "./icons";
 
 export const mono = css({ fontFamily: "mono", fontSize: "12px" });
@@ -59,22 +60,34 @@ export function toneText(tone: Tone): string {
  * coloured when it needs reading first: a failure, or a run still going. A
  * column of green "Succeeded" is the usual case, and reads as noise.
  */
-export function RunBadge({ status, pill = false }: { status: string | null; pill?: boolean }) {
-  const tone = runTone(status);
+export function RunBadge({
+  status,
+  stalled = false,
+  pill = false,
+}: {
+  status: string | null;
+  stalled?: boolean;
+  pill?: boolean;
+}) {
+  const tone = runTone(status, stalled);
+  const label = runStateLabel(status, stalled);
   if (!pill) {
     return (
       <span
         className={cx(
           css({ flexShrink: 0, whiteSpace: "nowrap" }),
-          tone === "bad" || tone === "info" ? TONE_TEXT[tone] : css({ color: "muted" }),
-          tone === "bad" ? css({ fontWeight: "500" }) : undefined,
+          tone === "bad" || tone === "info" || tone === "warn"
+            ? TONE_TEXT[tone]
+            : css({ color: "muted" }),
+          tone === "bad" || tone === "warn" ? css({ fontWeight: "500" }) : undefined,
         )}
+        title={stalled ? "No end recorded, long past when it should have finished" : undefined}
       >
-        {runLabel(status)}
+        {label}
       </span>
     );
   }
-  return <Pill tone={tone}>{runLabel(status)}</Pill>;
+  return <Pill tone={tone}>{label}</Pill>;
 }
 
 /**
@@ -84,7 +97,14 @@ export function RunBadge({ status, pill = false }: { status: string | null; pill
 export function RunOutcome({
   run,
 }: {
-  run: { status: string; skip_reason: string | null; attempt: number; attempts: number };
+  run: {
+    status: string;
+    stalled?: boolean;
+    skip_reason: string | null;
+    blocked_by?: number | null;
+    attempt: number;
+    attempts: number;
+  };
 }) {
   const note =
     run.status === "skipped"
@@ -96,8 +116,27 @@ export function RunOutcome({
     <span
       className={css({ display: "inline-flex", alignItems: "baseline", gap: "1.5", minW: "0" })}
     >
-      <RunBadge status={run.status} />
-      {note ? (
+      <RunBadge status={run.status} stalled={run.stalled} />
+      {note && run.blocked_by != null ? (
+        // The row itself opens this run; the note opens the one it waited on.
+        <Link
+          to="/runs/$runId"
+          params={{ runId: String(run.blocked_by) }}
+          onClick={(e) => e.stopPropagation()}
+          title={`Skipped: run #${run.blocked_by} was still going`}
+          className={cx(
+            truncate,
+            css({
+              color: "faint",
+              fontSize: "11.5px",
+              textDecoration: "none",
+              _hover: { color: "accent", textDecoration: "underline" },
+            }),
+          )}
+        >
+          {note} #{run.blocked_by}
+        </Link>
+      ) : note ? (
         <span
           className={cx(truncate, css({ color: "faint", fontSize: "11.5px" }))}
           title={
@@ -331,6 +370,8 @@ export interface TabItem<T extends string> {
   count?: number | string;
   tone?: Tone;
   hidden?: boolean;
+  /** Nothing to show there: still reachable, but dimmed so the eye skips it. */
+  empty?: boolean;
 }
 
 export function TabList<T extends string>({
@@ -372,6 +413,8 @@ export function TabList<T extends string>({
               type="button"
               role="tab"
               aria-selected={active}
+              data-empty={item.empty || undefined}
+              title={item.empty ? `${item.label}: nothing recorded` : undefined}
               onClick={() => onSelect(item.id)}
               className={css({
                 position: "relative",
@@ -386,6 +429,7 @@ export function TabList<T extends string>({
                 fontWeight: "500",
                 whiteSpace: "nowrap",
                 _hover: { color: "fg" },
+                "&[data-empty=true]": { color: "faint" },
                 "&[aria-selected=true]": {
                   color: "fg",
                   _after: {

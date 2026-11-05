@@ -1,6 +1,6 @@
 // Open tabs, the way an API client keeps them.
 //
-// Every page is a tab: a run, a task, the overview, the run history, the live
+// Every page is a tab: a run, a task, the overview, the runs page, the
 // editor. The URL stays the source of truth for what is on screen; this only
 // remembers what else is open and where each tab last was, so switching back
 // lands on the same sub-tab it was left on.
@@ -12,10 +12,10 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 
-export type TabIcon = "overview" | "history" | "task" | "run" | "live";
+export type TabIcon = "overview" | "runs" | "task" | "run" | "live";
 
 export interface Tab {
-  /** Identity: `run:7`, `task:3`, `overview`, `history`, `live`. */
+  /** Identity: `run:7`, `task:3`, `overview`, `runs`, `live`. */
   key: string;
   /** Where the tab was last, sub-tabs and all. */
   href: string;
@@ -28,7 +28,7 @@ export interface Tab {
 
 export const tabKey = {
   overview: () => "overview",
-  history: () => "history",
+  runs: () => "runs",
   live: () => "live",
   run: (id: number) => `run:${id}`,
   task: (id: number) => `task:${id}`,
@@ -48,7 +48,7 @@ export function tabKeyFor(pathname: string): string | null {
   const task = /^\/tasks\/(\d+)$/.exec(path);
   if (task) return tabKey.task(Number(task[1]));
   const page = path.slice(1);
-  if (page === "history" || page === "live") return page;
+  if (page === "runs" || page === "live") return page;
   return null;
 }
 
@@ -188,8 +188,25 @@ function homeOf(key: string): string | null {
   if (kind === "task" && id) return `/tasks/${id}`;
   // The run's task is not in its key; the bare run URL redirects to it.
   if (kind === "run" && id) return `/runs/${id}`;
-  if (kind === "history" || kind === "live") return `/${kind}`;
+  if (kind === "runs" || kind === "live") return `/${kind}`;
   return null;
+}
+
+/**
+ * A tab remembered from before History became Runs, reopened as Runs. Its old
+ * URL would redirect anyway; this keeps the key in step so it is one tab.
+ */
+function renamed(tab: Tab): Tab {
+  if (tab.key !== "history") return tab;
+  const query = tab.href.includes("?") ? tab.href.slice(tab.href.indexOf("?")) : "";
+  return {
+    ...tab,
+    key: tabKey.runs(),
+    title: "Runs",
+    icon: "runs",
+    // `show=failure` and friends become Runs' `status=failed` on the redirect.
+    href: `/history${query}`,
+  };
 }
 
 /** Stored tabs first, then any the current page registered before they loaded. */
@@ -197,6 +214,7 @@ function merge(stored: Tab[], current: Tab[]): Tab[] {
   const valid = Array.isArray(stored)
     ? stored
         .filter((t) => t && typeof t.key === "string" && typeof t.href === "string")
+        .map(renamed)
         .map(repair)
         .filter((t): t is Tab => t != null)
     : [];

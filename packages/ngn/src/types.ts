@@ -1,6 +1,7 @@
 import { FsNodeFileDescriptor } from "@apisurf/ngn-os";
 import { readEnv } from "./config.js";
 import type { ConfigFileOptions } from "./configSchema.js";
+import type { TaskMatch } from "./util/matchTasks.js";
 
 export type { ConfigFileOptions };
 
@@ -15,4 +16,5 @@ export interface CliOptions {
   };
   env: Awaited<ReturnType<typeof readEnv>>;
   timing: string | null; // cron pattern for scheduling tasks
+  taskMatches: TaskMatch[]; // how each task name on the command line resolved
 }

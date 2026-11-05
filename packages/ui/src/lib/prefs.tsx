@@ -1,6 +1,6 @@
-// Per-viewer preferences and the Live switch.
+// Per-viewer preferences and the Follow switch.
 //
-// Everything here is a convenience: the theme, how the live editor's code and
+// Everything here is a convenience: the theme, how the editor's code and
 // result panes are arranged, whether the task sidebar is open and how wide. It is
 // kept in localStorage and read after mount — the server renders the defaults,
 // so the first paint and hydration agree — and every access is wrapped,
@@ -17,7 +17,10 @@ export interface Prefs {
   layout: PaneLayout;
   sidebarWidth: number;
   sidebarOpen: boolean;
-  live: boolean;
+  /** Follow: re-read the database every couple of seconds while the page is visible. */
+  follow: boolean;
+  /** Open pages as tabs, the way an API client keeps them. Off: one page at a time. */
+  tabs: boolean;
 }
 
 const DEFAULTS: Prefs = {
@@ -25,7 +28,8 @@ const DEFAULTS: Prefs = {
   layout: "side",
   sidebarWidth: 300,
   sidebarOpen: true,
-  live: false,
+  follow: false,
+  tabs: false,
 };
 
 const STORAGE_KEY = "ngnui:prefs";
@@ -33,7 +37,7 @@ const STORAGE_KEY = "ngnui:prefs";
 interface PrefsContextValue {
   prefs: Prefs;
   set: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
-  /** Bumped on every Live tick and manual refresh; data hooks outside loaders key on it. */
+  /** Bumped on every Follow tick and manual refresh; data hooks outside loaders key on it. */
   refreshKey: number;
   refresh: () => void;
   lastRefresh: number | null;
@@ -47,8 +51,8 @@ export function usePrefs(): PrefsContextValue {
   return value;
 }
 
-/** How often Live re-reads the file. A local SQLite read; this is cheap. */
-const LIVE_INTERVAL_MS = 2000;
+/** How often Follow re-reads the file. A local SQLite read; this is cheap. */
+const FOLLOW_INTERVAL_MS = 2000;
 
 export function PrefsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -83,14 +87,14 @@ export function PrefsProvider({ children }: { children: React.ReactNode }) {
     setLastRefresh(Date.now());
   }, [router]);
 
-  // Live: re-read on an interval while the tab is visible.
+  // Follow: re-read on an interval while the tab is visible.
   React.useEffect(() => {
-    if (!prefs.live) return;
+    if (!prefs.follow) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") refresh();
-    }, LIVE_INTERVAL_MS);
+    }, FOLLOW_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [prefs.live, refresh]);
+  }, [prefs.follow, refresh]);
 
   // Coming back to the tab is when someone wants to see what just finished.
   React.useEffect(() => {
@@ -116,9 +120,13 @@ function readStored(): Partial<Prefs> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Prefs>;
+    const parsed = JSON.parse(raw) as Partial<Prefs> & { live?: unknown };
     if (typeof parsed !== "object" || !parsed) return {};
-    return parsed;
+    // Follow was called Live; keep the switch where the viewer left it.
+    const { live, ...rest } = parsed;
+    return typeof live === "boolean" && rest.follow === undefined
+      ? { ...rest, follow: live }
+      : rest;
   } catch {
     return {};
   }

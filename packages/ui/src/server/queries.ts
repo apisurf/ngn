@@ -7,7 +7,18 @@
 //
 // Times are unix milliseconds throughout, as ngn writes them.
 
-import { isLifecycle, LIFECYCLE_MESSAGES, LIFECYCLE_PREFIX, percentile } from "../lib/ngn";
+import type { RunStatusWord, RunToken, SqlValue } from "../lib/ngn";
+import {
+  EDITOR_TASK_SQL,
+  isStalled,
+  runFilterSql,
+  statusWordSql,
+  LIFECYCLE_MESSAGES,
+  LIFECYCLE_PREFIX,
+  OVERLAP_REASON,
+  percentile,
+  runWindowMs,
+} from "../lib/ngn";
 import type { Db } from "./db";
 
 /**
@@ -212,20 +223,30 @@ export interface RunRow {
   error_count: number;
   warn_count: number;
   timing_count: number;
+  /**
+   * No end recorded and past any window in which it could still finish: the
+   * glossary's Stalled. Worked out against the clock the query was given.
+   */
+  stalled: boolean;
+  /** For a run skipped because the last one was still going: that run. */
+  blocked_by: number | null;
 }
 
 export interface RunFilter {
   /** Substring of the task path. */
   q?: string;
   taskId?: number;
-  status?: "failure" | "success" | "skipped" | "open";
-  /** Leave out code sent from the live editor. */
-  hideLive?: boolean;
+  /** `open` is running and not Stalled; `stalled` is the glossary's Stalled. */
+  status?: "failure" | "success" | "skipped" | "open" | "stalled";
+  /** Only the project's scheduled tasks, or only runs of code sent from the Editor. */
+  origin?: "scheduled" | "editor";
+  /** The Runs page's filter, in the language `ngn runs` shares (see describe/query). */
+  tokens?: readonly RunToken[];
   limit?: number;
 }
 
 /** A run row as the database has it, before its place in its tick is worked out. */
-type StoredRun = Omit<RunRow, "attempt" | "attempts">;
+type StoredRun = Omit<RunRow, "attempt" | "attempts" | "stalled">;
 
 const runSelect = (col: ReturnType<typeof runColumns>) => `
   r.id, r.file_task_id AS task_id, t.path, r.file_task_version_id AS version_id, v.version,
@@ -242,7 +263,19 @@ const runSelect = (col: ReturnType<typeof runColumns>) => `
        AND ${taskLine("l.value")})                         AS error_count,
   (SELECT COUNT(*) FROM logs l
      WHERE l.task_run_id = r.id AND l.status IN ('warn', 'warning')) AS warn_count,
-  (SELECT COUNT(*) FROM timings m WHERE m.task_run_id = r.id) AS timing_count`;
+  (SELECT COUNT(*) FROM timings m WHERE m.task_run_id = r.id) AS timing_count,
+  ${col.skipReason === "NULL" ? "NULL" : blockedBy}           AS blocked_by`;
+
+/**
+ * The run a "still running" skip was waiting on: the newest earlier run of the
+ * same task that had started by the time the skip was queued and had not ended.
+ */
+const blockedBy = `CASE WHEN r.status = 'skipped' AND r.skip_reason = '${OVERLAP_REASON}' THEN (
+    SELECT b.id FROM task_runs b
+    WHERE b.file_task_id = r.file_task_id AND b.id < r.id
+      AND b.started_at IS NOT NULL AND b.started_at <= r.created_at
+      AND (b.ended_at IS NULL OR b.ended_at >= r.created_at)
+    ORDER BY b.id DESC LIMIT 1) END`;
 
 const RUN_FROM = `
   FROM task_runs r
@@ -250,25 +283,15 @@ const RUN_FROM = `
   LEFT JOIN file_task_versions v ON v.id = r.file_task_version_id`;
 
 /** Runs newest first. `id` order is creation order, which is what a history reads in. */
-export function listRuns(db: Db, filter: RunFilter = {}): RunRow[] {
-  const where: string[] = [];
-  const params: unknown[] = [];
-  const q = filter.q?.trim();
-  if (q) {
-    where.push("t.path LIKE ?");
-    params.push(`%${q}%`);
-  }
+export function listRuns(db: Db, filter: RunFilter = {}, now = Date.now()): RunRow[] {
+  const { where, args: params } = runFilterSql(
+    [...legacyTokens(filter), ...(filter.tokens ?? [])],
+    filterContext(db, now),
+  );
   if (filter.taskId !== undefined) {
     where.push("r.file_task_id = ?");
     params.push(filter.taskId);
   }
-  if (filter.status === "open") where.push("r.status IN ('running', 'pending')");
-  else if (filter.status) {
-    where.push("r.status = ?");
-    params.push(filter.status);
-  }
-  // The live editor's throwaway files sit at the root and follow one pattern.
-  if (filter.hideLive) where.push("NOT (t.parent_path = '.' AND t.path GLOB 'live-task-*')");
   const limit = Math.min(Math.max(filter.limit ?? 300, 1), 5000);
   const col = runColumns(db);
 
@@ -279,15 +302,264 @@ export function listRuns(db: Db, filter: RunFilter = {}): RunRow[] {
        ORDER BY r.id DESC LIMIT ${limit}`,
     )
     .all(...params) as StoredRun[];
-  return withAttempts(db, col, rows);
+  return withState(db, withAttempts(db, col, rows), now);
 }
 
-export function getRun(db: Db, runId: number): RunRow | null {
+export function getRun(db: Db, runId: number, now = Date.now()): RunRow | null {
   const col = runColumns(db);
   const row = db.prepare(`SELECT ${runSelect(col)} ${RUN_FROM} WHERE r.id = ?`).get(runId) as
     | StoredRun
     | undefined;
-  return row ? withAttempts(db, col, [row])[0]! : null;
+  return row ? withState(db, withAttempts(db, col, [row]), now)[0]! : null;
+}
+
+const LEGACY_STATUS = {
+  failure: "failed",
+  success: "succeeded",
+  skipped: "skipped",
+  open: "running",
+  stalled: "stalled",
+} as const;
+
+/** The separate `q`, `status` and `origin` filters, as the tokens they mean. */
+function legacyTokens(filter: RunFilter): RunToken[] {
+  const tokens: RunToken[] = [];
+  const q = filter.q?.trim();
+  if (q) tokens.push({ key: "text", value: q, negate: false });
+  if (filter.status)
+    tokens.push({ key: "status", value: LEGACY_STATUS[filter.status], negate: false });
+  if (filter.origin) tokens.push({ key: "origin", value: filter.origin, negate: false });
+  return tokens;
+}
+
+/** What resolving a filter needs to know about the file right now. */
+function filterContext(db: Db, now: number) {
+  return {
+    paths: (db.prepare("SELECT path FROM file_tasks").all() as { path: string }[]).map(
+      (r) => r.path,
+    ),
+    stalledIds: [...stalledRuns(db, now).keys()],
+  };
+}
+
+export { failureMessage } from "../lib/ngn";
+
+export interface FacetCounts {
+  /** Runs per status word, under every filter but the status ones. */
+  status: Record<RunStatusWord, number>;
+  /** Runs per origin, under every filter but the origin ones. */
+  origin: Record<"scheduled" | "editor", number>;
+}
+
+/**
+ * How many runs each status and origin value would give: each facet counted
+ * with the other filters applied but its own left out, so the counts say what
+ * picking that value would show.
+ */
+export function facetCounts(
+  db: Db | null,
+  tokens: readonly RunToken[],
+  now = Date.now(),
+  taskId?: number,
+): FacetCounts {
+  const status: FacetCounts["status"] = {
+    succeeded: 0,
+    failed: 0,
+    skipped: 0,
+    running: 0,
+    stalled: 0,
+  };
+  const origin: FacetCounts["origin"] = { scheduled: 0, editor: 0 };
+  if (!db) return { status, origin };
+  const context = filterContext(db, now);
+  const count = (key: "status" | "origin", select: { sql: string; args: SqlValue[] }) => {
+    const { where, args } = runFilterSql(tokens, context, [key]);
+    if (taskId !== undefined) {
+      where.push("r.file_task_id = ?");
+      args.push(taskId);
+    }
+    return db
+      .prepare(
+        `SELECT ${select.sql} AS value, COUNT(*) AS n ${RUN_FROM}
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""} GROUP BY value`,
+      )
+      .all(...select.args, ...args) as { value: string; n: number }[];
+  };
+  for (const row of count("status", statusWordSql(context.stalledIds))) {
+    if (row.value in status) status[row.value as RunStatusWord] = row.n;
+  }
+  for (const row of count("origin", {
+    sql: `CASE WHEN ${EDITOR_TASK_SQL} THEN 'editor' ELSE 'scheduled' END`,
+    args: [],
+  })) {
+    origin[row.value as "scheduled" | "editor"] = row.n;
+  }
+  return { status, origin };
+}
+
+export interface RunActivity {
+  /** Start of the first bucket and end of the last, unix ms. */
+  from: number;
+  to: number;
+  bucketMs: number;
+  buckets: ActivityBucket[];
+}
+
+/** Bucket sizes to choose from, finest first. */
+const BUCKETS_MS = [
+  60_000,
+  5 * 60_000,
+  15 * 60_000,
+  3_600_000,
+  6 * 3_600_000,
+  86_400_000,
+  7 * 86_400_000,
+];
+/** At most this many bars across. */
+const MAX_BUCKETS = 60;
+
+/**
+ * Runs over time under a filter, for the Runs page's chart: every filter but
+ * the time ones, from the first matching run to now, in buckets fine enough
+ * to see a bad afternoon and coarse enough to fit.
+ */
+export function runActivity(
+  db: Db | null,
+  tokens: readonly RunToken[],
+  now = Date.now(),
+  taskId?: number,
+): RunActivity {
+  const empty = { from: now, to: now, bucketMs: BUCKETS_MS[0]!, buckets: [] };
+  if (!db) return empty;
+  const { where, args } = runFilterSql(tokens, filterContext(db, now), ["since", "until"]);
+  if (taskId !== undefined) {
+    where.push("r.file_task_id = ?");
+    args.push(taskId);
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const at = "COALESCE(r.started_at, r.created_at)";
+  const first = (
+    db.prepare(`SELECT MIN(${at}) AS first ${RUN_FROM} ${clause}`).get(...args) as {
+      first: number | null;
+    }
+  ).first;
+  if (first == null) return empty;
+  const bucketMs =
+    BUCKETS_MS.find((size) => (now - first) / size < MAX_BUCKETS) ??
+    BUCKETS_MS[BUCKETS_MS.length - 1]!;
+  const from = Math.floor(first / bucketMs) * bucketMs;
+  const count = Math.floor((now - from) / bucketMs) + 1;
+  const buckets: ActivityBucket[] = Array.from({ length: count }, (_, i) => ({
+    from: from + i * bucketMs,
+    success: 0,
+    failure: 0,
+    skipped: 0,
+    other: 0,
+  }));
+  const rows = db
+    .prepare(
+      `SELECT CAST((${at} - ?) / ? AS INTEGER) AS i, r.status AS status, COUNT(*) AS n
+       ${RUN_FROM} ${clause} GROUP BY i, r.status`,
+    )
+    .all(from, bucketMs, ...args) as { i: number; status: string; n: number }[];
+  for (const row of rows) {
+    const bucket = buckets[row.i];
+    if (!bucket) continue;
+    if (row.status === "success") bucket.success += row.n;
+    else if (row.status === "failure") bucket.failure += row.n;
+    else if (row.status === "skipped") bucket.skipped += row.n;
+    else bucket.other += row.n;
+  }
+  return { from, to: from + count * bucketMs, bucketMs, buckets };
+}
+
+/** Mark the Stalled ones among `rows`. */
+function withState(db: Db, rows: Omit<RunRow, "stalled">[], now: number): RunRow[] {
+  const stalled = rows.some((row) => row.ended_at == null) ? stalledRuns(db, now) : new Map();
+  return rows.map((row) => ({ ...row, stalled: stalled.has(row.id) }));
+}
+
+export interface StalledRun {
+  run_id: number;
+  task_id: number;
+  started_at: number;
+  /** The most a run of its task could legitimately take. */
+  window_ms: number;
+  /** A lock it held stopped being renewed: its process is gone. */
+  lease_expired: boolean;
+  /** Ticks skipped since it started because it was still "running". */
+  skipped_since: number;
+}
+
+/**
+ * Every Stalled run in the file, by id: runs with no end recorded that are past
+ * their task's window twice over, or that held a lock whose lease ran out. The
+ * window comes from each task's newest version, read once per task.
+ */
+export function stalledRuns(db: Db, now = Date.now()): Map<number, StalledRun> {
+  // One page asks several queries against one clock; they share one answer.
+  if (lastStalled?.db === db && lastStalled.now === now) return lastStalled.result;
+  const result = findStalled(db, now);
+  lastStalled = { db, now, result };
+  return result;
+}
+
+let lastStalled: { db: Db; now: number; result: Map<number, StalledRun> } | null = null;
+
+function findStalled(db: Db, now: number): Map<number, StalledRun> {
+  const col = runColumns(db);
+  const open = db
+    .prepare(
+      `SELECT id, file_task_id AS task_id, status, created_at, started_at, ended_at
+       FROM task_runs WHERE status IN ('running', 'pending') AND ended_at IS NULL`,
+    )
+    .all() as {
+    id: number;
+    task_id: number;
+    status: string;
+    created_at: number;
+    started_at: number | null;
+    ended_at: null;
+  }[];
+  const out = new Map<number, StalledRun>();
+  if (open.length === 0) return out;
+  const expired = new Set(
+    listLocks(db)
+      .filter((lock) => lock.expires_at <= now && lock.run_id != null)
+      .map((lock) => lock.run_id!),
+  );
+  const windows = new Map<number, number>();
+  const windowOf = (taskId: number) => {
+    if (!windows.has(taskId)) {
+      windows.set(taskId, runWindowMs(getVersionCode(db, taskId)?.compiled_code));
+    }
+    return windows.get(taskId)!;
+  };
+  const skippedSince = db.prepare(
+    col.skipReason === "NULL"
+      ? "SELECT 0 AS n"
+      : `SELECT COUNT(*) AS n FROM task_runs
+         WHERE file_task_id = ? AND id > ? AND status = 'skipped' AND skip_reason = ?`,
+  );
+  for (const run of open) {
+    const window = windowOf(run.task_id);
+    const leaseExpired = expired.has(run.id);
+    if (!isStalled(run, now, window, leaseExpired)) continue;
+    const skipped = (
+      col.skipReason === "NULL"
+        ? skippedSince.get()
+        : skippedSince.get(run.task_id, run.id, OVERLAP_REASON)
+    ) as { n: number };
+    out.set(run.id, {
+      run_id: run.id,
+      task_id: run.task_id,
+      started_at: run.started_at ?? run.created_at,
+      window_ms: window,
+      lease_expired: leaseExpired,
+      skipped_since: skipped.n,
+    });
+  }
+  return out;
 }
 
 /**
@@ -298,7 +570,11 @@ export function getRun(db: Db, runId: number): RunRow | null {
  * row. Every retry comes after the run it retries, so the pass starts at the
  * oldest first run in play and walks the primary key from there.
  */
-function withAttempts(db: Db, col: ReturnType<typeof runColumns>, rows: StoredRun[]): RunRow[] {
+function withAttempts(
+  db: Db,
+  col: ReturnType<typeof runColumns>,
+  rows: StoredRun[],
+): Omit<RunRow, "stalled">[] {
   const firsts = [...new Set(rows.map((row) => row.retry_of ?? row.id))];
   const retries = new Map<number, number[]>();
   if (col.retryOf !== "NULL" && firsts.length) {
@@ -481,18 +757,6 @@ export function listLogs(db: Db, filter: LogFilter = {}): LogRow[] {
     .all(...params) as LogRow[];
 }
 
-/**
- * What a failed run has to say for itself: the last error a task logged, or
- * failing that, nothing — ngn records that a run failed, not what it threw.
- */
-export function failureMessage(logs: readonly LogRow[]): string | null {
-  for (let i = logs.length - 1; i >= 0; i--) {
-    const log = logs[i]!;
-    if (log.status === "error" && !isLifecycle(log.value)) return log.value;
-  }
-  return null;
-}
-
 // -----------------------------------------------------------------------------
 // Timings
 // -----------------------------------------------------------------------------
@@ -641,6 +905,14 @@ export interface KvRow {
   value: string | null;
   /** When the key was first set — ngn updates a value in place without restamping it. */
   created_at: number;
+}
+
+/** How many lines a task wrote itself, across every run; ngn's lifecycle lines left out. */
+export function countTaskLines(db: Db, taskId: number): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM logs l WHERE l.file_task_id = ? AND ${taskLine("l.value")}`)
+    .get(taskId) as { n: number };
+  return row.n;
 }
 
 export function listKeys(db: Db, taskId: number): KvRow[] {

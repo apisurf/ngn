@@ -94,6 +94,13 @@ export const IconSearch = icon(
     <path d="M20 20l-3.5-3.5" />
   </>,
 );
+export const IconSettings = icon(
+  <>
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+    <circle cx="16" cy="7" r="2" />
+    <circle cx="10" cy="17" r="2" />
+  </>,
+);
 export const IconSplitSide = icon(
   <>
     <rect x="3" y="4" width="18" height="16" rx="2" />

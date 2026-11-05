@@ -9,11 +9,8 @@
  * Rows go to stdout and everything else (counts, timings, errors) to stderr,
  * so `ngn sql "..." --json | jq` works without filtering out chatter.
  */
-import { existsSync } from "node:fs";
-import { getCwd } from "@apisurf/ngn-os";
 import { openDbClient } from "@apisurf/ngn-persistence";
-import { findConfigFile, readConfig } from "../config.js";
-import { describeDbPath } from "../util/dbPath.js";
+import { resolveDbPath } from "../util/resolveDb.js";
 import { type Row, formatMs, renderCsv, renderJson, renderTable } from "../util/format.js";
 
 export interface SqlOptions {
@@ -25,7 +22,7 @@ export interface SqlOptions {
 }
 
 export const sql = async (query: string, options: SqlOptions) => {
-  const dbPath = await resolveDbPath(options);
+  const dbPath = await resolveDbPath(options, { mustExist: true });
   if (dbPath === null) return fail();
 
   // Read-only session against a file a task may be writing right now: take the
@@ -97,60 +94,6 @@ export const sql = async (query: string, options: SqlOptions) => {
     client.close();
   }
 };
-
-/**
- * Which file to open: `--db` if given, otherwise whatever ngn.config.ts says.
- *
- * Reading the config is what makes the command usable without arguments in a
- * project directory, and it is also the only place that knows a project is
- * configured for `:memory:` — a case worth naming, because the query would
- * otherwise succeed against an empty database and report "no rows".
- *
- * Returns null after reporting why there is nothing to open.
- */
-async function resolveDbPath(options: SqlOptions): Promise<string | null> {
-  if (options.db) {
-    const described = describeDbPath(options.db);
-    if (described.isMemory) {
-      process.stderr.write("ngn: --db :memory: has nothing to query.\n");
-      return null;
-    }
-    if (!existsSync(described.absolute as string)) {
-      process.stderr.write(`ngn: no database at ${described.absolute}\n`);
-      return null;
-    }
-    return described.absolute;
-  }
-
-  const rootDir = getCwd(process.cwd(), options.root);
-  const configPath = findConfigFile(rootDir);
-  if (!configPath) {
-    process.stderr.write(
-      `ngn: no ngn.config.ts in ${rootDir}. Pass --db <path> to query a database directly.\n`,
-    );
-    return null;
-  }
-
-  const config = await readConfig(configPath);
-  const described = describeDbPath(config.dbPath, rootDir);
-
-  if (described.isMemory) {
-    process.stderr.write(
-      "ngn: dbPath is :memory: in ngn.config.ts, so no run has left anything to query.\n" +
-        "     Set it to a file: URL, or pass --db <path>.\n",
-    );
-    return null;
-  }
-
-  if (!existsSync(described.absolute as string)) {
-    process.stderr.write(
-      `ngn: no database at ${described.absolute} yet — it is created by the first \`ngn run\`.\n`,
-    );
-    return null;
-  }
-
-  return described.absolute;
-}
 
 /** libsql hands blobs back as ArrayBuffer; the formatters speak Uint8Array. */
 function normalize(value: unknown): unknown {

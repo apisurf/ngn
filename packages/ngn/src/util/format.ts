@@ -90,7 +90,7 @@ export function renderCsv(rows: Row[], columns: string[]): string {
   ].join("\n");
 }
 
-export function renderJson(rows: Row[]): string {
+export function renderJson(rows: unknown): string {
   return JSON.stringify(
     rows,
     (_key, value) => (value instanceof Uint8Array ? `<blob ${value.byteLength} B>` : value),

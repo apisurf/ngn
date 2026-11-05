@@ -7,17 +7,24 @@
 //                        latest outcomes as a strip, when it last ran
 //   How did today go?    runs per hour over the last day
 //
-// What one run did is a click away, in History or on the task; it is not
+// What one run did is a click away, in Runs or on the task; it is not
 // repeated here.
 
 import { createFileRoute, getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import type * as React from "react";
 import { css, cx } from "styled-system/css";
 import { ActivityChart, OutcomeStrip } from "~/components/charts";
-import { IconCheckCircle, IconChevronRight, IconLock, IconXCircle } from "~/components/icons";
+import {
+  IconCheckCircle,
+  IconChevronRight,
+  IconClock,
+  IconLock,
+  IconXCircle,
+} from "~/components/icons";
 import {
   Card,
   Empty,
+  toneText,
   mono,
   pagePad,
   Pill,
@@ -27,11 +34,12 @@ import {
   truncate,
 } from "~/components/primitives";
 import { useUnreadable } from "~/components/states";
-import { formatAgo, formatCount, formatMs, formatSpan, plural } from "~/lib/format";
-import { circuitOpen, describeTask } from "~/lib/ngn";
+import { formatAgo, formatCount, formatDateTime, formatMs, formatSpan, plural } from "~/lib/format";
+import type { VerdictInput } from "~/lib/ngn";
+import { circuitOpen, describeTask, verdict } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
-import type { ActivityBucket, LockRow, OverviewTask, TaskItem } from "~/server/api";
+import type { ActivityBucket, LockRow, OverviewTask, StalledItem, TaskItem } from "~/server/api";
 import { getOverview } from "~/server/api";
 
 const root = getRouteApi("__root__");
@@ -56,11 +64,16 @@ function OverviewPage() {
 
   const extra = new Map(data.tasks.map((task) => [task.id, task]));
   const tasks = ws.tasks
-    .filter((task) => !task.live)
+    .filter((task) => !task.editor)
     .toSorted((a, b) => a.path.localeCompare(b.path));
   const failing = tasks.filter((task) => extra.get(task.id)?.failing);
+  const stalled = data.stalled.filter((run) => !run.editor);
   // A lease is renewed while its holder lives; one past expiry was left behind.
-  const stale = data.locks.filter((lock) => lock.expires_at <= now);
+  // A Stalled run's row already names the lock it left, so it is not listed twice.
+  const stalledIds = new Set(data.stalled.map((run) => run.run_id));
+  const stale = data.locks.filter(
+    (lock) => lock.expires_at <= now && (lock.run_id == null || !stalledIds.has(lock.run_id)),
+  );
   const held = data.locks.filter((lock) => lock.expires_at > now);
 
   return (
@@ -68,16 +81,27 @@ function OverviewPage() {
       <div className={pagePad}>
         <header>
           <h1 className={css({ fontSize: "18px", fontWeight: "600", m: "0" })}>Overview</h1>
-          <Verdict tasks={tasks.length} failing={failing.length} stale={stale.length} />
+          <Verdict
+            input={{
+              tasks: tasks.length,
+              failing: failing.length,
+              stalled,
+              stale: stale.length,
+            }}
+            now={now}
+          />
           <DaySummary buckets={data.activity} />
         </header>
 
-        {failing.length || stale.length ? (
+        {failing.length || stalled.length || stale.length ? (
           <section>
             <SectionTitle>Needs attention</SectionTitle>
             <Card>
               {failing.map((task) => (
                 <FailingRow key={task.id} task={task} extra={extra.get(task.id)!} now={now} />
+              ))}
+              {stalled.map((run) => (
+                <StalledRow key={run.run_id} run={run} locks={data.locks} now={now} />
               ))}
               {stale.map((lock) => (
                 <StaleLockRow key={lock.name} lock={lock} now={now} />
@@ -97,10 +121,13 @@ function OverviewPage() {
           </Card>
         </section>
 
-        <section>
-          <SectionTitle>Last 24 hours</SectionTitle>
-          <ActivityChart buckets={data.activity} />
-        </section>
+        {/* The day summary already says when there were no runs; an empty chart adds nothing. */}
+        {hadRuns(data.activity) ? (
+          <section>
+            <SectionTitle>Last 24 hours</SectionTitle>
+            <ActivityChart buckets={data.activity} />
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -110,28 +137,24 @@ function OverviewPage() {
 // The verdict
 // -----------------------------------------------------------------------------
 
-function Verdict({ tasks, failing, stale }: { tasks: number; failing: number; stale: number }) {
-  const problems = [
-    failing ? `${plural(failing, "task")} failing` : null,
-    stale ? `${plural(stale, "lock")} left behind` : null,
-  ].filter(Boolean);
-  const ok = problems.length === 0;
+function Verdict({ input, now }: { input: VerdictInput; now: number }) {
+  const { tone, text } = verdict(input, now);
   return (
     <p
       className={cx(
         css({ display: "flex", alignItems: "center", gap: "1.5", m: "0", mt: "2" }),
         css({ fontSize: "14px", fontWeight: "500" }),
-        ok ? css({ color: "ok" }) : css({ color: "bad" }),
+        toneText(tone),
       )}
     >
-      {ok ? <IconCheckCircle size={16} /> : <IconXCircle size={16} />}
-      {ok
-        ? tasks
-          ? `All ${plural(tasks, "task")} healthy`
-          : "Nothing scheduled yet"
-        : problems.join(" · ")}
+      {tone === "ok" ? <IconCheckCircle size={16} /> : <IconXCircle size={16} />}
+      {text}
     </p>
   );
+}
+
+function hadRuns(buckets: ActivityBucket[]): boolean {
+  return buckets.some((b) => b.success + b.failure + b.skipped + b.other > 0);
 }
 
 /** The last day in one line, from the same buckets the chart draws. */
@@ -216,6 +239,40 @@ function FailingRow({ task, extra, now }: { task: TaskItem; extra: OverviewTask;
   );
 }
 
+/** A run that will never finish: since when, past what window, and what it holds back. */
+function StalledRow({ run, locks, now }: { run: StalledItem; locks: LockRow[]; now: number }) {
+  const left = locks.filter((lock) => lock.run_id === run.run_id).map((lock) => lock.name);
+  return (
+    <Link
+      to="/tasks/$taskId/runs/$runId"
+      params={{ taskId: String(run.task_id), runId: String(run.run_id) }}
+      className={attentionRow}
+      title="Open the stalled run"
+    >
+      <span className={css({ color: "warn", pt: "2px" })}>
+        <IconClock size={15} />
+      </span>
+      <span className={css({ minW: "0", flex: "1" })}>
+        <span className={css({ display: "flex", alignItems: "center", gap: "2" })}>
+          <span className={css({ fontWeight: "600" })}>{run.file}</span>
+          <span className={cx(truncate, css({ color: "faint", fontSize: "12px" }))}>{run.dir}</span>
+          <Pill tone="warn">Stalled</Pill>
+        </span>
+        <span className={rowSub}>
+          {[
+            `Started ${formatDateTime(now, run.started_at)}, no end for ${formatMs(now - run.started_at)}`,
+            run.skipped_since ? `${plural(run.skipped_since, "tick")} skipped since` : null,
+            left.length ? `left ${left.join(", ")} locked` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+      </span>
+      <RowEnd>#{run.run_id}</RowEnd>
+    </Link>
+  );
+}
+
 function StaleLockRow({ lock, now }: { lock: LockRow; now: number }) {
   const holder = lock.path ? describeTask(lock.path) : null;
   const body = (
@@ -229,7 +286,7 @@ function StaleLockRow({ lock, now }: { lock: LockRow; now: number }) {
         </span>
         <span className={rowSub}>
           {holder
-            ? `${holder.live ? "A live editor run" : holder.file} stopped renewing it`
+            ? `${holder.editor ? "An editor run" : holder.file} stopped renewing it`
             : "Its holder stopped renewing it"}{" "}
           {formatAgo(now, lock.expires_at)}. It is free for the next run to take.
         </span>

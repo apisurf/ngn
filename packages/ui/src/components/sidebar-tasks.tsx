@@ -2,20 +2,20 @@
 // page, in its history; the sidebar only picks the task.
 //
 // Tasks are grouped under the folder they live in (relative to the project
-// root), most recently run first within each group. Code sent from the live
-// editor is recorded as a task too; those sit in a group of their own at the
-// bottom, named by when they ran rather than by their throwaway filename.
+// root), most recently run first within each group. Code sent from the Editor
+// is recorded as a task too, but those are editor runs, not the project's
+// tasks: they are found on the Editor page and under Runs, never here.
 
 import { getRouteApi, Link } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import { useActive } from "~/lib/active";
-import { formatClock, formatDayHeading } from "~/lib/format";
+import { formatAgo, plural } from "~/lib/format";
 import { circuitOpen } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTabs } from "~/lib/tabs";
 import type { TaskItem } from "~/server/api";
-import { IconCode, IconTask } from "./icons";
+import { IconTask } from "./icons";
 import { Dot, Empty, FilterInput, Pill, truncate } from "./primitives";
 
 const root = getRouteApi("__root__");
@@ -45,37 +45,29 @@ const groupHeading = css({
   fontFamily: "mono",
 });
 
-/** The heading live-editor tasks are grouped under. */
-const LIVE_GROUP = "\0live";
-
-export function TasksPanel({ filterRef }: { filterRef: React.RefObject<HTMLInputElement | null> }) {
+export function TasksPanel() {
   const ws = root.useLoaderData();
   const active = useActive();
   const [filter, setFilter] = React.useState("");
+  const projectTasks = React.useMemo(() => ws.tasks.filter((task) => !task.editor), [ws.tasks]);
 
   const needle = filter.trim().toLowerCase();
   const groups = React.useMemo(() => {
     const byDir = new Map<string, TaskItem[]>();
-    for (const task of ws.tasks) {
+    for (const task of projectTasks) {
       if (needle && !task.path.toLowerCase().includes(needle)) continue;
-      const key = task.live ? LIVE_GROUP : task.dir;
-      const list = byDir.get(key) ?? [];
+      const list = byDir.get(task.dir) ?? [];
       list.push(task);
-      byDir.set(key, list);
+      byDir.set(task.dir, list);
     }
-    // Project folders alphabetically; the live editor's scratch runs last.
-    return [...byDir.entries()].toSorted(([a], [b]) =>
-      a === LIVE_GROUP ? 1 : b === LIVE_GROUP ? -1 : a.localeCompare(b),
-    );
-  }, [ws.tasks, needle]);
+    return [...byDir.entries()].toSorted(([a], [b]) => a.localeCompare(b));
+  }, [projectTasks, needle]);
 
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "full", minH: "0" })}>
       <div className={css({ px: "2.5", pb: "2", flexShrink: 0 })}>
         <FilterInput
-          ref={filterRef}
           placeholder="Filter tasks"
-          shortcut="/"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -83,19 +75,17 @@ export function TasksPanel({ filterRef }: { filterRef: React.RefObject<HTMLInput
       <div className={css({ flex: "1", minH: "0", overflow: "auto", px: "1.5", pb: "3" })}>
         {groups.length === 0 ? (
           <Empty
-            title={ws.tasks.length === 0 ? "No tasks yet" : "No matches"}
+            title={projectTasks.length === 0 ? "No tasks yet" : "No matches"}
             icon={<IconTask size={20} />}
           >
-            {ws.tasks.length === 0
+            {projectTasks.length === 0
               ? "Every task file ngn run schedules shows up here."
               : "No task path matches the filter."}
           </Empty>
         ) : (
           groups.map(([dir, tasks]) => (
             <div key={dir} className={css({ mb: "2" })}>
-              {dir === LIVE_GROUP ? (
-                <div className={cx(groupHeading, css({ fontFamily: "body" }))}>Live editor</div>
-              ) : dir ? (
+              {dir ? (
                 <div title={dir} className={cx(truncate, groupHeading)}>
                   {dir}
                 </div>
@@ -115,8 +105,6 @@ function TaskNode({ task, active }: { task: TaskItem; active: boolean }) {
   const ws = root.useLoaderData();
   const now = useNow(ws.now, 60_000);
   const { pin } = useTabs();
-  // A live-editor task's filename is a timestamp; when it ran says the same, readably.
-  const ranAt = task.live ? task.last_run_at : null;
 
   return (
     <Link
@@ -125,29 +113,29 @@ function TaskNode({ task, active }: { task: TaskItem; active: boolean }) {
       data-active={active}
       className={cx(treeRow, css({ pl: "2" }))}
       onDoubleClick={() => pin(tabKey.task(task.id))}
-      title={ranAt ? `${task.path} · ${formatDayHeading(now, ranAt)}` : task.path}
+      title={`${task.path} · ${plural(task.run_count, "run")}${
+        task.last_run_at ? ` · last ran ${formatAgo(now, task.last_run_at)}` : ""
+      }`}
     >
       <span className={css({ color: "muted", display: "inline-flex" })}>
-        {task.live ? <IconCode size={14} /> : <IconTask size={14} />}
+        <IconTask size={14} />
       </span>
-      <span className={cx(truncate, css({ flex: "1", fontWeight: "500" }))}>
-        {ranAt ? `Run at ${formatClock(ranAt)}` : task.file}
-      </span>
+      <span className={cx(truncate, css({ flex: "1", fontWeight: "500" }))}>{task.file}</span>
       {task.status !== "active" ? <Pill>{task.status}</Pill> : null}
-      {task.last_outcome === "failure" ? (
-        <Dot
-          tone="bad"
-          title={
-            circuitOpen(task) ? "Circuit open: ngn is skipping its ticks" : "Latest run failed"
-          }
-        />
-      ) : null}
-      <span
-        className={css({ fontSize: "11px", color: "faint", fontVariantNumeric: "tabular-nums" })}
-        title={`${task.run_count} runs`}
-      >
-        {task.run_count}
-      </span>
+      <Health task={task} />
     </Link>
   );
+}
+
+/**
+ * What needs looking at, as one mark: failing or circuit open (red), Stalled
+ * (amber). A healthy task shows nothing — the quiet default.
+ */
+function Health({ task }: { task: TaskItem }) {
+  if (circuitOpen(task)) return <Dot tone="bad" title="Circuit open: ngn is skipping its ticks" />;
+  if (task.last_outcome === "failure") return <Dot tone="bad" title="Latest run failed" />;
+  if (task.stalled_run_id != null) {
+    return <Dot tone="warn" title={`Stalled: run #${task.stalled_run_id} will not finish`} />;
+  }
+  return null;
 }

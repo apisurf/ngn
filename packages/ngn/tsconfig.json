@@ -2,6 +2,9 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    // Node 20 has Array#toSorted and friends. DOM stays, as the default had it:
+    // hono's types use its fetch names.
+    "lib": ["ES2023", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src"
   },
