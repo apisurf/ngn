@@ -24,6 +24,15 @@ export function runTone(status: string | null | undefined, stalled = false): Ton
   return (status && RUN_TONE[status]) || "neutral";
 }
 
+/**
+ * The dot beside a run in a list. A success is the normal case, so it gets a
+ * quiet grey dot like a skip; colour is kept for the runs that need a look.
+ */
+export function runMark(status: string | null | undefined, stalled = false): Tone {
+  const tone = runTone(status, stalled);
+  return tone === "ok" ? "neutral" : tone;
+}
+
 export const LEVEL_TONE: Record<LogLevel, Tone> = { info: "info", warn: "warn", error: "bad" };
 
 /** A stable colour slot for a timing label, so `fetch` looks the same everywhere. */

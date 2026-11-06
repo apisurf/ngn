@@ -111,7 +111,7 @@ function LivePage() {
     if (!draft.code.trim() || running) return;
     setRunning(true);
     try {
-      const live = await runLive({ data: draft });
+      const live = await runLive({ data: { ...draft, token: ws.token } });
       const recorded = live.runId ? await getRun({ data: { runId: live.runId } }) : null;
       setOutcome({ live, run: recorded });
       if (!live.ok) void probe();
@@ -128,7 +128,7 @@ function LivePage() {
     } finally {
       setRunning(false);
     }
-  }, [draft, running, probe]);
+  }, [draft, running, probe, ws.token]);
 
   const enabled = status.state === "up";
 

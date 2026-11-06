@@ -1,5 +1,6 @@
 /**
- * The one server `ngn` still runs, and the only thing it does is execute code.
+ * The one server `ngn` still runs, and the only thing it does is execute code:
+ * code sent from ngnui's editor, or one of the tasks this run schedules.
  *
  * Reading a database needs no scheduler — `ngn sql` opens the file, and so
  * does `ngnui`, which serves the whole web UI out of it. What neither can do
@@ -23,6 +24,11 @@ export type ExecuteLiveTask = (
   language: "typescript" | "javascript",
 ) => Promise<LiveTaskOutcome>;
 
+/** Start a run of one scheduled task now, by its project-relative path. */
+export type RunTaskNow = (path: string) => { started: true } | { started: false; reason: string };
+
+const runTaskSchema = z.object({ path: z.string().min(1) });
+
 const liveTaskSchema = z.object({
   code: z.string(),
   language: z.enum(["typescript", "javascript"]),
@@ -34,17 +40,28 @@ export interface LiveServerOptions {
   /** Absolute path of the run database, or null for :memory:. */
   db: string | null;
   executeLiveTask: ExecuteLiveTask;
+  runTaskNow: RunTaskNow;
 }
 
 export async function runLiveServer(options: LiveServerOptions) {
   const app = new Hono();
   const api = new Hono();
 
-  // ngnui probes this to decide whether to enable its editor. `db` lets an
-  // ngnui that found this port in a config check it is the same project.
+  // ngnui probes this to decide whether to enable its editor and Run now. `db`
+  // lets an ngnui that found this port in a config check it is the same
+  // project; `run` says this runtime can start a task's run on request.
   api.get("/meta", (c) =>
-    c.json({ runtime: "ngn", version: options.version, live: true, db: options.db }),
+    c.json({ runtime: "ngn", version: options.version, live: true, run: true, db: options.db }),
   );
+
+  // Answers once the run is under way: it is recorded like any other, and
+  // ngnui reads how it went from the database.
+  api.post("/run", async (c) => {
+    const parsed = runTaskSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "expected { path }" }, 400);
+    const outcome = options.runTaskNow(parsed.data.path);
+    return outcome.started ? c.json({ started: true }) : c.json({ error: outcome.reason }, 409);
+  });
 
   api.post("/live", async (c) => {
     const parsed = liveTaskSchema.safeParse(await c.req.json());

@@ -3,7 +3,8 @@
 // ngnui cannot execute a task: that takes the project's compiler, config and
 // env, which only the scheduler process has. `ngn run` keeps a small loopback
 // endpoint for exactly this — `GET /api/meta` to probe, `POST /api/live` to
-// execute — and this module forwards to it.
+// execute a draft, `POST /api/run` to start one of its tasks now — and this
+// module forwards to it.
 //
 // The endpoint is the one `ngnui --live <url>` was started with, or the loopback
 // port the project's ngn.config.ts names, read from the environment and never
@@ -40,7 +41,14 @@ export function liveTarget(): LiveTarget | null {
 
 export type LiveStatus =
   | { state: "off" }
-  | { state: "up"; url: string; runtime: string; version: string | null }
+  | {
+      state: "up";
+      url: string;
+      runtime: string;
+      version: string | null;
+      /** Whether it can start a task's run on request; runtimes before 0.4 cannot. */
+      run: boolean;
+    }
   | { state: "down"; url: string; error: string; source: LiveTarget["source"] };
 
 /** A probe is a local round trip; anything slower than this is not coming. */
@@ -63,6 +71,7 @@ export async function probeLive(target: LiveTarget | null): Promise<LiveStatus> 
       runtime?: unknown;
       version?: unknown;
       live?: unknown;
+      run?: unknown;
       db?: unknown;
     };
     if (meta.live !== true) return down("is not an ngn live endpoint");
@@ -76,6 +85,7 @@ export async function probeLive(target: LiveTarget | null): Promise<LiveStatus> 
       url: target.url,
       runtime: typeof meta.runtime === "string" ? meta.runtime : "ngn",
       version: typeof meta.version === "string" ? meta.version : null,
+      run: meta.run === true,
     };
   } catch (err) {
     return { state: "down", url: target.url, error: reason(err), source: target.source };
@@ -123,6 +133,34 @@ export async function executeLive(
     return { ok: true, result: body.result ?? null, ms: elapsed() };
   } catch (err) {
     return { ok: false, error: `Could not reach ${target.url}: ${reason(err)}`, ms: elapsed() };
+  }
+}
+
+export type RunNowResult = { ok: true } | { ok: false; error: string };
+
+/** A local round trip that only starts the run; it does not wait for it to end. */
+const RUN_NOW_TIMEOUT_MS = 10_000;
+
+/** Ask `ngn run` to start one of its scheduled tasks now. */
+export async function runTaskNow(target: LiveTarget, path: string): Promise<RunNowResult> {
+  try {
+    const response = await fetch(`${target.url}/api/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+      signal: AbortSignal.timeout(RUN_NOW_TIMEOUT_MS),
+    });
+    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    if (response.ok) return { ok: true };
+    return {
+      ok: false,
+      error:
+        typeof body?.error === "string"
+          ? `ngn run: ${body.error}`
+          : `ngn run answered ${response.status}`,
+    };
+  } catch (err) {
+    return { ok: false, error: `Could not reach ${target.url}: ${reason(err)}` };
   }
 }
 

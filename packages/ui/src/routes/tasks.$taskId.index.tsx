@@ -1,5 +1,8 @@
-// A task's tabs, under its header:
+// A task's tabs, in its header's band:
 //
+//   Description  the Markdown file beside the task (`sync.md` for `sync.ts`),
+//                rendered. Always there, and first: without the file it says
+//                where one would go. The task opens here when it has one
 //   Runs       every execution, with a strip of durations so a bad afternoon
 //              shows up before anyone reads a number; a row opens that run
 //   Logs       every line it wrote, across runs
@@ -19,9 +22,11 @@ import * as React from "react";
 import { css, cx } from "styled-system/css";
 import { DurationStrip, Sparkline } from "~/components/charts";
 import { CodeViewer } from "~/components/code";
-import { IconClock, IconKey } from "~/components/icons";
+import { IconClock, IconFile, IconKey } from "~/components/icons";
 import { KvTable } from "~/components/kv-table";
 import { LogList } from "~/components/log-list";
+import { Markdown } from "~/components/markdown";
+import { TaskHeader } from "~/components/task-header";
 import {
   Card,
   Empty,
@@ -29,8 +34,6 @@ import {
   pagePad,
   scrollPane,
   SectionTitle,
-  Stat,
-  StatGrid,
   TabList,
   table,
   truncate,
@@ -52,8 +55,15 @@ import type {
 import { getLogs, getRunsPage, getTaskDetails } from "~/server/api";
 import { RunsView } from "~/components/runs-view";
 
-type TaskTab = "runs" | "logs" | "timings" | "keys" | "versions";
-const TABS: ReadonlySet<string> = new Set(["logs", "timings", "keys", "versions"]);
+type TaskTab = "description" | "runs" | "logs" | "timings" | "keys" | "versions";
+const TABS: ReadonlySet<string> = new Set([
+  "description",
+  "runs",
+  "logs",
+  "timings",
+  "keys",
+  "versions",
+]);
 
 const layout = getRouteApi("/tasks/$taskId");
 
@@ -62,7 +72,7 @@ const TASK_RUNS = 500;
 
 export const Route = createFileRoute("/tasks/$taskId/")({
   validateSearch: (search: Record<string, unknown>): { tab?: TaskTab; v?: number; q?: string } => ({
-    // "runs" is the default, so it never appears in the URL. `store` is what
+    // The tab the task opens on never appears in the URL. `store` is what
     // Keys was called, and still opens it.
     tab:
       search.tab === "store"
@@ -101,11 +111,21 @@ function TaskPage() {
   return <ProjectTaskPage />;
 }
 
+/**
+ * The tab a task opens on: what it is for, when someone wrote that down; else
+ * how its runs went.
+ */
+function initialTab(details: TaskDetails): TaskTab {
+  return details.description.text != null ? "description" : "runs";
+}
+
 function ProjectTaskPage() {
-  const { task } = layout.useLoaderData();
+  const page = layout.useLoaderData();
+  const { task } = page;
   const details = Route.useLoaderData();
   const { timings, versions, keys } = details;
-  const { tab = "runs" } = Route.useSearch();
+  const initial = initialTab(details);
+  const { tab = initial } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const now = useNow(Date.now());
   useTab({
@@ -117,20 +137,34 @@ function ProjectTaskPage() {
 
   return (
     <>
-      <TabList
-        items={[
-          { id: "runs", label: "Runs", count: task.run_count },
-          { id: "logs", label: "Logs", count: details.logCount },
-          { id: "timings", label: "Timings", count: timings.length },
-          { id: "keys", label: "Stored values", count: keys.length },
-          { id: "versions", label: "Versions", count: versions.length },
-        ]}
-        value={tab}
-        onSelect={(next) =>
-          void navigate({ search: (s) => ({ ...s, tab: next === "runs" ? undefined : next }) })
-        }
-      />
+      <TaskHeader page={page}>
+        <TabList
+          items={[
+            {
+              id: "description",
+              label: "Description",
+              empty: details.description.text == null,
+            },
+            { id: "runs", label: "Runs", count: task.run_count },
+            { id: "logs", label: "Logs", count: details.logCount },
+            { id: "timings", label: "Timings", count: timings.length },
+            { id: "keys", label: "Stored values", count: keys.length },
+            { id: "versions", label: "Versions", count: versions.length },
+          ]}
+          value={tab}
+          onSelect={(next) =>
+            void navigate({ search: (s) => ({ ...s, tab: next === initial ? undefined : next }) })
+          }
+        />
+      </TaskHeader>
 
+      {tab === "description" ? (
+        <div className={scrollPane}>
+          <div className={pagePad}>
+            <DescriptionTab description={details.description} />
+          </div>
+        </div>
+      ) : null}
       {tab === "runs" ? <RunsTab task={task} details={details} now={now} /> : null}
       {tab === "timings" ? (
         <div className={scrollPane}>
@@ -200,20 +234,21 @@ function RunsTab({
       }
       lead={
         <>
-          <TaskStats task={task} runs={details.runs} skips={details.skips} now={now} />
-          <section>
-            <SectionTitle>Duration per run</SectionTitle>
-            <DurationStrip runs={details.runs} />
-          </section>
+          <TaskSummary task={task} runs={details.runs} skips={details.skips} now={now} />
+          <DurationStrip runs={details.runs} />
           {details.skips.length > 1 ? <SkipBreakdown skips={details.skips} /> : null}
-          <SectionTitle>All runs</SectionTitle>
         </>
       }
     />
   );
 }
 
-function TaskStats({
+/**
+ * The task's record in one line, the way a run's figures read: how many runs,
+ * how many succeeded, how long they take, and how many were skipped and why.
+ * Each part is left out when there is nothing to say.
+ */
+function TaskSummary({
   task,
   runs,
   skips,
@@ -231,38 +266,63 @@ function TaskStats({
   const decided = task.success_count + task.failure_count;
   const rate = decided ? Math.round((task.success_count / decided) * 1000) / 10 : null;
   const topSkip = skips[0];
-
+  const parts: { key: string; node: React.ReactNode }[] = [
+    {
+      key: "runs",
+      node: `${plural(task.run_count, "run")}${runs[0] ? `, last ${formatAgo(now, runs[0].at)}` : ""}`,
+    },
+  ];
+  if (rate != null) {
+    parts.push({
+      key: "rate",
+      node: (
+        <span className={rate < 90 ? css({ color: "bad", fontWeight: "500" }) : undefined}>
+          {rate}% succeeded
+          {task.failure_count ? ` · ${plural(task.failure_count, "failure")}` : ""}
+        </span>
+      ),
+    });
+  }
+  if (task.retry_count) {
+    parts.push({ key: "retries", node: plural(task.retry_count, "retry", "retries") });
+  }
+  if (durations.length) {
+    parts.push({
+      key: "duration",
+      node: (
+        <span
+          title={`Over the last ${plural(durations.length, "run")} that ended · max ${formatMs(durations[durations.length - 1])}`}
+        >
+          median <span className={mono}>{formatMs(percentile(durations, 0.5))}</span>, p95{" "}
+          <span className={mono}>{formatMs(percentile(durations, 0.95))}</span>
+        </span>
+      ),
+    });
+  }
+  if (topSkip) {
+    parts.push({
+      key: "skipped",
+      node: `${formatCount(task.skipped_count)} skipped, ${skips.length === 1 ? "" : "mostly "}${skipPhrase(topSkip.reason)}`,
+    });
+  }
   return (
-    <StatGrid>
-      <Stat
-        label="Runs"
-        value={formatCount(task.run_count)}
-        sub={runs[0] ? `last ${formatAgo(now, runs[0].at)}` : undefined}
-      />
-      <Stat
-        label="Success rate"
-        value={rate == null ? "—" : `${rate}%`}
-        tone={rate != null && rate < 90 ? "bad" : undefined}
-        sub={[
-          plural(task.failure_count, "failure"),
-          task.retry_count ? plural(task.retry_count, "retry", "retries") : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      />
-      <Stat
-        label="Median duration"
-        value={formatMs(percentile(durations, 0.5))}
-        sub={`p95 ${formatMs(percentile(durations, 0.95))} · max ${formatMs(durations[durations.length - 1])}`}
-      />
-      {topSkip ? (
-        <Stat
-          label="Skipped"
-          value={formatCount(task.skipped_count)}
-          sub={`${skips.length === 1 ? "" : "mostly "}${skipPhrase(topSkip.reason)}`}
-        />
-      ) : null}
-    </StatGrid>
+    <p
+      className={css({
+        display: "flex",
+        flexWrap: "wrap",
+        columnGap: "2",
+        m: "0",
+        color: "muted",
+        fontSize: "12px",
+      })}
+    >
+      {parts.map((part, i) => (
+        <React.Fragment key={part.key}>
+          {i > 0 ? <span className={css({ color: "faint" })}>·</span> : null}
+          <span>{part.node}</span>
+        </React.Fragment>
+      ))}
+    </p>
   );
 }
 
@@ -304,6 +364,29 @@ function SkipBreakdown({ skips }: { skips: SkipCount[] }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Description
+// -----------------------------------------------------------------------------
+
+function DescriptionTab({ description }: { description: TaskDetails["description"] }) {
+  if (description.text == null) {
+    return (
+      <Empty title="No description" icon={<IconFile size={22} />}>
+        Write what the task is for, what it reads and writes, and what to do when it fails, in{" "}
+        <code>{description.path}</code> beside it. It shows up here as it is now.
+      </Empty>
+    );
+  }
+  return (
+    <>
+      <p className={css({ m: "0", color: "faint", fontSize: "12px" })}>
+        <span className={mono}>{description.path}</span>
+      </p>
+      <Markdown>{description.text}</Markdown>
+    </>
   );
 }
 

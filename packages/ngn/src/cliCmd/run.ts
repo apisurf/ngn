@@ -164,6 +164,7 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
           language: language,
         });
       },
+      runTaskNow: (path) => scheduler.runNow(path),
     });
 
     printReadout(config.configFileOptions.dbPath, port, report, config.configFileOptions.match);

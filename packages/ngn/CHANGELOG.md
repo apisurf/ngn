@@ -1,5 +1,30 @@
 # @apisurf/ngn
 
+## 0.4.0
+
+### Minor Changes
+
+- ngnui takes the layout lessons from wireui.
+
+  - **Calmer colour.** Colour now means "look here": runs that succeeded are grey dots and grey bars, INFO lines are grey ticks, and the Overview says all is well in plain text. Red, amber and blue are kept for failures, warnings or Stalled runs, and runs still going.
+  - **One header band.** A task's header and its tabs sit on one raised band that the page scrolls under. The header says how the task is doing in words, now **Healthy** too, not only Failing, Circuit open or Stalled.
+  - **Run page.** Above a run, the task shrinks to one line that links back to it, and the run is the title: `Run #41 ✓ Succeeded`. Its figures read as one line (when, how long, log lines with their warnings and errors, timed spans, version) in place of stat cards. The breadcrumb is gone; that line is the way back.
+  - **Timeline filters.** All, Logs or Timings, each with its count, plus **Problems only** for warnings and errors.
+  - **Lighter Runs pages.** The filter and the facets share one toolbar row, the facets are drawn as segmented groups, and the time chart is slimmer. A task's Runs tab leads with its record in one line instead of stat cards.
+  - **Description tab.** A task's page opens on the Markdown file beside it (`sync.md` for `sync.ts`) when there is one.
+  - **Run now.** A task's header starts a run of it now, in the running `ngn run` (new `POST /api/run`, reported by `/api/meta` as `run: true`). It runs like a tick, except the breaker does not hold it back. While a run is still going it is refused rather than recorded as a skip.
+  - **Request guard.** ngnui answers only to loopback Host names. Starting anything (the Editor or Run now) needs the same Origin and a token the server mints at start.
+
+  ngn-core: `TaskLibraryScheduler.runNow(path)`. A run's deadline signal no longer fires 1 ms in on tasks scheduled more than ~24.8 days apart, such as monthly or yearly tasks; the timer used to overflow.
+
+### Patch Changes
+
+- Updated dependencies
+  - @apisurf/ngn-core@0.4.0
+  - @apisurf/ngn-os@0.4.0
+  - @apisurf/ngn-persistence@0.4.0
+  - @apisurf/ngn-schema@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

@@ -16,6 +16,7 @@
  * a running `ngn run`, which is the only process with a compiler, config and
  * env to execute it with. Without `--live` the editor stays disabled.
  */
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -165,6 +166,13 @@ async function main(argv) {
 /** What the server bundle reads its settings from. */
 function serverEnv({ dbPath, live, flagged, listening }) {
   process.env.NGN_DB = dbPath;
+  // The project task paths are relative to, for reading a task's description:
+  // this folder when it holds the config, else the server uses the database's.
+  if (CONFIG_FILES.some((name) => existsSync(join(process.cwd(), name)))) {
+    process.env.NGN_ROOT = process.cwd();
+  } else delete process.env.NGN_ROOT;
+  // Minted here so every worker of the server agrees on it; see src/server/guard.ts.
+  process.env.NGN_UI_TOKEN = randomUUID();
   if (live) process.env.NGN_LIVE = live;
   else delete process.env.NGN_LIVE;
   if (live && !flagged) process.env.NGN_LIVE_SOURCE = "config";

@@ -8,11 +8,12 @@ import { defineConfig } from "@pandacss/dev";
  * an attribute on <html>, set before first paint by the script in __root.tsx —
  * it follows the OS until someone picks a theme explicitly.
  *
- * Run and log colours follow the convention every scheduler dashboard uses
- * (success green, warning amber, failure red, running blue, skipped grey),
- * because that is what the eye already reads before it reads the text. Timing
- * labels are a categorical series, so `fetch` keeps its colour from one run to
- * the next.
+ * Colour means "look here". A run that succeeded, a skip, an INFO line are the
+ * normal case and are drawn in greys; amber is a warning or a Stalled run, red a
+ * failure, blue a run still going. Green is kept for a verdict said in words
+ * (a header's "Succeeded", "Healthy"), never for a column of normal rows.
+ * Timing labels are a categorical series, so `fetch` keeps its colour from one
+ * run to the next.
  */
 const c = (base: string, dark: string) => ({ value: { base, _dark: dark } });
 
@@ -63,6 +64,12 @@ export default defineConfig({
           well: c("#f8f9fb", "#19191c"),
           hover: c("#eceef2", "#2c2c32"),
           selected: c("#e5edff", "#2b3350"),
+          // The task/run header band: the canvas's own white, lifted off what
+          // scrolls under it by an edge and a shadow rather than a tint, so
+          // "what this is" never reads as one of the details under it. In dark
+          // mode a lighter surface does the lifting a shadow cannot.
+          masthead: c("#ffffff", "#26262b"),
+          mastheadLine: c("#d9dce2", "#3a3a41"),
 
           fg: c("#18181b", "#e7e7ea"),
           muted: c("#5f6572", "#a1a1aa"),
@@ -100,6 +107,12 @@ export default defineConfig({
           synBool: c("#7e22ce", "#c4b5fd"),
           synNull: c("#6b7280", "#9ca3af"),
           synPunct: c("#6b7280", "#71717a"),
+        },
+        shadows: {
+          masthead: c(
+            "0 1px 2px rgba(16, 24, 40, 0.05), 0 6px 14px -6px rgba(16, 24, 40, 0.12)",
+            "0 6px 14px -6px rgba(0, 0, 0, 0.6)",
+          ),
         },
       },
     },

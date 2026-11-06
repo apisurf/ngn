@@ -11,12 +11,29 @@ import * as React from "react";
 import { css, cx } from "styled-system/css";
 import type { LogLevel, Tone } from "~/lib/ngn";
 import { LEVEL_TONE, logLevel, readSkip, runStateLabel, runTone, seriesSlot } from "~/lib/ngn";
-import { IconCheck, IconCopy, IconSearch } from "./icons";
+import {
+  IconAlert,
+  IconCheck,
+  IconCheckCircle,
+  IconClock,
+  IconCopy,
+  IconSearch,
+  IconXCircle,
+} from "./icons";
 
 export const mono = css({ fontFamily: "mono", fontSize: "12px" });
 export const truncate = css({ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
 export const faintText = css({ color: "faint" });
 export const mutedText = css({ color: "muted" });
+/** Read by a screen reader, not drawn: a page's name when the frame already shows it. */
+export const visuallyHidden = css({
+  position: "absolute",
+  w: "1px",
+  h: "1px",
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+});
 
 // -----------------------------------------------------------------------------
 // Tones: run statuses, log levels, timing labels
@@ -46,8 +63,18 @@ const TONE_DOT: Record<Tone, string> = {
   neutral: css({ bg: "faint" }),
 };
 
-/** Solid fills, for bars and chart marks. */
-export const TONE_BAR: Record<Tone, string> = TONE_DOT;
+/**
+ * Fills for bars and chart marks. A success is the bulk of every chart, so it
+ * is a mid grey rather than green: the colour is left for the bars that need a
+ * look. A skip is a lighter grey, so the two still read apart.
+ */
+export const TONE_BAR: Record<Tone, string> = {
+  ok: css({ bg: "muted", opacity: 0.55 }),
+  info: css({ bg: "info" }),
+  warn: css({ bg: "warn" }),
+  bad: css({ bg: "bad" }),
+  neutral: css({ bg: "faint", opacity: 0.45 }),
+};
 
 export function toneText(tone: Tone): string {
   return TONE_TEXT[tone];
@@ -248,6 +275,49 @@ export function Pill({
         TONE_PILL[tone],
       )}
     >
+      {children}
+    </span>
+  );
+}
+
+const VERDICT_ICON: Record<Tone, React.ReactNode> = {
+  ok: <IconCheckCircle size={14} />,
+  bad: <IconXCircle size={14} />,
+  warn: <IconAlert size={14} />,
+  info: <IconClock size={14} />,
+  neutral: null,
+};
+
+/** How a run or a task is doing, in words and colour: the loudest thing in a header. */
+export function VerdictBadge({
+  tone,
+  children,
+  title,
+}: {
+  tone: Tone;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cx(
+        css({
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "1.5",
+          h: "24px",
+          px: "2.5",
+          rounded: "md",
+          fontSize: "12.5px",
+          fontWeight: "600",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }),
+        TONE_PILL[tone],
+      )}
+    >
+      {VERDICT_ICON[tone]}
       {children}
     </span>
   );

@@ -395,19 +395,20 @@ export function RunFacets({
     onChange(formatRunQuery(next));
   };
   return (
-    <div className={css({ display: "flex", alignItems: "center", gap: "1.5", flexWrap: "wrap" })}>
-      {ORDER.map((word) => (
-        <FacetChip
-          key={word}
-          label={STATUS_LABEL[word]}
-          count={facets.status[word]}
-          active={only("status") === word}
-          onClick={() => toggle("status", word)}
-        />
-      ))}
+    <div className={css({ display: "flex", alignItems: "center", gap: "2", flexWrap: "wrap" })}>
+      <div className={facetGroup} role="group" aria-label="Status">
+        {ORDER.map((word) => (
+          <FacetChip
+            key={word}
+            label={STATUS_LABEL[word]}
+            count={facets.status[word]}
+            active={only("status") === word}
+            onClick={() => toggle("status", word)}
+          />
+        ))}
+      </div>
       {origins ? (
-        <>
-          <span className={css({ w: "1px", h: "16px", bg: "line", mx: "1" })} />
+        <div className={facetGroup} role="group" aria-label="Origin">
           <FacetChip
             label="Scheduled"
             count={facets.origin.scheduled}
@@ -420,7 +421,7 @@ export function RunFacets({
             active={only("origin") === "editor"}
             onClick={() => toggle("origin", "editor")}
           />
-        </>
+        </div>
       ) : null}
       {value ? (
         <span className={css({ ml: "auto" })}>
@@ -430,6 +431,16 @@ export function RunFacets({
     </div>
   );
 }
+
+/** A facet's values side by side, drawn like a segmented control. */
+const facetGroup = css({
+  display: "inline-flex",
+  p: "2px",
+  gap: "2px",
+  rounded: "md",
+  bg: "hover",
+  flexShrink: 0,
+});
 
 function FacetChip({
   label,
@@ -450,20 +461,24 @@ function FacetChip({
       disabled={count === 0 && !active}
       className={css({
         display: "inline-flex",
-        alignItems: "baseline",
         gap: "1",
-        h: "26px",
-        px: "2.5",
-        rounded: "full",
-        border: "1px solid",
-        borderColor: "line",
-        bg: "raised",
+        alignItems: "center",
+        h: "24px",
+        px: "2",
+        rounded: "sm",
+        border: "none",
+        bg: "transparent",
         color: "muted",
         cursor: "pointer",
         fontSize: "12px",
+        fontWeight: "500",
         _hover: { color: "fg" },
-        _disabled: { opacity: 0.45, cursor: "default" },
-        "&[aria-pressed=true]": { color: "fg", borderColor: "accent", bg: "selected" },
+        _disabled: { opacity: 0.45, cursor: "default", _hover: { color: "muted" } },
+        "&[aria-pressed=true]": {
+          bg: "raised",
+          color: "fg",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+        },
       })}
     >
       {label}

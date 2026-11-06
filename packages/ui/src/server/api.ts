@@ -4,19 +4,23 @@
 // the handler bodies, and the native better-sqlite3 import they pull in, out of
 // the client bundle.
 //
-// Every function but one is a read. There is no auth and no ownership filter:
+// Every function but two is a read. There is no auth and no ownership filter:
 // this server binds to loopback, reads one file the user already owns through a
-// read-only connection, and only runs because they started it. The exception,
-// `runLive`, forwards code to the `ngn run` named by `--live` — see ./live.
+// read-only connection, and only runs because they started it. The two that
+// are not, `runLive` and `runTask`, ask the `ngn run` named by `--live` to run
+// something — see ./live — and each is guarded by ./guard: loopback Host, same
+// Origin, and the token this server minted.
 
 import { createServerFn } from "@tanstack/react-start";
-import { dirname } from "node:path";
+import { getRequest as currentRequest } from "@tanstack/react-start/server";
 import type { TaskName } from "../lib/ngn";
 import { cronOf, describeCron, describeTask, parseRunQuery } from "../lib/ngn";
 import type { Db, SchemaState } from "./db";
 import { dbPath, fileBytes, getDb, schemaState } from "./db";
-import type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
-import { executeLive, liveTarget, probeLive } from "./live";
+import { descriptionPath, projectRoot, readDescription } from "./description";
+import { refuseRun, RUN_TOKEN } from "./guard";
+import type { LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
+import { executeLive, liveTarget, probeLive, runTaskNow } from "./live";
 import type {
   ActivityBucket,
   Attempt,
@@ -43,7 +47,7 @@ import type {
 import * as q from "./queries";
 
 export type { SchemaState } from "./db";
-export type { LiveLanguage, LiveOutcome, LiveStatus } from "./live";
+export type { LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
 export type {
   ActivityBucket,
   Attempt,
@@ -135,7 +139,7 @@ export type Counts = WorkspaceCounts & { stalled: number };
 export interface Workspace {
   /** Absolute path of the file being browsed. */
   path: string;
-  /** Folder the file sits in — normally the project root `ngn run` started in. */
+  /** The project folder: where ngnui started, else the folder the file sits in. */
   root: string;
   bytes: number;
   schema: { state: SchemaState; missing: string[] };
@@ -144,6 +148,8 @@ export interface Workspace {
   tasks: TaskItem[];
   /** The `--live` endpoint this server forwards to, or null when the editor is off. */
   live: string | null;
+  /** Required by every function that runs something; only this server's pages have it. */
+  token: string;
   /** The server's clock, so relative times agree on both sides of hydration. */
   now: number;
 }
@@ -155,9 +161,10 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
     const schema = schemaState(handle);
     const base = {
       path,
-      root: dirname(path),
+      root: projectRoot(),
       schema,
       live: liveTarget()?.url ?? null,
+      token: RUN_TOKEN,
       now: Date.now(),
     };
     const db = readable();
@@ -367,6 +374,11 @@ export interface TaskDetails {
   skips: SkipCount[];
   /** The version picked in the Versions tab, or the newest. */
   code: VersionCode | null;
+  /**
+   * The Markdown file beside the task (`sync.md` for `sync.ts`), relative to
+   * the project, and what it says now; `text` is null when there is none.
+   */
+  description: { path: string; text: string | null };
 }
 
 /** Runs a task page holds. `ngn sql` reaches further back. */
@@ -381,6 +393,7 @@ export const getTaskDetails = createServerFn({ method: "GET" })
     const db = readable();
     if (!db) return null;
     const taskId = data.taskId;
+    const path = q.getTask(db, taskId)?.path ?? "";
     return {
       runs: q.listRuns(db, { taskId, limit: TASK_RUN_WINDOW }),
       timings: q.timingStats(db, taskId),
@@ -391,6 +404,10 @@ export const getTaskDetails = createServerFn({ method: "GET" })
       code:
         (data.versionId === undefined ? null : q.getVersionCode(db, taskId, data.versionId)) ??
         q.getVersionCode(db, taskId),
+      description: {
+        path: descriptionPath(path),
+        text: path ? readDescription(projectRoot(), path) : null,
+      },
     };
   });
 
@@ -470,9 +487,22 @@ export type LiveRun = LiveOutcome & {
 /** Source this large is not something typed into an editor. */
 const MAX_LIVE_CODE = 1_000_000;
 
+/** Throws the reason a request may not run anything. */
+function guard(token: unknown): void {
+  const request = currentRequest();
+  const reason = refuseRun({
+    host: request.headers.get("host"),
+    origin: request.headers.get("origin"),
+    token: typeof token === "string" ? token : null,
+    expected: RUN_TOKEN,
+  });
+  if (reason) throw new Error(`Refused: ${reason}.`);
+}
+
 export const runLive = createServerFn({ method: "POST" })
   .validator((input: unknown) => {
     const r = record(input);
+    guard(r.token);
     const code = optionalString(r.code);
     if (!code?.trim()) throw new Error("code is required");
     if (code.length > MAX_LIVE_CODE) throw new Error("code is too large");
@@ -494,4 +524,39 @@ export const runLive = createServerFn({ method: "POST" })
     const outcome = await executeLive(target, data.code, data.language);
     const db = readable();
     return { ...outcome, runId: db ? q.latestLiveRun(db, sent) : null };
+  });
+
+/**
+ * Start one run of a scheduled task now, in the `ngn run` the editor uses.
+ * Answers once the run is under way; how it goes is read from the database.
+ */
+export const runTask = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const r = record(input);
+    guard(r.token);
+    return { taskId: id(r.taskId, "taskId") };
+  })
+  .handler(async ({ data }): Promise<RunNowResult> => {
+    const db = readable();
+    const task = db ? q.getTask(db, data.taskId) : null;
+    if (!task) return { ok: false, error: "No such task in this database." };
+    if (describeTask(task.path).editor) {
+      return { ok: false, error: "An editor run is run again from the Editor." };
+    }
+    // The probe also refuses a runtime found in the config that serves another file.
+    const status = await probeLive(liveTarget());
+    if (status.state === "off") {
+      return {
+        ok: false,
+        error: "No runtime: start `ngn run` in this project, or ngnui with --live <its url>.",
+      };
+    }
+    if (status.state === "down") return { ok: false, error: `${status.url} ${status.error}.` };
+    if (!status.run) {
+      return {
+        ok: false,
+        error: `ngn ${status.version ?? ""} cannot start a run on request; update it.`,
+      };
+    }
+    return runTaskNow(liveTarget()!, task.path);
   });

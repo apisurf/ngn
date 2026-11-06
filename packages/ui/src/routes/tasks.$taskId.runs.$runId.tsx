@@ -1,12 +1,20 @@
 // A run, under its task's header, read like a job's result page: the verdict
-// and what it cost up top, then everything the task did on one clock — its log
-// lines and its timing spans. The code that ran is the task's, so the run links
+// and what it cost up top, in one line, then everything the task did on one
+// clock — its log lines and its timing spans. The task shrinks to a line above
+// the run: the way back to it, and Run now. The code that ran is the task's, so the run links
 // to that version rather than showing it again.
 //
 // `[` and `]` step to the previous and next run of the same task and keep the
 // same sub-tab open, so a task's history can be walked without a list.
 
-import { createFileRoute, Link, notFound, redirect, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  getRouteApi,
+  Link,
+  notFound,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
 import {
@@ -19,6 +27,7 @@ import {
 import { JsonView } from "~/components/json-view";
 import { KvTable } from "~/components/kv-table";
 import { LogList } from "~/components/log-list";
+import { TaskHeader } from "~/components/task-header";
 import {
   Callout,
   Card,
@@ -28,23 +37,21 @@ import {
   LevelBadge,
   mono,
   pagePad,
-  RunBadge,
   scrollPane,
   SectionTitle,
   seriesBg,
   seriesText,
-  Stat,
-  StatGrid,
   TabList,
   table,
+  Segmented,
   Toggle,
   TONE_BAR,
   truncate,
+  VerdictBadge,
 } from "~/components/primitives";
 import {
   formatAgo,
   formatClockMs,
-  formatCount,
   formatDateTime,
   formatMs,
   formatOffset,
@@ -60,6 +67,8 @@ import {
   logLevel,
   readSkip,
   runLabel,
+  runMark,
+  runStateLabel,
   runTone,
   SKIP_TITLES,
 } from "~/lib/ngn";
@@ -68,6 +77,8 @@ import { hasContent, pickRunTab, RUN_TABS, type RunContent, type RunTab } from "
 import { tabKey, useTab } from "~/lib/tabs";
 import type { LogRow, RunPage as RunPageData, TimingRow } from "~/server/api";
 import { getRun } from "~/server/api";
+
+const layout = getRouteApi("/tasks/$taskId");
 
 const TABS: ReadonlySet<string> = new Set(RUN_TABS);
 const asTab = (value: unknown): RunTab | undefined =>
@@ -150,36 +161,37 @@ function RunPage() {
 
   return (
     <>
-      <RunHeader page={page} go={go} />
-
-      <TabList
-        items={[
-          {
-            id: "timeline",
-            label: "Timeline",
-            count: taskLines.length + timings.length,
-            empty: !hasContent("timeline", content),
-          },
-          {
-            id: "logs",
-            label: "Logs",
-            count: taskLines.length,
-            tone: run.error_count ? "bad" : problems ? "warn" : undefined,
-            empty: !hasContent("logs", content),
-          },
-          {
-            id: "timings",
-            label: "Timings",
-            count: timings.length,
-            empty: !hasContent("timings", content),
-          },
-          { id: "result", label: "Result", empty: !hasContent("result", content) },
-          { id: "details", label: "Details" },
-        ]}
-        dense
-        value={tab}
-        onSelect={(next) => void navigate({ search: { tab: next } })}
-      />
+      <TaskHeader page={layout.useLoaderData()} linked>
+        <RunHeader page={page} go={go} />
+        <TabList
+          items={[
+            {
+              id: "timeline",
+              label: "Timeline",
+              count: taskLines.length + timings.length,
+              empty: !hasContent("timeline", content),
+            },
+            {
+              id: "logs",
+              label: "Logs",
+              count: taskLines.length,
+              tone: run.error_count ? "bad" : problems ? "warn" : undefined,
+              empty: !hasContent("logs", content),
+            },
+            {
+              id: "timings",
+              label: "Timings",
+              count: timings.length,
+              empty: !hasContent("timings", content),
+            },
+            { id: "result", label: "Result", empty: !hasContent("result", content) },
+            { id: "details", label: "Details" },
+          ]}
+          dense
+          value={tab}
+          onSelect={(next) => void navigate({ search: { tab: next } })}
+        />
+      </TaskHeader>
 
       {tab === "timeline" ? <TimelineTab page={page} /> : null}
       {tab === "logs" ? (
@@ -201,25 +213,23 @@ function RunPage() {
 
 function RunHeader({ page, go }: { page: RunPageData; go: (id: number | null) => void }) {
   return (
-    <header
+    <div
       className={css({
         px: "5",
-        pt: "3",
-        pb: "3",
+        pt: "2",
+        pb: "2",
         display: "flex",
         flexDir: "column",
-        gap: "3",
-        flexShrink: 0,
-        borderTop: "1px solid",
-        borderColor: "line",
+        gap: "2",
       })}
     >
-      <RunTitle page={page} go={go} />
+      <div className={css({ display: "flex", flexDir: "column", gap: "0.5" })}>
+        <RunTitle page={page} go={go} />
+        <RunFacts page={page} />
+      </div>
       {page.attempts.length > 1 ? <Attempts page={page} /> : null}
       <RunCallout page={page} />
-      {/* A skipped run never started: every figure would be a dash. */}
-      {page.run.status === "skipped" ? null : <RunStats page={page} />}
-    </header>
+    </div>
   );
 }
 
@@ -233,53 +243,16 @@ const subtleLink = css({
 });
 
 function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => void }) {
-  const { run, task, neighbours } = page;
-  const now = useNow(Date.now(), 60_000);
-  const behind = run.version != null && run.version < task.version;
-  const taskId = String(task.id);
-
+  const { run, neighbours } = page;
   return (
-    <div className={css({ display: "flex", alignItems: "center", gap: "3" })}>
-      <div
-        className={css({
-          minW: "0",
-          flex: "1",
-          display: "flex",
-          alignItems: "center",
-          gap: "2",
-          flexWrap: "wrap",
-          fontSize: "13px",
-        })}
-      >
-        {/* The way back up is the breadcrumb above. */}
-        <h2 className={css({ fontFamily: "mono", fontSize: "14px", fontWeight: "600", m: "0" })}>
-          #{run.id}
-        </h2>
-        <RunBadge status={run.status} stalled={run.stalled} pill />
-        <span className={css({ color: "muted", fontSize: "12px" })}>
-          {formatDateTime(now, run.at)}
-        </span>
-        {run.version != null ? (
-          <>
-            <span className={css({ color: "faint" })}>·</span>
-            <Link
-              to="/tasks/$taskId"
-              params={{ taskId }}
-              search={{ tab: "versions", v: run.version_id }}
-              className={cx(subtleLink, mono, css({ fontSize: "12px" }))}
-              title="Open the code this run executed"
-            >
-              v{run.version}
-            </Link>
-            {behind ? (
-              <span className={css({ color: "muted", fontSize: "12px" })}>
-                (the task is on v{task.version} now)
-              </span>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-      <div className={css({ display: "flex", gap: "1", flexShrink: 0 })}>
+    <div className={css({ display: "flex", alignItems: "center", gap: "2.5" })}>
+      <h1 className={css({ fontSize: "18px", fontWeight: "600", m: "0", whiteSpace: "nowrap" })}>
+        Run #{run.id}
+      </h1>
+      <VerdictBadge tone={runTone(run.status, run.stalled)}>
+        {runStateLabel(run.status, run.stalled)}
+      </VerdictBadge>
+      <div className={css({ display: "flex", gap: "1", flexShrink: 0, ml: "auto" })}>
         <IconButton
           label="Older run of this task ([)"
           disabled={neighbours.prev == null}
@@ -295,6 +268,117 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
           <IconChevronRight />
         </IconButton>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the run cost and recorded, in one line: when, how long, its log lines
+ * (with their warnings and errors), its timed spans, the version that ran.
+ * What it did not record is said in the same line rather than as zeros.
+ */
+function RunFacts({ page }: { page: RunPageData }) {
+  const { run, task, timings } = page;
+  const now = useNow(Date.now(), 1000);
+  const taskLines = page.logs.filter((l) => !isLifecycle(l.value));
+  const warns = taskLines.filter((l) => logLevel(l.status) === "warn").length;
+  const behind = run.version != null && run.version < task.version;
+  const running = isOpen(run.status) && run.started_at != null ? now - run.started_at : null;
+  // A skipped run never started: every figure would be a dash.
+  const skipped = run.status === "skipped";
+
+  const parts: { key: string; node: React.ReactNode }[] = [
+    {
+      key: "at",
+      node: <span title={`Started ${formatClockMs(run.at)}`}>{formatDateTime(now, run.at)}</span>,
+    },
+  ];
+  if (!skipped) {
+    parts.push({
+      key: "took",
+      node:
+        run.duration_ms != null ? (
+          <span title={run.ended_at != null ? `Ended ${formatClockMs(run.ended_at)}` : undefined}>
+            took <span className={mono}>{formatMs(run.duration_ms)}</span>
+          </span>
+        ) : running != null ? (
+          <span className={run.stalled ? css({ color: "warn" }) : css({ color: "info" })}>
+            running for <span className={mono}>{formatMs(running)}</span>
+          </span>
+        ) : (
+          "never started"
+        ),
+    });
+    parts.push({
+      key: "logs",
+      node: taskLines.length ? (
+        <span>
+          {plural(taskLines.length, "log line")}
+          {run.error_count ? (
+            <span className={css({ color: "bad", fontWeight: "500" })}>
+              {" "}
+              · {plural(run.error_count, "error")}
+            </span>
+          ) : null}
+          {warns ? (
+            <span className={css({ color: "warn", fontWeight: "500" })}>
+              {" "}
+              · {plural(warns, "warning")}
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className={css({ color: "faint" })}>no log lines</span>
+      ),
+    });
+    parts.push({
+      key: "timings",
+      node: timings.length ? (
+        <span title={`${formatMs(timings.reduce((sum, t) => sum + t.value, 0))} in total`}>
+          {plural(timings.length, "timed span")}
+        </span>
+      ) : (
+        <span className={css({ color: "faint" })}>no ctx.timing calls</span>
+      ),
+    });
+  }
+  if (run.version != null) {
+    parts.push({
+      key: "version",
+      node: (
+        <span>
+          <Link
+            to="/tasks/$taskId"
+            params={{ taskId: String(task.id) }}
+            search={{ tab: "versions", v: run.version_id }}
+            className={cx(subtleLink, mono)}
+            title="Open the code this run executed"
+          >
+            v{run.version}
+          </Link>
+          {behind ? ` (the task is on v${task.version} now)` : null}
+        </span>
+      ),
+    });
+  }
+
+  return (
+    <div
+      className={css({
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "baseline",
+        columnGap: "2",
+        color: "muted",
+        fontSize: "12px",
+      })}
+    >
+      {parts.map((part, i) => (
+        <React.Fragment key={part.key}>
+          {i > 0 ? <span className={css({ color: "faint" })}>·</span> : null}
+          {part.node}
+        </React.Fragment>
+      ))}
     </div>
   );
 }
@@ -338,7 +422,7 @@ function Attempts({ page }: { page: RunPageData }) {
               "&[aria-current=page]": { bg: "selected", color: "fg" },
             })}
           >
-            <Dot tone={runTone(attempt.status)} />
+            <Dot tone={runMark(attempt.status)} />
             <span className={mono}>#{attempt.id}</span>
           </Link>
         </React.Fragment>
@@ -468,72 +552,6 @@ function OpenCallout({ page }: { page: RunPageData }) {
   );
 }
 
-function RunStats({ page }: { page: RunPageData }) {
-  const { run, timings } = page;
-  const taskLines = page.logs.filter((l) => !isLifecycle(l.value));
-  // What the run did not record goes in one quiet line, not a card of zeros.
-  const nothing = [
-    taskLines.length ? null : "no log lines",
-    timings.length ? null : "no ctx.timing calls",
-  ].filter(Boolean);
-
-  return (
-    <>
-      <StatGrid>
-        <DurationStat run={run} />
-        {taskLines.length ? <LogsStat run={run} lines={taskLines} /> : null}
-        {timings.length ? (
-          <Stat
-            label="Timed spans"
-            value={formatCount(timings.length)}
-            sub={`${formatMs(timings.reduce((sum, t) => sum + t.value, 0))} in total`}
-          />
-        ) : null}
-        <Stat
-          label="Started"
-          value={run.started_at != null ? formatClockMs(run.started_at).slice(0, 8) : "—"}
-          sub={run.ended_at != null ? `ended ${formatClockMs(run.ended_at)}` : "no end recorded"}
-        />
-      </StatGrid>
-      {nothing.length ? (
-        <p className={css({ m: "0", color: "faint", fontSize: "12px" })}>
-          {nothing.join(" · ").replace(/^n/, "N")}
-        </p>
-      ) : null}
-    </>
-  );
-}
-
-function DurationStat({ run }: { run: RunPageData["run"] }) {
-  const now = useNow(Date.now(), 1000);
-  const running = isOpen(run.status) && run.started_at != null ? now - run.started_at : null;
-  return (
-    <Stat
-      label="Duration"
-      value={formatMs(run.duration_ms ?? running)}
-      sub={run.duration_ms != null ? "start to end" : running != null ? "so far" : "never started"}
-      tone={run.stalled ? "warn" : running != null ? "info" : undefined}
-    />
-  );
-}
-
-function LogsStat({ run, lines }: { run: RunPageData["run"]; lines: LogRow[] }) {
-  const warns = lines.filter((l) => logLevel(l.status) === "warn").length;
-  const noisy = run.error_count > 0 || warns > 0;
-  return (
-    <Stat
-      label="Logs"
-      value={formatCount(lines.length)}
-      tone={run.error_count ? "bad" : warns ? "warn" : undefined}
-      sub={
-        noisy
-          ? `${plural(warns, "warning")} · ${plural(run.error_count, "error")}`
-          : "no warnings or errors"
-      }
-    />
-  );
-}
-
 // -----------------------------------------------------------------------------
 // Timeline: log lines and timing spans on one clock
 // -----------------------------------------------------------------------------
@@ -542,10 +560,18 @@ type Entry =
   | { type: "log"; at: number; row: LogRow }
   | { type: "timing"; at: number; row: TimingRow };
 
+/** What the timeline lists: everything, or only one kind of entry. */
+type TimelineShow = "all" | "logs" | "timings";
+
+const isProblem = (row: LogRow) => logLevel(row.status) !== "info";
+
 function TimelineTab({ page }: { page: RunPageData }) {
   const navigate = useNavigate();
   const { run, logs, timings } = page;
   const [lifecycle, setLifecycle] = React.useState(false);
+  const [show, setShow] = React.useState<TimelineShow>("all");
+  // Warnings and errors only: what went wrong in this run, in one click.
+  const [problems, setProblems] = React.useState(false);
 
   const start = run.started_at ?? run.created_at;
   const end = Math.max(
@@ -556,22 +582,32 @@ function TimelineTab({ page }: { page: RunPageData }) {
   );
   const span = end - start;
 
+  const lines = React.useMemo(
+    () => logs.filter((row) => lifecycle || !isLifecycle(row.value)),
+    [logs, lifecycle],
+  );
+  const problemCount = lines.filter(isProblem).length;
   // Spans are placed where they began; a line where it was written.
   const entries: Entry[] = React.useMemo(
     () =>
       [
-        ...logs
-          .filter((row) => lifecycle || !isLifecycle(row.value))
-          .map((row): Entry => ({ type: "log", at: row.created_at, row })),
-        ...timings.map((row): Entry => ({ type: "timing", at: row.created_at - row.value, row })),
+        ...(show === "timings"
+          ? []
+          : lines
+              .filter((row) => !problems || isProblem(row))
+              .map((row): Entry => ({ type: "log", at: row.created_at, row }))),
+        // A timing is never a problem: with Problems only it is left out.
+        ...(show === "logs" || problems
+          ? []
+          : timings.map((row): Entry => ({ type: "timing", at: row.created_at - row.value, row }))),
       ].toSorted((a, b) => a.at - b.at || a.row.id - b.row.id),
-    [logs, timings, lifecycle],
+    [lines, timings, show, problems],
   );
 
   if (logs.length === 0 && timings.length === 0) {
     return <Empty title="This run recorded nothing" />;
   }
-  const hidden = entries.length === 0;
+  const onlyLifecycle = lines.length === 0 && timings.length === 0;
 
   return (
     <div className={css({ display: "flex", flexDir: "column", flex: "1", minH: "0" })}>
@@ -585,15 +621,35 @@ function TimelineTab({ page }: { page: RunPageData }) {
           flexShrink: 0,
         })}
       >
+        <Segmented
+          items={[
+            { id: "all", label: <Counted label="All" count={lines.length + timings.length} /> },
+            { id: "logs", label: <Counted label="Logs" count={lines.length} /> },
+            { id: "timings", label: <Counted label="Timings" count={timings.length} /> },
+          ]}
+          value={show}
+          onSelect={setShow}
+        />
+        <Toggle
+          checked={problems}
+          onChange={setProblems}
+          label={problemCount ? `Problems only · ${problemCount}` : "Problems only"}
+        />
         <Toggle checked={lifecycle} onChange={setLifecycle} label="Lifecycle" />
         <span className={css({ ml: "auto", color: "faint", fontSize: "12px" })}>
           {formatMs(span)} end to end
         </span>
       </div>
-      {hidden ? (
+      {onlyLifecycle ? (
         <Empty title="Only ngn's lifecycle lines">
           The task itself logged and timed nothing in this run. Turn on <b>Lifecycle</b> to see what
           ngn recorded around it.
+        </Empty>
+      ) : entries.length === 0 ? (
+        <Empty title={problems ? "No warnings or errors" : "Nothing of this kind"}>
+          {problems
+            ? "The run logged no warning or error lines."
+            : "This run recorded none. Pick All to see everything it did."}
         </Empty>
       ) : (
         <div className={scrollPane}>
@@ -636,6 +692,17 @@ function TimelineTab({ page }: { page: RunPageData }) {
   );
 }
 
+const infoTick = css({ bg: "faint" });
+
+function Counted({ label, count }: { label: string; count: number }) {
+  return (
+    <>
+      {label}
+      <span className={css({ color: "faint", fontVariantNumeric: "tabular-nums" })}>{count}</span>
+    </>
+  );
+}
+
 function LogEntry({
   row,
   start,
@@ -675,7 +742,9 @@ function LogEntry({
           <div
             className={cx(
               css({ position: "absolute", top: "-1px", w: "2px", h: "10px", rounded: "full" }),
-              lifecycle ? TONE_BAR.neutral : TONE_BAR[tone],
+              // An INFO line is the normal case: a grey tick, not a blue one; ngn's
+              // own lifecycle lines fainter still.
+              lifecycle ? TONE_BAR.neutral : tone === "info" ? infoTick : TONE_BAR[tone],
             )}
             style={{ left: `${((row.created_at - start) / span) * 100}%` }}
           />

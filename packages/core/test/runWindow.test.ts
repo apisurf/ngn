@@ -59,6 +59,14 @@ describe("deadlineSignal", () => {
     expect(deadlineSignal(null).signal.aborted).toBe(false);
   });
 
+  it("waits out a deadline further off than a timer can hold", async () => {
+    // Past 2^31-1 ms, Node fires a timer after 1 ms instead.
+    const { signal, dispose } = deadlineSignal(Date.now() + 40 * 24 * 3600_000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(signal.aborted).toBe(false);
+    dispose();
+  });
+
   it("stays quiet once disposed", async () => {
     const { signal, dispose } = deadlineSignal(Date.now() + 20);
     dispose();

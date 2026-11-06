@@ -60,7 +60,9 @@ export function TimeScrub({
   };
 
   return (
-    <Card className={css({ p: "3" })}>
+    // Slim on purpose: it is for finding a window to narrow to, not for reading
+    // numbers off, and the list under it is what the page is for.
+    <Card className={css({ px: "3", py: "2" })}>
       <div
         ref={bars}
         role="img"
@@ -93,7 +95,7 @@ export function TimeScrub({
           display: "flex",
           alignItems: "flex-end",
           gap: "1px",
-          h: "64px",
+          h: "36px",
           cursor: "crosshair",
           userSelect: "none",
           touchAction: "none",
@@ -143,14 +145,14 @@ export function TimeScrub({
         className={css({
           display: "flex",
           alignItems: "center",
-          gap: "4",
-          mt: "1.5",
+          gap: "3",
+          mt: "1",
           fontSize: "11px",
           color: "muted",
           flexWrap: "wrap",
         })}
       >
-        <span className={css({ fontFamily: "mono" })}>
+        <span className={css({ fontFamily: "mono", color: "faint" })}>
           {formatDateTime(now, activity.from)} → now · {formatMs(bucketMs)} a bar
         </span>
         <Legend tone="ok" label="Succeeded" />

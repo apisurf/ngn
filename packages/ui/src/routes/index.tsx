@@ -144,7 +144,8 @@ function Verdict({ input, now }: { input: VerdictInput; now: number }) {
       className={cx(
         css({ display: "flex", alignItems: "center", gap: "1.5", m: "0", mt: "2" }),
         css({ fontSize: "14px", fontWeight: "500" }),
-        toneText(tone),
+        // All well is said plainly; colour is for when something needs a look.
+        tone === "ok" ? css({ color: "muted" }) : toneText(tone),
       )}
     >
       {tone === "ok" ? <IconCheckCircle size={16} /> : <IconXCircle size={16} />}

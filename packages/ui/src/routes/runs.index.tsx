@@ -9,6 +9,7 @@
 import { createFileRoute, getRouteApi, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { css } from "styled-system/css";
+import { visuallyHidden } from "~/components/primitives";
 import { RunsView } from "~/components/runs-view";
 import { useUnreadable } from "~/components/states";
 import { useNow } from "~/lib/prefs";
@@ -47,14 +48,11 @@ function RunsPage() {
   );
 
   if (unreadable) return unreadable;
+  // No heading: the sidebar says where this is, and the list starts under the
+  // filter rather than under a title that repeats it.
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "full", minH: "0" })}>
-      <header className={css({ px: "5", pt: "4", pb: "3", flexShrink: 0 })}>
-        <h1 className={css({ fontSize: "18px", fontWeight: "600", m: "0" })}>Runs</h1>
-        <p className={css({ color: "muted", fontSize: "12px", m: "0", mt: "0.5" })}>
-          Every run of every task, newest first.
-        </p>
-      </header>
+      <h1 className={visuallyHidden}>Runs</h1>
       <RunsView page={page} value={q} onChange={onChange} now={now} limit={LIMIT} timeline />
     </div>
   );

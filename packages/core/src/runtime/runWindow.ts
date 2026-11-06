@@ -45,8 +45,19 @@ export function deadlineSignal(deadline: number | null) {
     return { signal: controller.signal, dispose: () => {} };
   }
 
-  const timer = setTimeout(abort, delay);
-  // A pending deadline must not keep `ngn run:once` alive after the run ends.
-  timer.unref();
+  // A timer longer than ~24.8 days overflows and Node fires it after 1 ms, so a
+  // monthly task's deadline is waited for in steps no longer than that.
+  let timer: ReturnType<typeof setTimeout>;
+  const arm = () => {
+    const left = deadline - Date.now();
+    if (left <= 0) return abort();
+    timer = setTimeout(arm, Math.min(left, MAX_TIMER_MS));
+    // A pending deadline must not keep `ngn run:once` alive after the run ends.
+    timer.unref();
+  };
+  arm();
   return { signal: controller.signal, dispose: () => clearTimeout(timer) };
 }
+
+/** The longest delay setTimeout takes as given. */
+const MAX_TIMER_MS = 2 ** 31 - 1;

@@ -18,7 +18,7 @@ import {
   truncate,
 } from "~/components/primitives";
 import { formatClock, formatMs, groupByDay } from "~/lib/format";
-import { runTone } from "~/lib/ngn";
+import { runMark } from "~/lib/ngn";
 import type { RunsPage } from "~/server/api";
 import { RunFacets, RunFilterBar } from "./run-filter";
 import { TimeScrub } from "./time-scrub";
@@ -59,6 +59,8 @@ export function RunsView({
   const navigate = useNavigate();
   const rows = page.runs;
 
+  // One toolbar row, as in an API client's history: the filter, then the facets
+  // beside it, wrapping under it only when the pane is narrow.
   const controls = (
     <div
       className={css({
@@ -66,14 +68,21 @@ export function RunsView({
         flexDir: "column",
         gap: "2",
         px: lead ? "0" : "5",
+        pt: lead ? "0" : "3",
         pb: "3",
         flexShrink: 0,
       })}
     >
-      <RunFilterBar value={value} onChange={onChange} errors={page.errors} locked={locked} />
-      <div className={css({ display: "flex", alignItems: "center", gap: "2", flexWrap: "wrap" })}>
-        <RunFacets value={value} facets={page.facets} onChange={onChange} origins={showTask} />
-        {aside}
+      <div
+        className={css({ display: "flex", alignItems: "flex-start", gap: "2", flexWrap: "wrap" })}
+      >
+        <div className={css({ flex: "1 1 320px", minW: "0" })}>
+          <RunFilterBar value={value} onChange={onChange} errors={page.errors} locked={locked} />
+        </div>
+        <div className={css({ display: "flex", alignItems: "center", gap: "2", minH: "28px" })}>
+          <RunFacets value={value} facets={page.facets} onChange={onChange} origins={showTask} />
+          {aside}
+        </div>
       </div>
       {timeline ? (
         <TimeScrub activity={page.activity} value={value} onChange={onChange} now={now} />
@@ -132,7 +141,7 @@ export function RunsView({
                             minW: "0",
                           })}
                         >
-                          <Dot tone={runTone(row.status, row.stalled)} />
+                          <Dot tone={runMark(row.status, row.stalled)} />
                           <span className={cx(truncate, css({ fontWeight: "500" }))}>
                             {row.editor ? "Editor run" : row.file}
                           </span>
@@ -146,7 +155,7 @@ export function RunsView({
                       <span
                         className={css({ display: "inline-flex", alignItems: "center", gap: "2" })}
                       >
-                        {showTask ? null : <Dot tone={runTone(row.status, row.stalled)} />}
+                        {showTask ? null : <Dot tone={runMark(row.status, row.stalled)} />}
                         <RunOutcome run={row} />
                       </span>
                     </td>

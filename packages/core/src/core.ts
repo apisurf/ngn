@@ -3,7 +3,7 @@ export { executeEsm } from "./runtime/vm.js";
 export { failedRunId, runFailure, Task } from "./runtime/task.js";
 export { TaskLibrary } from "./runtime/taskLibrary.js";
 export { TaskLibraryScheduler } from "./runtime/taskLibraryScheduler.js";
-export type { ScheduleReport } from "./runtime/taskLibraryScheduler.js";
+export type { RunNowOutcome, ScheduleReport } from "./runtime/taskLibraryScheduler.js";
 export { TaskOnceRunner } from "./runtime/taskOnceRunner.js";
 export { isCronPatternValid, scheduleTask } from "./runtime/schedule.js";
 export { setupDbClient, getDbClient } from "./db/db.js";
