@@ -71,14 +71,20 @@ describe("explainRun", () => {
     expect(story?.detail).toContain("Run #2 was still going");
   });
 
-  it("leads a failure with what the task logged, or how to make it log", () => {
+  it("leads a failure with what it threw, titled by where", () => {
     const failed = { ...base, status: "failure" };
     expect(explainRun(failed, { ...context, failure: "upstream 503" }, now)).toMatchObject({
       tone: "bad",
       title: "The task failed",
       detail: "upstream 503",
     });
-    expect(explainRun(failed, context, now)?.detail).toContain("onError hook");
+    expect(
+      explainRun(failed, { ...context, failure: "Failed in shouldSkip: Error: no config" }, now),
+    ).toMatchObject({
+      title: "shouldSkip threw",
+      detail: "Failed in shouldSkip: Error: no config",
+    });
+    expect(explainRun(failed, context, now)?.detail).toContain("No error was recorded");
   });
 
   it("calls a stalled run what it is", () => {

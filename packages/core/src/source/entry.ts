@@ -40,51 +40,51 @@ export class Entry {
     return this.entry.isLoaded();
   }
 
-  async getExports(): Promise<EntryExports | null> {
+  /**
+   * Evaluate the task file and read its exports. Whatever the module throws
+   * while it is evaluated is thrown from here, so the run it was for can
+   * record it.
+   */
+  async getExports(): Promise<EntryExports> {
     invariant(this.entry.code, "Entry code not loaded. Load entry first.");
 
-    try {
-      const taskExports = await executeEsm(this.entry.code);
-      this.callbacks.onTaskCodeLoaded?.(this.entry.codeHash!);
+    const taskExports = await executeEsm(this.entry.code);
+    this.callbacks.onTaskCodeLoaded?.(this.entry.codeHash!);
 
-      // Handle both named exports and default export for ESM modules
-      // Support three cases:
-      // 1. Default export is a function directly (export default async function task() {})
-      // 2. Default export is an object with a task property (export default { task: ... })
-      // 3. Named exports (export const task = ...)
-      let taskFunction;
-      if (typeof taskExports.default === "function") {
-        // Default export is a function, treat it as the task
-        taskFunction = taskExports.default;
-      } else if (
-        taskExports.default &&
-        typeof taskExports.default === "object" &&
-        "task" in taskExports.default
-      ) {
-        // Default export is an object with a task property
-        taskFunction = (taskExports.default as Record<string, unknown>).task;
-      } else {
-        // Use named exports
-        taskFunction = taskExports.task;
-      }
-
-      return {
-        task: taskFunction as EntryExports["task"],
-        timing: taskExports.timing as EntryExports["timing"],
-        overlap: taskExports.overlap as EntryExports["overlap"],
-        budget: taskExports.budget as EntryExports["budget"],
-        exclusive: taskExports.exclusive as EntryExports["exclusive"],
-        retry: taskExports.retry as EntryExports["retry"],
-        shouldSkip: taskExports.shouldSkip as EntryExports["shouldSkip"],
-        shouldRetry: taskExports.shouldRetry as EntryExports["shouldRetry"],
-        onSuccess: taskExports.onSuccess as EntryExports["onSuccess"],
-        onError: taskExports.onError as EntryExports["onError"],
-        onComplete: taskExports.onComplete as EntryExports["onComplete"],
-      };
-    } catch (error) {
-      console.error("Error getting task exports:", error);
-      return null;
+    // Handle both named exports and default export for ESM modules
+    // Support three cases:
+    // 1. Default export is a function directly (export default async function task() {})
+    // 2. Default export is an object with a task property (export default { task: ... })
+    // 3. Named exports (export const task = ...)
+    let taskFunction;
+    if (typeof taskExports.default === "function") {
+      // Default export is a function, treat it as the task
+      taskFunction = taskExports.default;
+    } else if (
+      taskExports.default &&
+      typeof taskExports.default === "object" &&
+      "task" in taskExports.default
+    ) {
+      // Default export is an object with a task property
+      taskFunction = (taskExports.default as Record<string, unknown>).task;
+    } else {
+      // Use named exports
+      taskFunction = taskExports.task;
     }
+
+    return {
+      task: taskFunction as EntryExports["task"],
+      timing: taskExports.timing as EntryExports["timing"],
+      overlap: taskExports.overlap as EntryExports["overlap"],
+      budget: taskExports.budget as EntryExports["budget"],
+      exclusive: taskExports.exclusive as EntryExports["exclusive"],
+      retry: taskExports.retry as EntryExports["retry"],
+      shouldSkip: taskExports.shouldSkip as EntryExports["shouldSkip"],
+      shouldRetry: taskExports.shouldRetry as EntryExports["shouldRetry"],
+      onSuccess: taskExports.onSuccess as EntryExports["onSuccess"],
+      onError: taskExports.onError as EntryExports["onError"],
+      onComplete: taskExports.onComplete as EntryExports["onComplete"],
+    };
   }
 
   get paths() {

@@ -1,6 +1,6 @@
 export { Compiler } from "./source/compiler.js";
 export { executeEsm } from "./runtime/vm.js";
-export { failedRunId, Task } from "./runtime/task.js";
+export { failedRunId, runFailure, Task } from "./runtime/task.js";
 export { TaskLibrary } from "./runtime/taskLibrary.js";
 export { TaskLibraryScheduler } from "./runtime/taskLibraryScheduler.js";
 export type { ScheduleReport } from "./runtime/taskLibraryScheduler.js";
@@ -11,6 +11,7 @@ export { initDbFileIfNotExists } from "./db/db.js";
 export { createControlsGenerator } from "./runtime/generateControls.js";
 export { TaskContext } from "./source/types.js";
 export type { OverlapPolicy, TaskRun } from "./source/types.js";
+export type { RunProblem, RunStage } from "./runtime/types.js";
 export type { Duration } from "./runtime/duration.js";
 export { LockBusyError } from "./runtime/locks.js";
 export type { LockOptions } from "./runtime/locks.js";
@@ -28,5 +29,5 @@ export type { JobStatus } from "./runtime/queue/schema.js";
 export type { WorkHandler, WorkOptions, WorkSummary, WorkerHandle } from "./runtime/queue/work.js";
 
 // Per-task SQLite, injected as ctx.sqlite
-export { closeTaskDatabases } from "./runtime/taskSqlite.js";
+export { closeTaskDatabases, releaseTaskDatabases } from "./runtime/taskSqlite.js";
 export type { TaskSqlite, DBInstance, InitDBOptions, Migration } from "./runtime/taskSqlite.js";

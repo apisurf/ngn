@@ -2,6 +2,7 @@
 // run page's callout and the top of `ngn show`. The run page adds links and
 // code formatting around the same words.
 
+import { readFailureLine, type RunStage } from "./logs.js";
 import { formatMs } from "./numbers.js";
 import { readSkip, type SkipCause } from "./runs.js";
 import { formatAgo, plural } from "./time.js";
@@ -25,7 +26,7 @@ export interface ExplainedRun {
 export interface RunContext {
   /** Every try of the run's tick, in order. */
   attempts: { id: number; status: string }[];
-  /** The last error the task logged, for a failed run. */
+  /** What a failed run threw, as `failureMessage` reads it from the run's logs. */
   failure: string | null;
   /** Whether the task exports an onError hook. */
   hasOnError: boolean;
@@ -45,16 +46,29 @@ export interface RunStory {
   detail: string;
 }
 
-/** The failed run's headline: a retried tick says how it went. */
+/** What failed, by where it was thrown. */
+const STAGE_TITLES: Record<RunStage, string> = {
+  load: "The task file failed to load",
+  start: "Failed before the task started",
+  shouldSkip: "shouldSkip threw",
+  task: "The task failed",
+  record: "The result could not be recorded",
+  onSuccess: "The onSuccess hook threw",
+  onError: "The onError hook threw",
+  onComplete: "The onComplete hook threw",
+};
+
+/** The failed run's headline: a retried tick says how it went, a single try where it failed. */
 export function failureTitle(
   run: { id: number; attempt: number },
   attempts: RunContext["attempts"],
+  stage: RunStage = "task",
 ) {
   const retried = attempts.some((a) => a.id > run.id);
   const recovered = attempts[attempts.length - 1]?.status === "success";
   if (retried)
     return `Try ${run.attempt} of ${attempts.length} failed — ${recovered ? "a retry succeeded" : "retried"}`;
-  return attempts.length > 1 ? `Failed after ${attempts.length} tries` : "The task failed";
+  return attempts.length > 1 ? `Failed after ${attempts.length} tries` : STAGE_TITLES[stage];
 }
 
 /** Null for a run that just succeeded: there is nothing to explain. */
@@ -65,15 +79,14 @@ export function explainRun(
 ): RunStory | null {
   if (run.status === "failure") {
     const recovered = context.attempts[context.attempts.length - 1]?.status === "success";
+    const recorded = context.failure ? readFailureLine(context.failure) : null;
     return {
       tone: recovered && context.attempts.some((a) => a.id > run.id) ? "warn" : "bad",
-      title: failureTitle(run, context.attempts),
+      title: failureTitle(run, context.attempts, recorded?.stage),
       detail:
         context.failure ??
-        `ngn records that a run failed, not what it threw.${
-          context.hasOnError
-            ? " This task's onError hook logged nothing for it."
-            : " Log the error from an onError hook and it shows up here."
+        `No error was recorded for this run: ngn before 0.3.1 recorded that a run failed, not what it threw.${
+          context.hasOnError ? " This task's onError hook logged nothing for it either." : ""
         }`,
     };
   }

@@ -14,13 +14,14 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { LiveTaskOutcome } from "./util/runLiveTask.js";
 
 export const LIVE_HOST = "127.0.0.1";
 
 export type ExecuteLiveTask = (
   code: string,
   language: "typescript" | "javascript",
-) => Promise<unknown>;
+) => Promise<LiveTaskOutcome>;
 
 const liveTaskSchema = z.object({
   code: z.string(),
@@ -51,12 +52,19 @@ export async function runLiveServer(options: LiveServerOptions) {
       return c.json({ error: "expected { code, language }" }, 400);
     }
 
-    const result = await options.executeLiveTask(parsed.data.code, parsed.data.language);
+    const outcome = await options.executeLiveTask(parsed.data.code, parsed.data.language);
+
+    // A run that threw is an answer, not a broken endpoint: 200, with what it
+    // threw, where, and the run it was recorded as.
+    if (!outcome.ok) {
+      const { error, stage, runId } = outcome;
+      return c.json({ error: stage ? `failed in ${stage}: ${error}` : error, stage, runId });
+    }
 
     try {
-      return c.json({ result: result ?? null });
+      return c.json({ result: outcome.result ?? null });
     } catch {
-      console.error("Live code execution result not serializable", result);
+      console.error("Live code execution result not serializable", outcome.result);
       return c.json({ error: "Result is not serializable" }, 500);
     }
   });

@@ -17,10 +17,12 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
+  failedRunId,
 } from "@apisurf/ngn-core";
 import { getRunConfig } from "../config.js";
 import { runLiveServer, LIVE_HOST } from "../liveServer.js";
 import { runLiveTask } from "../util/runLiveTask.js";
+import { describeUnrecorded, printProblems } from "../util/reportRun.js";
 import { describeDbPath } from "../util/dbPath.js";
 import { describeNoMatch } from "../util/matchTasks.js";
 import { VERSION } from "../version.js";
@@ -120,6 +122,8 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
+      // One line per problem as each run records it, pointing at `ngn show`.
+      report: printProblems(),
     });
 
     // Add tasks from in-memory compiled code
@@ -137,11 +141,11 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
 
     scheduler = new TaskLibraryScheduler({
       taskLibrary,
-      // One line per failed tick, pointing at the command that explains it.
-      onRunError: (path, _error, runId) =>
-        console.error(
-          runId == null ? `failed  ${path}` : `failed  ${path} #${runId} → ngn show ${runId}`,
-        ),
+      // A run that recorded its error has already been printed by `report`;
+      // what is left threw before there was a run to record it on.
+      onRunError: (path, error) => {
+        if (failedRunId(error) == null) console.error(describeUnrecorded(path, error));
+      },
     });
 
     const report = await scheduler.start();

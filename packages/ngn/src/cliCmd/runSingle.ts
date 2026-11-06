@@ -9,12 +9,14 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
+  failedRunId,
 } from "@apisurf/ngn-core";
 import { existsSync } from "node:fs";
 import { CliOptions } from "../types.js";
 import { getRunConfig } from "../config.js";
 import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
 import { describeDbPath } from "../util/dbPath.js";
+import { describeUnrecorded, printProblems } from "../util/reportRun.js";
 import {
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
@@ -120,6 +122,7 @@ export const runSingle = async (
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
+      report: printProblems(),
     });
 
     // Get the first (and only) compiled entry
@@ -141,8 +144,9 @@ export const runSingle = async (
     invariant(task.hasTaskExport(), `Task function is missing in ${filePath}`);
 
     // Schedule the task with the provided cron pattern
+    // A recorded failure was printed by `report`; this is what threw before a run existed.
     scheduledTask = scheduleTask(task, options.timing, (error) => {
-      console.error(`ngn: ${filePath}: ${error instanceof Error ? error.stack : String(error)}`);
+      if (failedRunId(error) == null) console.error(describeUnrecorded(filePath, error));
     });
 
     const db = describeDbPath(config.configFileOptions.dbPath);

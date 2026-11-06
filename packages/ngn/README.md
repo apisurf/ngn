@@ -105,7 +105,7 @@ on its first tick.
 | `run` | this run's id, deadline and abort signal ([more](#how-long-a-run-has)) |
 | `queue(name, options)` | a job queue ([more](#queues)) |
 | `lock(name, fn, options)` | a named lock shared with other tasks ([more](#keeping-tasks-out-of-each-others-way)) |
-| `env` | the variables from `envFile` |
+| `env` | the variables from `envFile`; `{}` when there is none |
 | `meta` | the task file's path and ids |
 
 ### Storing data with `ctx.sqlite`
@@ -172,11 +172,16 @@ Five more optional exports run around `task`. Each one gets the same `ctx`:
 
 | Export | Runs |
 | --- | --- |
-| `shouldSkip` | Before `task`. Returning `true` skips the run — no other hook fires. |
+| `shouldSkip` | Before `task`. Returning `true` skips the run — no other hook fires. Throwing fails the run. |
 | `onSuccess` | After `task` resolves. |
 | `onError` | After `task` throws, with the error. The error is still rethrown. |
 | `onComplete` | After success or failure. Not called on a skipped run. |
 | `shouldRetry` | After a failure that `retry` would retry, with the error. Returning `false` gives up until the next tick. |
+
+An error thrown by `onSuccess`, `onError` or `onComplete` is recorded on the run
+(`Failed in onSuccess: …`) and printed, but does not change how the run ended:
+a run whose `task` succeeded stays succeeded, and a failed run keeps the error
+`task` threw rather than the hook's.
 
 ```ts
 import { TaskContext } from "@apisurf/ngn";
@@ -200,7 +205,7 @@ export const onSuccess = async (ctx: TaskContext) => {
   await ctx.log.info("scrape ok");
 };
 
-// The error is still rethrown and recorded after this runs
+// ngn records the error with the run either way; this is for reacting to it
 export const onError = async (error: Error, ctx: TaskContext) => {
   await ctx.log.error(`scrape failed: ${error.message}`);
 };
@@ -487,8 +492,46 @@ ngn logs extract --level warn               # a task's lines across runs, or a r
 `ngn runs` takes the filter language ngnui's Runs page uses: `key:value` tokens
 (`task`, `status`, `origin`, `since`, `until`, `version`), a leading `-` to
 exclude, and plain words to match task paths. A run that has no end and is long
-past its window reads as **Stalled** in all of them. When a scheduled run fails,
-`ngn run` prints `failed  tasks/x.ts #41 → ngn show 41`.
+past its window reads as **Stalled** in all of them.
+
+### When a run fails
+
+ngn records what a run threw, and where, as an error line on the run, which
+`ngn show`, `ngn logs` and ngnui all read:
+
+```
+Failed in task: TypeError: Cannot convert undefined or null to object
+    at task (evalmachine.<anonymous>:30:75)
+```
+
+The word after `Failed in` is the stage it was thrown in:
+
+| Stage | Is |
+| --- | --- |
+| `load` | evaluating the task file, or an export that is missing or invalid |
+| `start` | ngn's checks before the task: the breaker, `exclusive` locks |
+| `shouldSkip` | the task's `shouldSkip` |
+| `task` | the task itself |
+| `record` | storing what the task returned |
+| `onSuccess`, `onError`, `onComplete` | a hook; recorded, the run's outcome stands |
+
+Its first line is what `ngn show` leads with. The frames under it stop where
+ngn called the task. Line numbers are in the compiled code, which
+`file_task_versions.compiled_code` holds for each version. `ngn run` prints one
+line per problem as it is recorded:
+
+```
+failed  tasks/collect.ts #41 in task: TypeError: Cannot read … → ngn show 41
+warn    tasks/collect.ts #42: onSuccess threw Error: mail server down → ngn show 42
+```
+
+`ngn run --once` and editor runs add the frames. A task file that does not
+compile has no run to record on, and is printed with what the compiler said.
+
+```bash
+ngn logs collect --level error              # every failure of one task, with its stage
+ngn runs "status:failed since:24h"
+```
 
 **From the terminal, in SQL** — `ngn sql` takes any query SQLite accepts and prints a
 table, or `--json` / `--csv`. Rows go to stdout and counts to stderr, so piping

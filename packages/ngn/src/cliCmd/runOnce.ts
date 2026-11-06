@@ -7,9 +7,11 @@ import {
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
+  failedRunId,
 } from "@apisurf/ngn-core";
 import { getRunConfig } from "../config.js";
 import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
+import { describeUnrecorded, printProblems } from "../util/reportRun.js";
 
 export const runOnce = async (pattern: string, options: { root?: string }) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
@@ -41,6 +43,8 @@ export const runOnce = async (pattern: string, options: { root?: string }) => {
     const generateControlsFn = createControlsGenerator({
       dbClient,
       env: config.env,
+      // Run by hand and watched, so each problem comes with where in the task it was.
+      report: printProblems({ frames: true }),
     });
 
     const [first] = [...result.compiled.entries()];
@@ -60,7 +64,10 @@ export const runOnce = async (pattern: string, options: { root?: string }) => {
 
     await task.execute();
   } catch (error) {
-    console.error(`ngn: ${error instanceof Error ? error.stack : String(error)}`);
+    // A recorded failure was printed as it was recorded.
+    if (failedRunId(error) == null) {
+      console.error(describeUnrecorded(match?.paths[0] ?? pattern, error));
+    }
     process.exitCode = 1;
   } finally {
     closeTaskDatabases();

@@ -6,10 +6,12 @@ import {
 } from "@apisurf/ngn-os";
 import invariant from "tiny-invariant";
 import { Client } from "@apisurf/ngn-persistence";
+import { errorSummary, failureLine } from "@apisurf/ngn-schema/describe";
 import {
   BuildCompiledTaskConfigFn,
   CompiledTaskCallbacks,
   RunControls,
+  RunProblem,
   TaskRuntimeCallbacks,
 } from "./types.js";
 import { TaskContext } from "../source/types.js";
@@ -22,13 +24,30 @@ import { TimingService } from "../db/services/timing.js";
 import { LockService } from "../db/services/lock.js";
 import { createRunLocks } from "./locks.js";
 
+/**
+ * Write to a run's record, and never throw: a failure that cannot be
+ * recorded must still reach `report`, and must not replace the error it is
+ * about.
+ */
+async function recordSafely(runId: number, write: () => Promise<unknown>) {
+  try {
+    await write();
+  } catch (error) {
+    logTaskCallback(`Could not record what run ${runId} threw: ${errorSummary(error)}`);
+  }
+}
+
 // higher order function that returns a function that builds a task config
 export function createControlsGenerator({
   dbClient,
   env,
+  report,
 }: {
   dbClient: Client;
-  env: TaskContext["env"];
+  /** A missing env file is null from the readers; tasks always get an object. */
+  env: TaskContext["env"] | null | undefined;
+  /** Told about everything a run throws, after it is recorded. The CLI prints it. */
+  report?: (problem: RunProblem) => void;
 }) {
   const taskRunService = new TaskRunService(dbClient);
   const logService = new LogService(dbClient);
@@ -83,10 +102,6 @@ export function createControlsGenerator({
       });
 
       const callbacks: TaskRuntimeCallbacks = {
-        async onNotFound() {
-          await logService.logError(taskId, runId, "Task not found");
-          logTaskCallback(`Task not found: ${taskId}, run ID: ${runId}`);
-        },
         async onSkip({ reason }) {
           await taskRunService.skipTaskRun(runId, reason ?? null);
           await logService.logInfo(taskId, runId, "Task skipped");
@@ -98,10 +113,21 @@ export function createControlsGenerator({
           await logService.logInfo(taskId, runId, "Task started");
           logTaskCallback(`Task started: ${taskId}, run ID: ${runId}`);
         },
-        async onFailure() {
-          await taskRunService.endTaskRun(runId, "failure");
-          await logService.logError(taskId, runId, "Task failed");
-          logTaskCallback(`Task failed: ${taskId}, run ID: ${runId}`);
+        async onFailure({ path, stage, error }) {
+          await recordSafely(runId, async () => {
+            await taskRunService.endTaskRun(runId, "failure");
+            await logService.logError(taskId, runId, failureLine(stage, error));
+            await logService.logError(taskId, runId, "Task failed");
+          });
+          logTaskCallback(`Task failed in ${stage}: ${taskId}, run ID: ${runId}`);
+          report?.({ path, runId, stage, error, fatal: true });
+        },
+        async onHookError({ path, stage, error }) {
+          await recordSafely(runId, () =>
+            logService.logError(taskId, runId, failureLine(stage, error)),
+          );
+          logTaskCallback(`Hook ${stage} threw: ${taskId}, run ID: ${runId}`);
+          report?.({ path, runId, stage, error, fatal: false });
         },
         async onSuccess({ result }) {
           await taskRunService.endTaskRun(runId, "success", serializeResult(result));
@@ -151,7 +177,7 @@ export function createControlsGenerator({
           return taskRunService.countSkipsSince(fileTaskId, reason, afterId);
         },
       },
-      env,
+      env: env ?? {},
       // Scoped to this task's own folder — see createTaskSqlite
       sqlite: createTaskSqlite(sourcePath),
       kv: {

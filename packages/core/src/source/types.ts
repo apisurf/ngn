@@ -51,7 +51,8 @@ export interface TaskContext {
     file: FsNodeFileDescriptor;
     tasksRootDir: string;
   };
-  env: Record<string, string> | null;
+  /** The variables from the config's `envFile`; empty when there is none. */
+  env: Record<string, string>;
   kv: {
     set(key: string, value: string): Promise<void>;
     get(key: string): Promise<string | null>;

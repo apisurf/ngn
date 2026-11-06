@@ -1,5 +1,27 @@
 # @apisurf/ngn
 
+## 0.3.1
+
+### Patch Changes
+
+- Say what failed, and where.
+
+  - A run that throws records it: an error line `Failed in <stage>: <error>`, with the stack frames inside the task, which `ngn show`, `ngn logs` and ngnui's run page lead with. The stage is `load` (the file threw while it was evaluated, or exports no `task`), `start` (the breaker or `exclusive` locks), `shouldSkip`, `task`, `record` (storing the result), or a hook. Before, ngn recorded that a run failed and not what it threw.
+  - `ngn run` prints one line per problem, with its stage and what was thrown: `failed  tasks/x.ts #41 in task: TypeError: … → ngn show 41`. `ngn run --once` and editor runs add the frames. A task file that does not compile, and so has no run, is printed with the error rather than only its name.
+  - A run whose `shouldSkip` throws, or whose breaker or lock check fails, is ended as failed. It used to stay `pending` for good.
+  - A task file that throws while loading, or exports no `task` function, is a failed run in `load` with the module's own error. It used to fail with no run and "Entry failed to get exports".
+  - An error thrown by `onSuccess`, `onError` or `onComplete` is recorded on the run and printed, and no longer changes the run's outcome: a succeeded run stays succeeded (it used to be reported as failed while its row said succeeded), and `onError` throwing no longer replaces the task's error.
+  - An editor run no longer closes the databases of scheduled runs that are still going. It used to close every task database in the process when it finished, so a scheduled run in progress failed on its next query.
+  - `ctx.env` is `{}` when there is no env file, instead of `null`, so `Object.keys(ctx.env)` (in the editor's own starter code) no longer throws.
+  - An editor run that throws comes back to the editor as a failure, with its stage, instead of as a `null` result. Editor runs no longer add a pair of signal handlers to the `ngn run` process each time.
+  - `@apisurf/ngn-core` exports `runFailure(error)` (the run and stage an error was recorded under), `releaseTaskDatabases(taskSourcePath)` and the `RunProblem` and `RunStage` types; `createControlsGenerator` takes a `report` callback. `@apisurf/ngn-schema/describe` adds `failureLine`, `readFailureLine`, `errorSummary` and `errorFrames`.
+
+- Updated dependencies
+  - @apisurf/ngn-core@0.3.1
+  - @apisurf/ngn-schema@0.3.1
+  - @apisurf/ngn-os@0.3.1
+  - @apisurf/ngn-persistence@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

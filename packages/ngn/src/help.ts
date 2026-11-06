@@ -82,7 +82,7 @@ export const TOPICS = {
   sqlite                         the task's own database (below)
   queue(name, { db })            a job queue (ngn help queue)
   lock(name, fn, { wait, ttl })  a named lock shared with other tasks
-  env                            the variables from envFile
+  env                            the variables from envFile ({} when there is none)
   meta                           the task file's path and ids
 
 ctx.sqlite

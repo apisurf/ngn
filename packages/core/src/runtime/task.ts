@@ -3,6 +3,7 @@ import {
   CompiledTaskCallbacks,
   BuildCompiledTaskConfigFn,
   RunControls,
+  type RunStage,
   type TaskConfig,
 } from "./types.js";
 import { TaskContext, EntryExports, OverlapPolicy } from "../source/types.js";
@@ -38,11 +39,20 @@ interface TickAttempts {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The run each error a task threw was recorded under, for whoever reports it. */
-const failedRuns = new WeakMap<object, number>();
+/** Where each error a run threw was recorded, for whoever reports it. */
+const failedRuns = new WeakMap<object, { runId: number; stage: RunStage }>();
 
-/** The `task_runs.id` of the run that threw `error`, when a task run did. */
+/** The `task_runs.id` of the run that threw `error`, when a run recorded it. */
 export function failedRunId(error: unknown): number | null {
+  return runFailure(error)?.runId ?? null;
+}
+
+/**
+ * The run that recorded `error` and the stage it was thrown in; null for an
+ * error no run recorded (a task file that did not compile, a database ngn
+ * could not open), which only its thrower knows about.
+ */
+export function runFailure(error: unknown): { runId: number; stage: RunStage } | null {
   return error && typeof error === "object" ? (failedRuns.get(error) ?? null) : null;
 }
 
@@ -171,24 +181,21 @@ export class Task {
 
   async loadEntry() {
     invariant(this.entry, "Entry not initialized.");
-    // load entry code
     await this.entry.load();
-    // get entry exports (now async for ESM execution)
     this.entryExports = await this.entry.getExports();
   }
 
+  /**
+   * Load the task file's code and register its version. A failure here has no
+   * run to mark yet, so it is thrown to whoever called execute(). Evaluating
+   * the code comes after the run exists — see `readExports`.
+   */
   private async loadAndRegister() {
     invariant(this.entry, "Entry not initialized.");
 
-    // No run exists yet, so a failure here has no row to mark: it is thrown to
-    // whoever called execute().
-    await this.loadEntry();
+    await this.entry.load();
     invariant(this.entry.isLoaded(), "Entry failed to load.");
-    invariant(this.entryExports, "Entry failed to get exports.");
 
-    this.taskCallbacks?.onTaskExportsLoaded?.();
-
-    // register task load complete
     const loadResult = await this.taskCallbacks?.onTaskLoadComplete?.({
       paths: this.entry.paths,
       md5Hash: this.entry.codeHash!,
@@ -199,28 +206,46 @@ export class Task {
     this.meta.fileTaskVersionId = loadResult?.fileTaskVersionId ?? -1;
   }
 
-  private async runTask(
-    task: EntryExports["task"],
-    taskContext: TaskContext,
-    hooks: Pick<EntryExports, "onSuccess" | "onError" | "onComplete">,
-    run: RunControls,
-  ) {
+  /**
+   * Evaluate the task file and check the exports a run depends on. Throws
+   * what the module threw, or what is wrong with an export, for the run to
+   * record as failed in `load`.
+   */
+  private async readExports(path: string) {
     invariant(this.entry, "Entry not initialized.");
-    const path = this.entry.paths.relativeEntry;
+    const exports = await this.entry.getExports();
+    this.entryExports = exports;
+    this.taskCallbacks?.onTaskExportsLoaded?.();
+    if (typeof exports.task !== "function") {
+      throw new Error(`${path} exports no task function`);
+    }
+    return {
+      exports,
+      task: exports.task,
+      budgetMs: exports.budget == null ? null : toMs(exports.budget, `budget for ${path}`),
+      exclusiveLocks: exclusiveNames(exports.exclusive, path),
+      retry: resolveRetry(exports.retry, path),
+    };
+  }
 
+  /** Mark the run failed in `stage`, remembering where for whoever reports the error. */
+  private async failRun(run: RunControls, stage: RunStage, error: unknown) {
+    invariant(this.entry, "Entry not initialized.");
+    if (error && typeof error === "object") failedRuns.set(error, { runId: run.id, stage });
+    await run.callbacks.onFailure?.({ path: this.entry.paths.relativeEntry, stage, error });
+  }
+
+  /**
+   * Call one of the task's hooks. What it throws is recorded on the run and
+   * goes no further: the run's outcome was decided before the hook ran, and
+   * `onError`'s error must not replace the one it was called with.
+   */
+  private async runHook(run: RunControls, stage: RunStage, hook: () => unknown) {
+    invariant(this.entry, "Entry not initialized.");
     try {
-      await run.callbacks.onStart?.({ path });
-      const taskReturnValue = await task(taskContext);
-      await run.callbacks.onSuccess?.({ path, result: taskReturnValue });
-      await hooks.onSuccess?.(taskContext);
-      return taskReturnValue;
-    } catch (err) {
-      if (err && typeof err === "object") failedRuns.set(err, run.id);
-      await run.callbacks.onFailure?.({ path });
-      await hooks.onError?.(err as Error, taskContext);
-      throw err;
-    } finally {
-      await hooks.onComplete?.(taskContext);
+      await hook();
+    } catch (error) {
+      await run.callbacks.onHookError?.({ path: this.entry.paths.relativeEntry, stage, error });
     }
   }
 
@@ -337,38 +362,50 @@ export class Task {
     };
   }
 
-  private async executeOnce(
-    { scheduledAt = null, nextAt = null }: ExecuteSchedule,
-    tick: TickAttempts,
-  ) {
+  /**
+   * Load the task file, open the attempt's `task_runs` row, then evaluate the
+   * file's code; what that throws is recorded on the row as failed in `load`.
+   */
+  private async openRun(tick: TickAttempts) {
     invariant(this.entry, "Entry not initialized.");
 
     await this.loadAndRegister();
-    invariant(this.entryExports, "Entry failed to get exports.");
-
     // Read before the first await below: a run that starts while this one is
-    // in progress reloads the entry and replaces both.
-    const exports = this.entryExports;
+    // in progress reloads the entry and replaces it.
     const meta = { ...this.meta };
     const path = this.entry.paths.relativeEntry;
-    const budgetMs = exports.budget == null ? null : toMs(exports.budget, `budget for ${path}`);
-    const exclusiveLocks = exclusiveNames(exports.exclusive, path);
-    const retry = resolveRetry(exports.retry, path);
-    tick.retry = retry;
 
     const run = await this.startRun({ retryOf: tick.firstRunId });
     const firstAttempt = tick.firstRunId == null;
     tick.firstRunId ??= run.id;
 
-    if (!exports.task) {
-      await run.callbacks.onNotFound?.({ path });
-      throw new Error("Task function not found");
+    try {
+      return { run, meta, path, firstAttempt, ...(await this.readExports(path)) };
+    } catch (error) {
+      await this.failRun(run, "load", error);
+      throw error;
     }
+  }
+
+  /**
+   * One attempt: a `task_runs` row, then the task, with every failure recorded
+   * against that row as the stage it was thrown in. Only a task file whose code
+   * cannot be loaded at all, or a run row that cannot be written, fails before
+   * there is a row to record it on.
+   */
+  private async executeOnce(
+    { scheduledAt = null, nextAt = null }: ExecuteSchedule,
+    tick: TickAttempts,
+  ) {
+    const { run, meta, path, firstAttempt, exports, task, budgetMs, exclusiveLocks, retry } =
+      await this.openRun(tick);
+    tick.retry = retry;
 
     const deadline = runDeadline({ startedAt: Date.now(), scheduledAt, nextAt, budgetMs });
     const { signal, dispose } = deadlineSignal(deadline);
     const taskContext = this.buildContext(run, meta, { scheduledAt, nextAt, deadline }, signal);
 
+    let stage: RunStage = "start";
     let exclusiveHeld: { release(): Promise<void> } | null = null;
     try {
       const gate = await this.holdBack(run, {
@@ -383,21 +420,36 @@ export class Task {
       }
       exclusiveHeld = gate.held;
 
+      stage = "shouldSkip";
       if (await exports.shouldSkip?.(taskContext)) {
         await run.callbacks.onSkip?.({ path });
         return;
       }
 
+      stage = "start";
+      await run.callbacks.onStart?.({ path });
+
+      stage = "task";
       tick.failedContext = taskContext;
-      const { onSuccess, onError, onComplete } = exports;
-      const value = await this.runTask(
-        exports.task,
-        taskContext,
-        { onSuccess, onError, onComplete },
-        run,
-      );
+      const value = await task(taskContext);
+      // From here on a failure is ngn's, not the task's: a retry would only
+      // repeat work that already succeeded.
       tick.failedContext = null;
+
+      stage = "record";
+      await run.callbacks.onSuccess?.({ path, result: value });
+
+      await this.runHook(run, "onSuccess", () => exports.onSuccess?.(taskContext));
+      await this.runHook(run, "onComplete", () => exports.onComplete?.(taskContext));
       return value;
+    } catch (error) {
+      await this.failRun(run, stage, error);
+      // The hooks are about the task: they run once it got as far as running.
+      if (stage === "task" || stage === "record") {
+        await this.runHook(run, "onError", () => exports.onError?.(error as Error, taskContext));
+        await this.runHook(run, "onComplete", () => exports.onComplete?.(taskContext));
+      }
+      throw error;
     } finally {
       dispose();
       await exclusiveHeld?.release();

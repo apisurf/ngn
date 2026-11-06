@@ -80,8 +80,12 @@ export interface TaskSqlite {
  * means a task that runs every five seconds reuses one connection per file
  * rather than opening a new one each time, and there is a single place for the
  * CLI to close them all on shutdown.
+ *
+ * Each also remembers which task files opened it. Two tasks that open one file
+ * share its client, so a task done with its databases (an editor run) can only
+ * let go of its own claim: the client closes once no task holds it.
  */
-const openClients = new Map<string, Client>();
+const openClients = new Map<string, { client: Client; owners: Set<string> }>();
 
 /**
  * Run migrations on a database client, once each, tracked in `_ngn_migrations`
@@ -153,13 +157,15 @@ function resolveTaskDbPath(taskDir: string, file: string): string {
 }
 
 /**
- * Get (or open) the client for an absolute database path.
+ * Get (or open) the client for an absolute database path, on behalf of the
+ * task file `owner`.
  */
-function getClient(absolutePath: string): Client {
+function getClient(absolutePath: string, owner: string): Client {
   const existing = openClients.get(absolutePath);
 
   if (existing) {
-    return existing;
+    existing.owners.add(owner);
+    return existing.client;
   }
 
   // libsql will not create missing directories, but a task is allowed to keep
@@ -172,16 +178,16 @@ function getClient(absolutePath: string): Client {
   // file, and a zero busy timeout turns that into an immediate
   // "SQLITE_BUSY: database is locked" rather than a short wait.
   const client = openDbClient(`file:${absolutePath}`);
-  openClients.set(absolutePath, client);
+  openClients.set(absolutePath, { client, owners: new Set([owner]) });
 
   return client;
 }
 
 function closeClient(absolutePath: string): void {
-  const client = openClients.get(absolutePath);
+  const open = openClients.get(absolutePath);
 
-  if (client) {
-    client.close();
+  if (open) {
+    open.client.close();
     openClients.delete(absolutePath);
   }
 }
@@ -198,7 +204,7 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
 
   // The file is only created once a task actually touches it, so tasks that
   // never use ctx.sqlite leave no database behind.
-  const defaultClient = () => getClient(defaultDbPath);
+  const defaultClient = () => getClient(defaultDbPath, taskSourcePath);
 
   return {
     get client() {
@@ -215,7 +221,7 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
 
     async initDB(options: InitDBOptions): Promise<DBInstance> {
       const dbPath = resolveTaskDbPath(taskDir, options.file);
-      const client = getClient(dbPath);
+      const client = getClient(dbPath, taskSourcePath);
 
       if (options.migrations?.length) {
         await runMigrations(client, options.migrations);
@@ -246,9 +252,23 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
  * Close every database opened by a task. Called by the CLI on shutdown.
  */
 export function closeTaskDatabases(): void {
-  for (const client of openClients.values()) {
+  for (const { client } of openClients.values()) {
     client.close();
   }
 
   openClients.clear();
+}
+
+/**
+ * Let go of the databases one task file opened, closing those no other task
+ * holds. For a one-off run inside a process that keeps scheduling others (the
+ * editor's): `closeTaskDatabases` there would close the connections of
+ * scheduled runs still in progress, and their next query would fail.
+ */
+export function releaseTaskDatabases(taskSourcePath: string): void {
+  for (const [path, { client, owners }] of openClients) {
+    if (!owners.delete(taskSourcePath) || owners.size > 0) continue;
+    client.close();
+    openClients.delete(path);
+  }
 }

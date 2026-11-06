@@ -76,11 +76,17 @@ describe("one context per run", () => {
     expect(await task.execute()).toBe(2);
   });
 
-  it("throws a load failure without touching task_runs", async () => {
+  it("records a module that throws as a run failed in load", async () => {
     const task = await h.task("tasks/broken.ts", `throw new Error("bad module");`);
 
-    await expect(task.execute()).rejects.toThrow();
-    expect(await h.query("SELECT * FROM task_runs")).toEqual([]);
+    await expect(task.execute()).rejects.toThrow("bad module");
+    const [run] = await h.query<{ id: number; status: string }>("SELECT id, status FROM task_runs");
+    expect(run.status).toBe("failure");
+    const logs = await h.query<{ value: string }>(
+      "SELECT value FROM logs WHERE task_run_id = ? ORDER BY id",
+      [run.id],
+    );
+    expect(logs[0]!.value.split("\n")[0]).toBe("Failed in load: Error: bad module");
   });
 
   it("marks a failing run as failed, with its own logs", async () => {
@@ -96,6 +102,11 @@ describe("one context per run", () => {
       "SELECT value FROM logs WHERE task_run_id = ? ORDER BY id",
       [run.id],
     );
-    expect(logs.map((log) => log.value)).toEqual(["Task started", "trying", "Task failed"]);
+    expect(logs.map((log) => log.value.split("\n")[0])).toEqual([
+      "Task started",
+      "trying",
+      "Failed in task: Error: nope",
+      "Task failed",
+    ]);
   });
 });

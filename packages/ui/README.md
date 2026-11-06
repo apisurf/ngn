@@ -128,9 +128,9 @@ header says so — `latest #6 skipped: still running` — and links to it. Its t
 - **Stored values**: what it keeps between runs with `ctx.kv`, as it stands now, JSON pretty-printed
 - **Versions**: each distinct build of the file, how its runs went, and its code
 
-**A run** opens under its task's header, and leads with its verdict. A failed run shows the last error the task
-logged — ngn records that a run failed, not what it threw, so this is whatever an
-`onError` hook wrote. A retried run lists every try of its tick, each a link, and
+**A run** opens under its task's header, and leads with its verdict. A failed run shows what it threw and the
+stage it was thrown in (`Failed in shouldSkip: …`), as ngn recorded it; a run from
+before ngn recorded that shows the last error the task logged. A retried run lists every try of its tick, each a link, and
 says whether a later one succeeded. A skipped run explains its `skip_reason`, and
 one skipped because the last run was still going links to that run. A run with no
 recorded end is **Stalled** once it is twice past the longer of its task's `budget`

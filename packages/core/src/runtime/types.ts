@@ -1,5 +1,8 @@
+import type { RunStage } from "@apisurf/ngn-schema/describe";
 import { TaskContext } from "../source/types.js";
 import type { RunLocks } from "./locks.js";
+
+export type { RunStage };
 
 export interface CompiledTaskCallbacks {
   onTaskLoadComplete?: ({
@@ -25,12 +28,27 @@ export interface CompiledTaskCallbacks {
 }
 
 export interface TaskRuntimeCallbacks {
-  onNotFound?: (meta: { path: string }) => Promise<void>;
   /** `reason` is set when ngn skipped the run, rather than the task's `shouldSkip`. */
   onSkip?: (meta: { path: string; reason?: string }) => Promise<void>;
   onStart?: (meta: { path: string }) => Promise<void>;
   onSuccess?: (meta: { path: string; result?: unknown }) => Promise<void>;
-  onFailure?: (meta: { path: string }) => Promise<void>;
+  /** The run failed: `error` was thrown in `stage`. Never throws itself. */
+  onFailure?: (meta: { path: string; stage: RunStage; error: unknown }) => Promise<void>;
+  /** A hook threw; the run's outcome stands. Never throws itself. */
+  onHookError?: (meta: { path: string; stage: RunStage; error: unknown }) => Promise<void>;
+}
+
+/**
+ * Something a run threw, once it is recorded against the run: what the CLI
+ * prints. `fatal` is false for a hook's error, which leaves the run's outcome
+ * as it was.
+ */
+export interface RunProblem {
+  path: string;
+  runId: number;
+  stage: RunStage;
+  error: unknown;
+  fatal: boolean;
 }
 
 /**
