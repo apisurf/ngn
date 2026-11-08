@@ -27,6 +27,22 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  examples:
+    dependencies:
+      '@apisurf/ngn':
+        specifier: workspace:*
+        version: link:../packages/ngn
+      '@apisurf/ngnui':
+        specifier: workspace:*
+        version: link:../packages/ui
+    devDependencies:
+      '@types/node':
+        specifier: 22.14.0
+        version: 22.14.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/core:
     dependencies:
       '@apisurf/ngn-os':

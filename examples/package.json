@@ -1,0 +1,19 @@
+{
+  "name": "@apisurf/ngn-examples",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A small ngn project to try the CLI on",
+  "type": "module",
+  "scripts": {
+    "start": "ngn run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@apisurf/ngn": "workspace:*",
+    "@apisurf/ngnui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.14.0",
+    "typescript": "5.9.3"
+  }
+}

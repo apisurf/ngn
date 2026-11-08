@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { rm, unlink } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import {
   openDbClient,
@@ -192,6 +192,9 @@ function closeClient(absolutePath: string): void {
   }
 }
 
+/** Files SQLite keeps next to a database, named by appending these to its path. */
+const SQLITE_SIDECARS = ["-wal", "-shm", "-journal"];
+
 /**
  * Build the `ctx.sqlite` API for one task file.
  *
@@ -244,6 +247,9 @@ export function createTaskSqlite(taskSourcePath: string): TaskSqlite {
       closeClient(dbPath);
 
       await unlink(dbPath);
+      // SQLite keeps a WAL and shared-memory index (or a rollback journal) beside
+      // the file. Only some exist at any time, so a missing one is not an error.
+      await Promise.all(SQLITE_SIDECARS.map((suffix) => rm(dbPath + suffix, { force: true })));
     },
   };
 }
