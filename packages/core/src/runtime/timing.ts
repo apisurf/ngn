@@ -12,6 +12,11 @@ export interface IntervalTiming {
    * of the last run. `"trailing"`: `every` after the last run ended.
    */
   edge?: Edge;
+  /**
+   * How long after ngn starts the first run is. Defaults to `0`: straight
+   * away. Every start begins afresh, and runs follow `every` from there.
+   */
+  startIn?: Duration;
   /** The shortest delay a run may choose. At least 1s; defaults to `every`. */
   min?: Duration;
   /** The longest delay anything may choose. Defaults to `every × 32`. */
@@ -40,12 +45,13 @@ export type ResolvedTiming =
       kind: "interval";
       everyMs: number;
       edge: Edge;
+      startInMs: number;
       minMs: number;
       maxMs: number;
       backoff: Required<TimingBackoff> | null;
     };
 
-const INTERVAL_KEYS = new Set(["every", "edge", "min", "max", "backoff"]);
+const INTERVAL_KEYS = new Set(["every", "edge", "startIn", "min", "max", "backoff"]);
 const BACKOFF_KEYS = new Set(["factor", "jitter"]);
 const MIN_EVERY_MS = 1_000;
 /** `max` when a task does not set it: `every` times this. */
@@ -62,7 +68,7 @@ function unknownKeys(value: Record<string, unknown>, known: Set<string>, what = 
 }
 
 /**
- * The `timing` export, checked: a cron pattern, or `{ every, edge, min, max, backoff }`. Throws,
+ * The `timing` export, checked: a cron pattern, or `{ every, edge, startIn, min, max, backoff }`. Throws,
  * naming the task, on anything else, so a typo fails at schedule time.
  */
 export function resolveTiming(value: unknown, taskPath: string): ResolvedTiming {
@@ -96,6 +102,7 @@ export function resolveTiming(value: unknown, taskPath: string): ResolvedTiming 
     kind: "interval",
     everyMs,
     edge: edge as Edge,
+    startInMs: toMs((timing.startIn ?? 0) as Duration, `timing.startIn for ${taskPath}`),
     ...resolveLimits(timing, everyMs, taskPath, fail),
     backoff: resolveBackoff(timing.backoff, fail),
   };

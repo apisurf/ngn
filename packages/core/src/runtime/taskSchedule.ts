@@ -37,9 +37,6 @@ export type RunNowOutcome = { started: true } | { started: false; reason: string
 /** How long `stop()` waits for runs in progress before closing them as interrupted. */
 export const STOP_GRACE_MS = 10_000;
 
-/** The reason a next run set by `overdue` carries, so whichever process runs it knows it is a catch-up. */
-const CATCH_UP_REASON = "one catch-up run for what was missed while ngn was not running";
-
 export interface TaskScheduleOptions {
   task: Task;
   /** The timing to schedule on: the task's export, or `--timing`'s. */
@@ -47,6 +44,8 @@ export interface TaskScheduleOptions {
   /** True when `timing` came from the command line, so the task's own export is not re-read. */
   override?: boolean;
   clock: Clock;
+  /** When ngn started, which `startIn` counts from. Defaults to when this schedule starts. */
+  startedAt?: number;
   leaseTtlMs?: number;
   /** Where backoff's jitter comes from. Tests pass their own. */
   random?: Random;
@@ -335,51 +334,53 @@ export class TaskSchedule implements Schedule {
   }
 
   /**
-   * What a start finds in the database: no schedule yet, a next run still to
-   * come, one missed while ngn was not running, one further off than the
-   * current timing could choose, or a tick a dead process left `running`.
+   * What a start finds in the database: no schedule yet, or a tick a dead
+   * process left `running`. A waiting interval task starts afresh, `startIn`
+   * after ngn started; a cron task keeps its next run, unless it was missed
+   * while ngn was not running or is further off than the pattern could choose.
+   * A paused task stays paused.
    */
   private async reconcile() {
     const now = this.clock.now();
     const rule = this.rule();
+    const first = rule.first(this.options.startedAt ?? now);
     const row = await this.store.read(this.taskId);
     this.row = row;
+    const set = {
+      next_at: first.nextAt,
+      anchor: first.anchor,
+      reason: first.reason,
+      source: "policy",
+    };
     if (!row) {
-      const first = rule.first(now);
-      await this.write({
-        event: "scheduled",
-        at: now,
-        set: { next_at: first.nextAt, anchor: first.anchor, reason: "first run", source: "policy" },
-      });
+      await this.write({ event: "scheduled", at: now, set });
       return;
     }
     if (row.state === "running") {
       await this.recoverIfAbandoned();
       return;
     }
-    if (row.state !== "waiting" || row.next_at == null) return;
+    if (row.state !== "waiting") return;
+    if (rule.kind === "interval") {
+      await this.write({ event: "rescheduled", at: now, set });
+      return;
+    }
+    if (row.next_at == null) return;
 
     // A step late is a run about to start, not one that was missed.
     if (row.next_at < now - WAIT_STEP_MS) {
-      const overdue = rule.overdue(now, row.anchor);
       await this.write({
         event: "overdue",
         at: now,
         set: {
-          next_at: overdue.nextAt,
-          reason: overdue.catchUp
-            ? CATCH_UP_REASON
-            : `missed while ngn was not running; ${rule.words}`,
+          next_at: rule.overdue(now),
+          reason: `missed while ngn was not running; ${rule.words}`,
           source: "policy",
         },
       });
       return;
     }
-    const latest = rule.latest(now, {
-      anchor: row.anchor,
-      source: row.source,
-      failedInARow: await this.failedInARow(),
-    });
+    const latest = rule.latest(now, row.source);
     if (latest != null && row.next_at > latest) {
       await this.write({
         event: "reclamped",
@@ -511,11 +512,10 @@ export class TaskSchedule implements Schedule {
   private async runTick(lease: TaskLease, row: ScheduleRow): Promise<boolean> {
     const now = this.clock.now();
     const rule = this.rule();
-    const catchUp = this.resolved.kind === "interval" && row.reason === CATCH_UP_REASON;
-    const tick = new TickHandle(catchUp ? "catch-up" : "scheduled", lease);
-    // Planned for its slot; a catch-up, or a run so late its next slot has
-    // already come, is planned for now instead.
-    let plannedAt = catchUp ? now : row.next_at!;
+    const tick = new TickHandle("scheduled", lease);
+    // Planned for its slot; a run so late its next slot has already come is
+    // planned for now instead.
+    let plannedAt = row.next_at!;
     const late = rule.window(plannedAt, row.anchor).nextAt;
     if (late != null && late <= now) plannedAt = now;
 

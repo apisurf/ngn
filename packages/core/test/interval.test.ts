@@ -211,6 +211,7 @@ describe("validation", () => {
       "tasks/duration.ts": task(`{ every: "5 minutes" }`),
       "tasks/short.ts": task(`{ every: "500ms" }`),
       "tasks/edge.ts": task(`{ every: "5m", edge: "middle" }`),
+      "tasks/startIn.ts": task(`{ every: "5m", startIn: -1 }`),
       "tasks/overlap.ts": task(`{ every: "5m" }`, `export const overlap = "allow";`),
       "tasks/breaker.ts": task(
         `{ every: "5m" }`,
@@ -232,6 +233,7 @@ describe("validation", () => {
         'overlap "allow": ngn runs one run of a task at a time',
       ),
       "tasks/short.ts": "Invalid timing: every must be at least 1s",
+      "tasks/startIn.ts": expect.stringContaining("Invalid timing.startIn -1"),
     });
   });
 });
@@ -302,62 +304,84 @@ describe("the leading edge", () => {
     // A 6m retry would start after the next slot, so there is none.
     expect(await runCount()).toBe(1);
   });
+});
 
-  it("catches up once after downtime that missed slots, then carries on the original grid", async () => {
-    await start({
-      "tasks/l.ts": `export const timing = { every: "5m" }; export const task = async () => {};`,
+describe("startIn", () => {
+  const source = (timing: string) => task(timing);
+
+  it("runs first `startIn` after ngn starts, then on a grid from there", async () => {
+    await start({ "tasks/l.ts": source(`{ every: "5m", startIn: "1m" }`) });
+    expect(await scheduleRow(h, "tasks/l.ts")).toMatchObject({
+      next_at: T0 + MIN,
+      anchor: T0 + MIN,
+      reason: "first run, 1m after ngn started",
     });
+
+    clock.advance(MIN);
     await decided("tasks/l.ts", 1);
-    await scheduler!.stop();
-
-    // ngn is down from 10:00 to 10:23.
-    clock.set(T0 + 23 * MIN);
-    await start({
-      "tasks/l.ts": `export const timing = { every: "5m" }; export const task = async () => {};`,
-    });
-    await decided("tasks/l.ts", 2);
-
-    const events = await scheduleEvents(h, "tasks/l.ts");
-    expect(events.map((e) => [e.event, e.origin])).toEqual([
-      ["scheduled", null],
-      ["started", "scheduled"],
-      ["decided", null],
-      ["overdue", null],
-      ["started", "catch-up"],
-      ["decided", null],
-    ]);
-    expect(events[3]).toMatchObject({ previous_next_at: T0 + 5 * MIN, next_at: T0 + 23 * MIN });
-    expect((await scheduleRow(h, "tasks/l.ts"))?.next_at).toBe(T0 + 25 * MIN);
+    expect((await scheduleRow(h, "tasks/l.ts"))?.next_at).toBe(T0 + 6 * MIN);
   });
 
-  it("waits for a next run still to come after a restart, writing nothing", async () => {
-    const source = `export const timing = { every: "5m" }; export const task = async () => {};`;
-    await start({ "tasks/l.ts": source });
+  it("runs straight away without it", async () => {
+    await start({ "tasks/l.ts": source(`{ every: "5m" }`) });
     await decided("tasks/l.ts", 1);
-    await scheduler!.stop();
-
-    clock.set(T0 + 2 * MIN);
-    await start({ "tasks/l.ts": source });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(await eventNames(h, "tasks/l.ts")).toEqual(["scheduled", "started", "decided"]);
-    clock.advance(3 * MIN);
-    await decided("tasks/l.ts", 2);
-    expect(await startedAt("tasks/l.ts")).toEqual([0, 5]);
+    expect(await startedAt("tasks/l.ts")).toEqual([0]);
+    expect((await scheduleRow(h, "tasks/l.ts"))?.next_at).toBe(T0 + 5 * MIN);
   });
 
-  it("reclamps a next run further off than the timing allows, after the clock went back", async () => {
-    const source = `export const timing = { every: "5m" }; export const task = async () => {};`;
-    await start({ "tasks/l.ts": source });
+  it("delays only the first run on the trailing edge", async () => {
+    const gates = createGates();
+    await start({ "tasks/t.ts": gated(`{ every: "5m", edge: "trailing", startIn: "2m" }`) });
+    expect(await scheduleRow(h, "tasks/t.ts")).toMatchObject({
+      next_at: T0 + 2 * MIN,
+      anchor: null,
+    });
+
+    clock.advance(2 * MIN);
+    await until(() => gates.isWaiting("run1"));
+    clock.advance(MIN);
+    gates.open("run1");
+    await decided("tasks/t.ts", 1);
+    expect((await scheduleRow(h, "tasks/t.ts"))?.next_at).toBe(T0 + 8 * MIN);
+  });
+
+  it("starts a new schedule on every start, in place of the stored next run", async () => {
+    const timing = `{ every: "5m", startIn: "1m" }`;
+    await start({ "tasks/l.ts": source(timing) });
+    clock.advance(MIN);
     await decided("tasks/l.ts", 1);
     await scheduler!.stop();
 
-    clock.set(T0 - 2 * 60 * MIN); // the clock went back two hours
-    await start({ "tasks/l.ts": source });
-    const events = await scheduleEvents(h, "tasks/l.ts");
-    expect(events.at(-1)).toMatchObject({
-      event: "reclamped",
-      previous_next_at: T0 + 5 * MIN,
-      next_at: T0 - 2 * 60 * MIN + 5 * MIN,
+    // Restarted with the next run (10:06) still to come.
+    clock.set(T0 + 3 * MIN);
+    await start({ "tasks/l.ts": source(timing) });
+    expect((await scheduleEvents(h, "tasks/l.ts")).at(-1)).toMatchObject({
+      event: "rescheduled",
+      previous_next_at: T0 + 6 * MIN,
+      next_at: T0 + 4 * MIN,
+      anchor: T0 + 4 * MIN,
+    });
+    await scheduler!.stop();
+
+    // Restarted after downtime: no catch-up run, just `startIn` again.
+    clock.set(T0 + 30 * MIN);
+    await start({ "tasks/l.ts": source(timing) });
+    const events = await eventNames(h, "tasks/l.ts");
+    expect(events).not.toContain("overdue");
+    expect((await scheduleRow(h, "tasks/l.ts"))?.next_at).toBe(T0 + 31 * MIN);
+  });
+
+  it("leaves a paused task paused", async () => {
+    const timing = `{ every: "5m", startIn: "1m" }`;
+    await start({ "tasks/l.ts": source(timing) });
+    await scheduler!.control("tasks/l.ts", { kind: "pause" });
+    await scheduler!.stop();
+
+    clock.set(T0 + 3 * MIN);
+    await start({ "tasks/l.ts": source(timing) });
+    expect(await scheduleRow(h, "tasks/l.ts")).toMatchObject({
+      state: "paused",
+      next_at: T0 + MIN,
     });
   });
 });

@@ -49,7 +49,11 @@ have an optional seconds field in front.
 export const timing = "*/10 * * * * *"; // cron, with seconds: every 10 seconds
 export const timing = "0 9 * * 1-5";    // cron: weekdays at 9:00
 export const timing = { every: "5m" };  // every 5 minutes
+export const timing = { every: "5m", startIn: "30s" }; // first run 30s after ngn starts
 ```
+
+An interval task runs as soon as ngn starts, then every `every` from there.
+`startIn` delays that first run. A cron pattern always follows the clock.
 
 ### The context
 

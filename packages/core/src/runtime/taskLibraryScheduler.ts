@@ -37,6 +37,8 @@ export class TaskLibraryScheduler {
   private taskLibrary: TaskLibrary;
   private options: Options;
   private scheduledTasks: Map<string, TaskSchedule> = new Map();
+  /** When `start()` ran: what every task's `startIn` counts from, so they stay in step. */
+  private startedAt: number | null = null;
 
   constructor(options: Options) {
     this.taskLibrary = options.taskLibrary;
@@ -45,6 +47,7 @@ export class TaskLibraryScheduler {
 
   async start(): Promise<ScheduleReport> {
     logTaskLibraryScheduler("Starting scheduler");
+    this.startedAt = (this.options.clock ?? systemClock).now();
     const report: ScheduleReport = { scheduled: [], failed: [] };
     const scheduledTasks = this.taskLibrary.getTasks().map(async (task) => {
       try {
@@ -115,6 +118,7 @@ export class TaskLibraryScheduler {
       timing,
       override: this.options.timing != null,
       clock: this.options.clock ?? systemClock,
+      startedAt: this.startedAt ?? undefined,
       leaseTtlMs: this.options.leaseTtlMs,
       random: this.options.random,
       nextTimeoutMs: this.options.nextTimeoutMs,

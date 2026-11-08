@@ -98,7 +98,7 @@ export interface TaskContext {
 export type OverlapPolicy = "skip" | "allow";
 
 export interface EntryExports {
-  /** A cron pattern, or `{ every, edge, min, max, backoff }`. */
+  /** A cron pattern, or `{ every, edge, startIn, min, max, backoff }`. */
   timing?: TimingExport;
   overlap?: OverlapPolicy;
   /** The longest a run should take; caps `ctx.run.deadline`. */

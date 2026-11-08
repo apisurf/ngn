@@ -1,5 +1,25 @@
 # @apisurf/ngn
 
+## 0.6.0
+
+### Minor Changes
+
+- Interval tasks start when ngn starts, and `startIn` delays the first run.
+
+  - `timing` takes `startIn`: how long after ngn starts an interval task first runs, then every `every` from there. `{ every: "5m", startIn: "30s" }` first runs 30 seconds after start. It defaults to `0`, so an interval task runs as soon as ngn starts.
+
+  **Behaviour changes for interval tasks:**
+
+  - Every start begins a new schedule. A restart no longer keeps the stored grid or makes up a missed run with a catch-up run, and a next run set by `ngn next`, the `next` hook or backoff is replaced. A paused task stays paused. Cron tasks are unchanged.
+
+### Patch Changes
+
+- Updated dependencies
+  - @apisurf/ngn-core@0.6.0
+  - @apisurf/ngn-os@0.6.0
+  - @apisurf/ngn-persistence@0.6.0
+  - @apisurf/ngn-schema@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

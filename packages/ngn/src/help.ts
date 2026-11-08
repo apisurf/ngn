@@ -61,7 +61,8 @@ export const TOPICS = {
   A task file exports \`timing\` and \`task\`; everything else is optional.
 
   export const timing = "*/5 * * * * *"    // cron: 6 fields seconds first, or 5
-  export const timing = { every: "5m" }    // or an interval: edge, min, max, backoff
+  export const timing = { every: "5m" }    // or an interval: edge, startIn, min, max, backoff
+  export const timing = { every: "5m", startIn: "30s" }  // first run 30s after start, not at once
   export const task = async (ctx) => {}    // required; its return is stored
 
   budget       "4m"                         the longest a run should take

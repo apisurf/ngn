@@ -54,14 +54,6 @@ export interface DecideInput {
   choice?: NextChoice | null;
 }
 
-/** What the scheduler knows about a schedule when it checks a stored next run still fits. */
-export interface LatestInput {
-  anchor: number | null;
-  failedInARow: number;
-  /** Who set the stored next run. */
-  source: string | null;
-}
-
 export interface Decision {
   nextAt: number;
   reason: string;
@@ -77,24 +69,33 @@ export interface RunWindow {
   periodMs: number | null;
 }
 
-export interface TimingRule {
-  /** The next run of a task that has never been scheduled, and its grid anchor. */
-  first(now: number): { nextAt: number; anchor: number | null };
+interface BaseRule {
+  /** The first run after ngn started at `startedAt`, its grid anchor, and why. */
+  first(startedAt: number): { nextAt: number; anchor: number | null; reason: string };
   window(plannedAt: number, anchor: number | null): RunWindow;
   decide(input: DecideInput): Decision;
-  /**
-   * The next run after slots were missed while ngn was not running: a single
-   * catch-up run now, or (cron) the next slot.
-   */
-  overdue(now: number, anchor: number | null): { nextAt: number; catchUp: boolean };
-  /**
-   * The latest next run the current config could choose from `now`; null when
-   * anything goes (a person chose it).
-   */
-  latest(now: number, input: LatestInput): number | null;
   /** How the schedule reads. */
   words: string;
 }
+
+/** An interval task starts afresh, from `first`, every time ngn starts. */
+export interface IntervalRule extends BaseRule {
+  kind: "interval";
+}
+
+/** A cron task keeps its stored next run across restarts. */
+export interface CronRule extends BaseRule {
+  kind: "cron";
+  /** The next run after slots were missed while ngn was not running: the next slot. */
+  overdue(now: number): number;
+  /**
+   * The latest next run the pattern could choose from `now`; null when
+   * anything goes (`source` is the CLI: a person chose it).
+   */
+  latest(now: number, source: string | null): number | null;
+}
+
+export type TimingRule = IntervalRule | CronRule;
 
 /** A number from 0 (inclusive) to 1, as `Math.random` gives. Tests pass their own. */
 export type Random = () => number;
@@ -111,6 +112,15 @@ export function timingRule(
   return timing.edge === "trailing"
     ? trailingRule(timing, words, random)
     : leadingRule(timing, words, random);
+}
+
+/** An interval task's first run: `startIn` after ngn started, the start of a new grid on the leading edge. */
+function intervalFirst(timing: Interval, startedAt: number) {
+  const nextAt = startedAt + timing.startInMs;
+  const reason = timing.startInMs
+    ? `first run, ${formatDelay(timing.startInMs)} after ngn started`
+    : "first run, as ngn started";
+  return { nextAt, anchor: timing.edge === "leading" ? nextAt : null, reason };
 }
 
 /** `a failure`, `3 failures in a row`. */
@@ -189,25 +199,12 @@ function hookDecision(
   };
 }
 
-/**
- * The latest next run an interval task could have stored: its slot (or
- * `every` on the trailing edge), the longest backoff its failure streak allows,
- * or anything up to `max` when it was not the policy that chose it.
- */
-function intervalLatest(timing: Interval, now: number, slot: number, input: LatestInput) {
-  if (input.source === "cli") return null;
-  if (input.source != null && input.source !== "policy") return now + timing.maxMs;
-  if (!timing.backoff || input.failedInARow === 0) return slot;
-  const { factor, jitter } = timing.backoff;
-  const longest = timing.everyMs * factor ** input.failedInARow * (1 + jitter);
-  return Math.max(slot, now + Math.min(timing.maxMs, Math.ceil(longest)));
-}
-
 function trailingRule(timing: Interval, words: string, random: Random): TimingRule {
   const { everyMs } = timing;
   return {
+    kind: "interval",
     words,
-    first: (now) => ({ nextAt: now, anchor: null }),
+    first: (startedAt) => intervalFirst(timing, startedAt),
     window: (plannedAt) => ({ scheduledAt: plannedAt, nextAt: null, periodMs: everyMs }),
     decide(input) {
       const onSchedule = (): Decision => ({
@@ -222,8 +219,6 @@ function trailingRule(timing: Interval, words: string, random: Random): TimingRu
         onSchedule()
       );
     },
-    overdue: (now) => ({ nextAt: now, catchUp: true }),
-    latest: (now, input) => intervalLatest(timing, now, now + everyMs, input),
   };
 }
 
@@ -232,8 +227,9 @@ function leadingRule(timing: Interval, words: string, random: Random): TimingRul
   const slots = (anchor: number | null, fallback: number) =>
     gridSlotAfter(anchor ?? fallback, everyMs);
   return {
+    kind: "interval",
     words,
-    first: (now) => ({ nextAt: now, anchor: now }),
+    first: (startedAt) => intervalFirst(timing, startedAt),
     window: (plannedAt, anchor) => ({
       scheduledAt: plannedAt,
       nextAt: slots(anchor, plannedAt)(plannedAt),
@@ -255,16 +251,15 @@ function leadingRule(timing: Interval, words: string, random: Random): TimingRul
         onSchedule()
       );
     },
-    overdue: (now) => ({ nextAt: now, catchUp: true }),
-    latest: (now, input) => intervalLatest(timing, now, slots(input.anchor, now)(now), input),
   };
 }
 
 function cronRule(pattern: string, words: string): TimingRule {
   const slotAfter: SlotAfter = (t) => nextCronSlot(pattern, t) ?? Number.MAX_SAFE_INTEGER;
   return {
+    kind: "cron",
     words,
-    first: (now) => ({ nextAt: slotAfter(now), anchor: null }),
+    first: (startedAt) => ({ nextAt: slotAfter(startedAt), anchor: null, reason: "first run" }),
     window: (plannedAt) => ({
       scheduledAt: plannedAt,
       nextAt: slotAfter(plannedAt),
@@ -277,7 +272,7 @@ function cronRule(pattern: string, words: string): TimingRule {
         : words;
       return { nextAt: slot.nextAt, reason, anchor: null, source: "policy" };
     },
-    overdue: (now) => ({ nextAt: slotAfter(now), catchUp: false }),
-    latest: (now, { source }) => (source === "cli" ? null : slotAfter(now)),
+    overdue: (now) => slotAfter(now),
+    latest: (now, source) => (source === "cli" ? null : slotAfter(now)),
   };
 }
