@@ -4,14 +4,22 @@ import {
   Compiler,
   Task,
   createControlsGenerator,
+  runOnce as runThroughLease,
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
   failedRunId,
+  systemClock,
 } from "@apisurf/ngn-core";
 import { getRunConfig } from "../config.js";
 import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
-import { describeUnrecorded, printProblems } from "../util/reportRun.js";
+import { describeUnrecorded, printProblems, printScheduleProblem } from "../util/reportRun.js";
+
+/**
+ * `ngn run x --once`: one run now, recorded like any other. It goes through the
+ * task's lease, so it never starts beside a run of the task in this process or
+ * another; while one is going it says which, and exits 1 having written nothing.
+ */
 
 export const runOnce = async (pattern: string, options: { root?: string }) => {
   const rootDirAbs = getCwd(process.cwd(), options.root);
@@ -62,7 +70,16 @@ export const runOnce = async (pattern: string, options: { root?: string }) => {
       },
     });
 
-    await task.execute();
+    const outcome = await runThroughLease(task, {
+      clock: systemClock,
+      onProblem: (message) => printScheduleProblem(task.taskPath, message),
+    });
+    if ("busy" in outcome) {
+      console.error(`ngn: ${outcome.busy}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (outcome.status === "failure") throw outcome.error;
   } catch (error) {
     // A recorded failure was printed as it was recorded.
     if (failedRunId(error) == null) {

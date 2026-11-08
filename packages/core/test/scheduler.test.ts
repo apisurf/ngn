@@ -31,7 +31,7 @@ describe("TaskLibraryScheduler.start", () => {
 
     const report = await scheduler.start();
 
-    expect(report.scheduled).toEqual([{ path: "tasks/ok.ts", pattern: "0 0 9 * * *" }]);
+    expect(report.scheduled).toEqual([{ path: "tasks/ok.ts", timing: "0 0 9 * * *" }]);
     expect(report.failed).toEqual([
       { path: "tasks/bad.ts", reason: "Invalid cron pattern: nope" },
       { path: "tasks/untimed.ts", reason: "timing pattern is missing" },

@@ -59,6 +59,7 @@ import {
 } from "~/lib/format";
 import { parseStructured } from "~/lib/json";
 import {
+  describeDecision,
   failureTitle,
   hooksOf,
   isLifecycle,
@@ -277,6 +278,22 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
  * (with their warnings and errors), its timed spans, the version that ran.
  * What it did not record is said in the same line rather than as zeros.
  */
+/** What ngn decided after the run, when it was its tick's final run: `then next run 15:05: …`. */
+function decisionPart(decision: RunPageData["decision"]): { key: string; node: React.ReactNode }[] {
+  if (!decision) return [];
+  const { next_at, reason, source } = decision;
+  return [
+    {
+      key: "then",
+      node: (
+        <span title="What ngn decided after this run: when the task runs next, and why">
+          then {describeDecision(next_at, reason, source)}
+        </span>
+      ),
+    },
+  ];
+}
+
 function RunFacts({ page }: { page: RunPageData }) {
   const { run, task, timings } = page;
   const now = useNow(Date.now(), 1000);
@@ -342,6 +359,7 @@ function RunFacts({ page }: { page: RunPageData }) {
       ),
     });
   }
+  parts.push(...decisionPart(page.decision));
   if (run.version != null) {
     parts.push({
       key: "version",

@@ -12,6 +12,8 @@ export interface VerdictInput {
   stalled: { started_at: number; file: string; skipped_since: number }[];
   /** Locks left behind that no Stalled run already accounts for. */
   stale: number;
+  /** Tasks a person paused: mentioned, never a problem. */
+  paused?: number;
 }
 
 export interface Verdict {
@@ -26,13 +28,16 @@ export function verdict(input: VerdictInput, now: number): Verdict {
     stalledPhrase(input.stalled, now),
     input.stale ? `${plural(input.stale, "lock")} left behind` : null,
   ].filter((p): p is string => p != null);
+  const paused = input.paused ? ` · ${input.paused} paused` : "";
   if (problems.length === 0) {
     return {
       tone: "ok",
-      text: input.tasks ? `All ${plural(input.tasks, "task")} healthy` : "Nothing scheduled yet",
+      text: input.tasks
+        ? `All ${plural(input.tasks, "task")} healthy${paused}`
+        : "Nothing scheduled yet",
     };
   }
-  return { tone: input.failing ? "bad" : "warn", text: problems.join(" · ") };
+  return { tone: input.failing ? "bad" : "warn", text: `${problems.join(" · ")}${paused}` };
 }
 
 /** `1 run stalled since 27 Oct · extract.ts skipping ticks`, or null when none is. */

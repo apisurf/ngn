@@ -36,7 +36,7 @@ import {
 import { useUnreadable } from "~/components/states";
 import { formatAgo, formatCount, formatDateTime, formatMs, formatSpan, plural } from "~/lib/format";
 import type { VerdictInput } from "~/lib/ngn";
-import { circuitOpen, describeTask, verdict } from "~/lib/ngn";
+import { circuitOpen, describeTask, nextRunWords, verdict } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type { ActivityBucket, LockRow, OverviewTask, StalledItem, TaskItem } from "~/server/api";
@@ -87,6 +87,7 @@ function OverviewPage() {
               failing: failing.length,
               stalled,
               stale: stale.length,
+              paused: tasks.filter((task) => task.schedule?.state === "paused").length,
             }}
             now={now}
           />
@@ -352,6 +353,7 @@ function TasksTable({
         <tr>
           <th>Task</th>
           <th>Schedule</th>
+          <th>Next</th>
           <th>Latest runs</th>
           <th className="num">Last ran</th>
           <th className="num">Avg</th>
@@ -404,6 +406,7 @@ function TasksTable({
               <td className={css({ color: "muted", whiteSpace: "nowrap" })}>
                 {row?.schedule ?? "—"}
               </td>
+              <NextCell task={task} now={now} />
               <td>
                 <OutcomeStrip runs={row?.recent ?? []} slots={STRIP_SLOTS} />
               </td>
@@ -417,5 +420,21 @@ function TasksTable({
         })}
       </tbody>
     </table>
+  );
+}
+
+/** When the task runs next, with why (and who chose it) on hover. */
+function NextCell({ task, now }: { task: TaskItem; now: number }) {
+  const { text, why, tone } = nextRunWords(task.schedule, now);
+  return (
+    <td
+      title={why ?? undefined}
+      className={cx(
+        css({ whiteSpace: "nowrap" }),
+        tone === "neutral" ? css({ color: "muted" }) : toneText(tone),
+      )}
+    >
+      {text}
+    </td>
   );
 }

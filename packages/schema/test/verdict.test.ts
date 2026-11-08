@@ -15,6 +15,17 @@ describe("verdict", () => {
     );
   });
 
+  it("mentions paused tasks without counting them as a problem", () => {
+    expect(verdict({ tasks: 3, failing: 0, stalled: [], stale: 0, paused: 2 }, now)).toEqual({
+      tone: "ok",
+      text: "All 3 tasks healthy · 2 paused",
+    });
+    expect(verdict({ tasks: 3, failing: 1, stalled: [], stale: 0, paused: 1 }, now)).toEqual({
+      tone: "bad",
+      text: "1 task failing · 1 paused",
+    });
+  });
+
   it("names stalled runs and what they hold back, in amber", () => {
     const started = new Date(2026, 9, 27, 22, 0).getTime();
     expect(

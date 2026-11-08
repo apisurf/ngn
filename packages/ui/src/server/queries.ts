@@ -1029,3 +1029,90 @@ export function latestLiveRun(db: Db, since: number): number | null {
     .get(since - 1000) as { id: number } | undefined;
   return row?.id ?? null;
 }
+
+// -----------------------------------------------------------------------------
+// Schedules: the state machine `ngn run` keeps per task, and its log
+// -----------------------------------------------------------------------------
+
+/** A task's schedule row, as the pages read it. */
+export interface ScheduleInfo {
+  state: string;
+  next_at: number | null;
+  reason: string | null;
+  /** Who set the next run: `policy`, `hook` or `cli`. */
+  source: string | null;
+  holder: string | null;
+  /** A pause or next run asked for during the run in progress. */
+  request: string | null;
+  /** For a blocked task: the run holding it, as its `blocked` event named it. */
+  blocked_by: number | null;
+}
+
+/** Every task's schedule, by task id. Empty for a file from before schedules were stored. */
+export function listSchedules(db: Db): Map<number, ScheduleInfo> {
+  if (!hasTable(db, "schedules")) return new Map();
+  const rows = db
+    .prepare(
+      `SELECT s.file_task_id AS task_id, s.state, s.next_at, s.reason, s.source, s.holder, s.request,
+              CASE WHEN s.state = 'blocked' THEN (
+                SELECT e.run_id FROM schedule_events e
+                WHERE e.file_task_id = s.file_task_id AND e.event = 'blocked'
+                ORDER BY e.id DESC LIMIT 1
+              ) END AS blocked_by
+       FROM schedules s`,
+    )
+    .all() as (ScheduleInfo & { task_id: number })[];
+  return new Map(rows.map(({ task_id, ...info }) => [task_id, info]));
+}
+
+export interface ScheduleEventRow {
+  id: number;
+  at: number;
+  event: string;
+  from_state: string | null;
+  to_state: string;
+  origin: string | null;
+  next_at: number | null;
+  previous_next_at: number | null;
+  reason: string | null;
+  source: string | null;
+  holder: string | null;
+  request: string | null;
+  first_run_id: number | null;
+  run_id: number | null;
+}
+
+/** A task's newest `limit` schedule events, newest first. */
+export function scheduleEvents(db: Db, taskId: number, limit = 100): ScheduleEventRow[] {
+  if (!hasTable(db, "schedule_events")) return [];
+  return db
+    .prepare(
+      `SELECT id, at, event, from_state, to_state, origin, next_at, previous_next_at, reason,
+              source, holder, request, first_run_id, run_id
+       FROM schedule_events WHERE file_task_id = ? ORDER BY id DESC LIMIT ?`,
+    )
+    .all(taskId, limit) as ScheduleEventRow[];
+}
+
+/** What was decided after a tick, on its final run: the next run, why, and who chose it. */
+export interface RunDecision {
+  next_at: number;
+  reason: string | null;
+  source: string | null;
+}
+
+export function runDecision(db: Db, runId: number): RunDecision | null {
+  if (!hasTable(db, "schedule_events")) return null;
+  const row = db
+    .prepare(
+      `SELECT e.next_at, e.reason, e.source FROM schedule_events e
+       WHERE e.run_id = ? AND e.event IN ('decided', 'recovered', 'interrupted')
+       ORDER BY e.id DESC LIMIT 1`,
+    )
+    .get(runId) as
+    | { next_at: number | null; reason: string | null; source: string | null }
+    | undefined;
+  return row?.next_at == null
+    ? null
+    : { next_at: row.next_at, reason: row.reason, source: row.source };
+}

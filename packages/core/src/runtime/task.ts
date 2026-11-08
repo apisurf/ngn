@@ -6,7 +6,7 @@ import {
   type RunStage,
   type TaskConfig,
 } from "./types.js";
-import { TaskContext, EntryExports, OverlapPolicy } from "../source/types.js";
+import { TaskContext, EntryExports, type NextOutcome } from "../source/types.js";
 import { Entry } from "../source/entry.js";
 import { toMs } from "./duration.js";
 import { deadlineSignal, runDeadline } from "./runWindow.js";
@@ -20,24 +20,88 @@ import {
   type ResolvedRetry,
 } from "./retry.js";
 import { EntryParams } from "../source/types.js";
+import { systemClock, type Clock } from "./clock.js";
+import { parseNextDecision, type NextChoice } from "./timing.js";
+
+/** How long the `next` hook may take before the default policy decides instead. */
+export const NEXT_HOOK_TIMEOUT_MS = 5_000;
 
 export interface ExecuteSchedule {
   /** When the tick fired, epoch ms. */
   scheduledAt?: number | null;
   /** When the next tick is due, epoch ms. */
   nextAt?: number | null;
+  /**
+   * For a run with no next tick: its deadline when it has no budget, measured
+   * from its start (the trailing edge's `every`).
+   */
+  periodMs?: number | null;
+  /** Where the tick reads the time and waits between retries. */
+  clock?: Clock;
+  /** Aborts every attempt's `ctx.run.signal`: ngn is stopping, or lost the task's lease. */
+  signal?: AbortSignal;
+  /** Told each attempt's run id as its row is opened. */
+  onRunStarted?: (runId: number) => void;
+  /**
+   * Ask the task's `next` hook, if it has one, when to run next, once the
+   * tick has ended: a scheduled tick of an interval task passes this.
+   */
+  next?: { previousDelayMs: number | null; timeoutMs?: number };
 }
+
+export type TickStatus = "success" | "failure" | "skipped";
+
+/** How far back `failedInARow()` looks: far enough that backoff has long reached `max`. */
+const FAILURE_STREAK_LOOKBACK = 256;
+
+/** Failed ticks at the start of `outcomes`, newest first. */
+function streakOf(outcomes: ReadonlyArray<{ outcome: "success" | "failure" }>): number {
+  const firstOther = outcomes.findIndex((tick) => tick.outcome !== "failure");
+  return firstOther === -1 ? outcomes.length : firstOther;
+}
+
+/**
+ * How one tick ended, every way it can: the task ran and returned, it failed
+ * (in any stage, after any retries), or ngn or `shouldSkip` held it back.
+ * Whatever decides when the task runs next reads this.
+ */
+export interface TickOutcome {
+  status: TickStatus;
+  /** What the task returned, for a success. */
+  result: unknown;
+  /** What the final attempt threw, for a failure. */
+  error: unknown;
+  /** Why ngn skipped the tick; null for a skip by the task's own `shouldSkip`, or no skip. */
+  skipReason: string | null;
+  /** The `task_runs.id` of the tick's first attempt; null when it failed before a run existed. */
+  firstRunId: number | null;
+  /** The `task_runs.id` of the tick's final attempt; null when it failed before a run existed. */
+  runId: number | null;
+  /** Attempts made, the first included. */
+  attempts: number;
+  /** When the final attempt ended, on the tick's clock. */
+  endedAt: number;
+  /** What the `next` hook chose; null when it was not asked, or left it to the policy. */
+  next: NextChoice | null;
+}
+
+/** How one attempt ended, when it did not throw. */
+type AttemptEnd =
+  | { status: "success"; result: unknown }
+  | { status: "skipped"; reason: string | null };
 
 /** What one tick's attempts share, so a retry can point back at the first. */
 interface TickAttempts {
   firstRunId: number | null;
+  /** The run of the latest attempt. */
+  runId: number | null;
   /** The `retry` export as the latest attempt read it. */
   retry: ResolvedRetry;
   /** The context of the attempt that just failed; null when it never got a run. */
   failedContext: TaskContext | null;
+  /** The latest attempt's run, context and exports, once its exports loaded: what `next` is called with. */
+  final: { run: RunControls; path: string; context: TaskContext; exports: EntryExports } | null;
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Where each error a run threw was recorded, for whoever reports it. */
 const failedRuns = new WeakMap<object, { runId: number; stage: RunStage }>();
@@ -64,10 +128,9 @@ export class Task {
   private kv: TaskContext["kv"];
   private sqlite: TaskContext["sqlite"];
   private meta: TaskContext["meta"];
+  private schedulingServices: TaskConfig["scheduling"];
   private entry: Entry | null = null;
   private entryExports: EntryExports | null = null;
-  /** Executions started and not yet settled. */
-  private inFlight = 0;
 
   constructor({
     entryParams,
@@ -82,13 +145,14 @@ export class Task {
       onTaskCodeLoaded: this.taskCallbacks?.onTaskCodeLoaded,
     });
 
-    const { taskCallbacks, startRun, history, env, kv, sqlite } = buildConfigFn({
+    const { taskCallbacks, startRun, history, env, kv, sqlite, scheduling } = buildConfigFn({
       sourcePath: this.entry.paths.source,
       compiledPath: this.entry.paths.compiled,
     });
     this.taskCallbacks = taskCallbacks;
     this.startRun = startRun;
     this.history = history;
+    this.schedulingServices = scheduling;
     this.sqlite = sqlite;
     this.meta = {
       fileTaskId: -1,
@@ -123,52 +187,57 @@ export class Task {
     return this.entry.codeHash;
   }
 
-  get timingPattern() {
+  /** The `timing` export, as the latest run (or `loadEntry`) read it. */
+  get timing() {
     invariant(this.entryExports, "Entry exports not initialized.");
     return this.entryExports.timing;
   }
 
-  /**
-   * The task's `overlap` export, `"skip"` when it has none. Throws on anything
-   * else, naming the task, so a typo fails at schedule time.
-   */
-  get overlapPolicy(): OverlapPolicy {
+  /** The `next` export, as loaded: unchecked, for whoever schedules the task to check. */
+  get nextHook(): unknown {
     invariant(this.entryExports, "Entry exports not initialized.");
-    const { overlap = "skip" } = this.entryExports;
-    invariant(
-      overlap === "skip" || overlap === "allow",
-      `Invalid overlap "${String(overlap)}" for ${this.taskPath}: expected "skip" or "allow"`,
-    );
-    return overlap;
+    return this.entryExports.next;
   }
 
   /**
    * Check the exports that shape how the task is scheduled, so a bad value
-   * fails when the task is scheduled rather than on its first tick.
+   * fails when the task is scheduled rather than on its first tick. ngn runs
+   * one run of a task at a time, so `overlap` may only say so.
    */
   validateExports() {
     invariant(this.entryExports, "Entry exports not initialized.");
-    void this.overlapPolicy;
-    const { budget, exclusive, retry } = this.entryExports;
+    const { budget, exclusive, retry, overlap = "skip" } = this.entryExports;
+    invariant(
+      overlap !== "allow",
+      `overlap "allow" for ${this.taskPath}: ngn runs one run of a task at a time, across every process on the database, so a task cannot run beside itself`,
+    );
+    invariant(
+      overlap === "skip",
+      `Invalid overlap "${String(overlap)}" for ${this.taskPath}: expected "skip"`,
+    );
     if (budget != null) toMs(budget, `budget for ${this.taskPath}`);
     exclusiveNames(exclusive, this.taskPath);
     resolveRetry(retry, this.taskPath);
   }
 
-  /** Whether an execution of this task is in progress. */
-  get isRunning() {
-    return this.inFlight > 0;
+  /** The `retry` export, checked. */
+  get retryPolicy(): ResolvedRetry {
+    invariant(this.entryExports, "Entry exports not initialized.");
+    return resolveRetry(this.entryExports.retry, this.taskPath);
+  }
+
+  /** The schedule and lease services this task's runs are recorded with. */
+  get scheduling() {
+    return this.schedulingServices;
   }
 
   /**
-   * Record a run that ngn decided not to start, without loading or calling any
-   * of the task's code. Needs the task to have been registered by an earlier
-   * execution, which is always so for a run skipped because one is in progress.
+   * Load the task file and register it and its version, without running it:
+   * its schedule is kept against the task's id. Returns that id.
    */
-  async skip(reason: string) {
-    invariant(this.entry, "Entry not initialized.");
-    const run = await this.startRun();
-    await run.callbacks.onSkip?.({ path: this.entry.paths.relativeEntry, reason });
+  async register(): Promise<number> {
+    await this.loadAndRegister();
+    return this.meta.fileTaskId;
   }
 
   hasTaskExport() {
@@ -250,33 +319,123 @@ export class Task {
   }
 
   /**
-   * Run the task for one tick, retrying as its `retry` export allows. A
-   * scheduled tick passes when it fired and when the next one is due, which
-   * `ctx.run.deadline` and the retry window are worked out from.
+   * Run the task for one tick, retrying as its `retry` export allows, and say
+   * how it ended. A scheduled tick passes when it fired and when the next one
+   * is due, which `ctx.run.deadline` and the retry window are worked out from.
+   * Never throws: a failure is an outcome, its error recorded on its run.
+   */
+  executeTick(schedule: ExecuteSchedule = {}): Promise<TickOutcome> {
+    return this.executeWithRetries(schedule);
+  }
+
+  /**
+   * One tick, for a caller that wants the task's value: what it returned, or
+   * undefined for a skip. Throws what the tick failed with.
    */
   async execute(schedule: ExecuteSchedule = {}) {
-    this.inFlight++;
+    const outcome = await this.executeTick(schedule);
+    if (outcome.status === "failure") throw outcome.error;
+    return outcome.result;
+  }
+
+  private async executeWithRetries(schedule: ExecuteSchedule): Promise<TickOutcome> {
+    const tick: TickAttempts = {
+      firstRunId: null,
+      runId: null,
+      retry: resolveRetry(undefined, this.taskPath),
+      failedContext: null,
+      final: null,
+    };
+    const outcome = await this.attempts(schedule, tick);
+    if (schedule.next) outcome.next = await this.askNext(outcome, tick, schedule.next);
+    return outcome;
+  }
+
+  /**
+   * Ask the `next` hook when to run next. What it throws, returns that it may
+   * not, or a hook that takes too long, is recorded on the tick's final run in
+   * stage `next`, and leaves the decision to the policy, as does a tick that
+   * never got as far as loading the task's exports.
+   */
+  private async askNext(
+    outcome: TickOutcome,
+    tick: TickAttempts,
+    { previousDelayMs, timeoutMs = NEXT_HOOK_TIMEOUT_MS }: NonNullable<ExecuteSchedule["next"]>,
+  ): Promise<NextChoice | null> {
+    const final = tick.final;
+    const hook = final?.exports.next;
+    if (!final || typeof hook !== "function" || outcome.runId == null) return null;
+    const told = {
+      status: outcome.status,
+      result: outcome.result,
+      error: outcome.error,
+      skipReason: outcome.skipReason,
+      failedInARow: await this.failedInARow(),
+      previousDelayMs,
+      runId: outcome.runId,
+    } as NextOutcome;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await this.executeWithRetries(schedule);
+      const value = await Promise.race([
+        (async () => hook(told, final.context))(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`next took longer than ${timeoutMs / 1000}s`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+      return parseNextDecision(value) ?? null;
+    } catch (error) {
+      await final.run.callbacks.onHookError?.({ path: final.path, stage: "next", error });
+      return null;
     } finally {
-      this.inFlight--;
+      clearTimeout(timer);
     }
   }
 
-  private async executeWithRetries(schedule: ExecuteSchedule) {
-    const tick: TickAttempts = {
-      firstRunId: null,
-      retry: resolveRetry(undefined, this.taskPath),
-      failedContext: null,
-    };
+  /** The tick's attempts, retrying as `retry` allows, and how the last one ended. */
+  private async attempts(schedule: ExecuteSchedule, tick: TickAttempts): Promise<TickOutcome> {
+    const clock = schedule.clock ?? systemClock;
+    const outcome = (
+      attempts: number,
+      end: Partial<TickOutcome> & Pick<TickOutcome, "status">,
+    ) => ({
+      result: undefined,
+      error: undefined,
+      skipReason: null,
+      firstRunId: tick.firstRunId,
+      runId: tick.runId,
+      attempts,
+      endedAt: clock.now(),
+      next: null,
+      ...end,
+    });
 
     for (let attempt = 1; ; attempt++) {
       tick.failedContext = null;
+      // ngn is stopping, or lost the task's lease: start no run it cannot see through.
+      if (schedule.signal?.aborted) {
+        return outcome(attempt - 1, { status: "failure", error: schedule.signal.reason });
+      }
       try {
-        return await this.executeOnce(schedule, tick);
+        const end = await this.executeOnce(schedule, tick, clock);
+        return end.status === "success"
+          ? outcome(attempt, { status: "success", result: end.result })
+          : outcome(attempt, { status: "skipped", skipReason: end.reason });
       } catch (error) {
-        if (!(await this.shouldRetry(error, attempt, schedule, tick))) throw error;
-        await sleep(tick.retry.delayMs);
+        let retry: boolean;
+        try {
+          retry = await this.shouldRetry(error, attempt, schedule, tick, clock);
+        } catch (thrown) {
+          // The task's own `shouldRetry` threw: that is what the tick failed with.
+          return outcome(attempt, { status: "failure", error: thrown });
+        }
+        if (!retry || schedule.signal?.aborted)
+          return outcome(attempt, { status: "failure", error });
+        await clock.sleep(tick.retry.delayMs, schedule.signal);
+        // ngn is stopping, or the task's lease went, while it waited: no more tries.
+        if (schedule.signal?.aborted) return outcome(attempt, { status: "failure", error });
       }
     }
   }
@@ -291,10 +450,21 @@ export class Task {
     attempt: number,
     { nextAt = null }: ExecuteSchedule,
     tick: TickAttempts,
+    clock: Clock,
   ) {
-    if (!tick.failedContext || !retryFits({ attempt, retry: tick.retry, nextAt })) return false;
+    if (!tick.failedContext) return false;
+    if (!retryFits({ attempt, retry: tick.retry, nextAt, now: clock.now() })) return false;
     const { shouldRetry } = this.entryExports ?? {};
     return shouldRetry ? (await shouldRetry(error as Error, tick.failedContext)) !== false : true;
+  }
+
+  /**
+   * The task's latest ticks that failed in a row, from its run history, so a
+   * restart does not reset the count. Ticks closed as interrupted count, since
+   * their runs were closed as failed; skipped ticks neither break nor extend it.
+   */
+  async failedInARow(): Promise<number> {
+    return streakOf(await this.history.recentTickOutcomes(FAILURE_STREAK_LOOKBACK));
   }
 
   /**
@@ -305,11 +475,7 @@ export class Task {
   private async breakerOpen(retry: ResolvedRetry) {
     if (!retry.breaker) return false;
     const outcomes = await this.history.recentTickOutcomes(retry.breaker.after + 64);
-    const failedInARow = outcomes.findIndex((tick) => tick.outcome !== "failure");
-    const wanted = breakerSkips(
-      failedInARow === -1 ? outcomes.length : failedInARow,
-      retry.breaker,
-    );
+    const wanted = breakerSkips(streakOf(outcomes), retry.breaker);
     if (wanted === 0) return false;
     return (await this.history.countSkipsSince(BREAKER_SKIP_REASON, outcomes[0].id)) < wanted;
   }
@@ -366,9 +532,10 @@ export class Task {
    * Load the task file, open the attempt's `task_runs` row, then evaluate the
    * file's code; what that throws is recorded on the row as failed in `load`.
    */
-  private async openRun(tick: TickAttempts) {
+  private async openRun(tick: TickAttempts, onRunStarted: ExecuteSchedule["onRunStarted"]) {
     invariant(this.entry, "Entry not initialized.");
 
+    tick.final = null;
     await this.loadAndRegister();
     // Read before the first await below: a run that starts while this one is
     // in progress reloads the entry and replaces it.
@@ -378,6 +545,8 @@ export class Task {
     const run = await this.startRun({ retryOf: tick.firstRunId });
     const firstAttempt = tick.firstRunId == null;
     tick.firstRunId ??= run.id;
+    tick.runId = run.id;
+    onRunStarted?.(run.id);
 
     try {
       return { run, meta, path, firstAttempt, ...(await this.readExports(path)) };
@@ -394,16 +563,25 @@ export class Task {
    * there is a row to record it on.
    */
   private async executeOnce(
-    { scheduledAt = null, nextAt = null }: ExecuteSchedule,
+    {
+      scheduledAt = null,
+      nextAt = null,
+      periodMs = null,
+      signal: outer,
+      onRunStarted,
+    }: ExecuteSchedule,
     tick: TickAttempts,
-  ) {
+    clock: Clock,
+  ): Promise<AttemptEnd> {
     const { run, meta, path, firstAttempt, exports, task, budgetMs, exclusiveLocks, retry } =
-      await this.openRun(tick);
+      await this.openRun(tick, onRunStarted);
     tick.retry = retry;
 
-    const deadline = runDeadline({ startedAt: Date.now(), scheduledAt, nextAt, budgetMs });
-    const { signal, dispose } = deadlineSignal(deadline);
+    const startedAt = clock.now();
+    const deadline = runDeadline({ startedAt, scheduledAt, nextAt, budgetMs, periodMs });
+    const { signal, dispose } = deadlineSignal(deadline, outer);
     const taskContext = this.buildContext(run, meta, { scheduledAt, nextAt, deadline }, signal);
+    tick.final = { run, path, context: taskContext, exports };
 
     let stage: RunStage = "start";
     let exclusiveHeld: { release(): Promise<void> } | null = null;
@@ -416,14 +594,14 @@ export class Task {
       });
       if ("reason" in gate) {
         await run.callbacks.onSkip?.({ path, reason: gate.reason });
-        return;
+        return { status: "skipped", reason: gate.reason };
       }
       exclusiveHeld = gate.held;
 
       stage = "shouldSkip";
       if (await exports.shouldSkip?.(taskContext)) {
         await run.callbacks.onSkip?.({ path });
-        return;
+        return { status: "skipped", reason: null };
       }
 
       stage = "start";
@@ -441,7 +619,7 @@ export class Task {
 
       await this.runHook(run, "onSuccess", () => exports.onSuccess?.(taskContext));
       await this.runHook(run, "onComplete", () => exports.onComplete?.(taskContext));
-      return value;
+      return { status: "success", result: value };
     } catch (error) {
       await this.failRun(run, stage, error);
       // The hooks are about the task: they run once it got as far as running.

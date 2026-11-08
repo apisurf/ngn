@@ -6,7 +6,18 @@
  * so a script can check health without parsing; 1 is for not being able to
  * read at all.
  */
-import { cronOf, describeCron, formatAgo, formatMs, verdict } from "@apisurf/ngn-schema/describe";
+import {
+  cronOf,
+  describeNext,
+  describeState,
+  describeTiming,
+  nextReason,
+  holderProcess,
+  formatAgo,
+  formatMs,
+  timingOf,
+  verdict,
+} from "@apisurf/ngn-schema/describe";
 import { RunStore } from "../read/store.js";
 import { healthOf } from "../read/words.js";
 import { renderJson, renderTable } from "../util/format.js";
@@ -39,12 +50,14 @@ export const status = async (options: StatusOptions) => {
       (lock) => lock.expires_at <= now && (lock.run_id == null || !stalledRunIds.has(lock.run_id)),
     );
     const byId = new Map(tasks.map((task) => [task.id, task]));
+    const schedules = await store.schedules();
     const result = verdict(
       {
         tasks: tasks.length,
         failing: tasks.filter((task) => task.last_outcome === "failure").length,
         stalled: stalled.map((run) => ({ ...run, file: byId.get(run.task_id)!.file })),
         stale: stale.length,
+        paused: tasks.filter((task) => schedules.get(task.id)?.state === "paused").length,
       },
       now,
     );
@@ -52,11 +65,29 @@ export const status = async (options: StatusOptions) => {
     const stalledTasks = new Set(stalled.map((run) => run.task_id));
     const rows = await Promise.all(
       tasks.map(async (task) => {
-        const cron = cronOf(await store.latestCode(task.id));
+        const code = await store.latestCode(task.id);
+        const scheduled = schedules.get(task.id) ?? null;
+        // A blocked task names the run it waits on, as its `blocked` event recorded it.
+        const blockedBy =
+          scheduled?.state === "blocked"
+            ? ((await store.scheduleEvents(task.id, 20)).findLast((e) => e.event === "blocked")
+                ?.run_id ?? null)
+            : null;
+        const words = describeTiming(timingOf(code));
         return {
           task: task.path,
-          schedule: cron ? (describeCron(cron) ?? cron) : null,
-          cron,
+          schedule: words,
+          cron: cronOf(code),
+          next:
+            scheduled?.state === "blocked"
+              ? describeState(scheduled, blockedBy)
+              : describeNext(scheduled, now),
+          state: scheduled?.state ?? null,
+          next_at: scheduled?.next_at ?? null,
+          next_reason: scheduled?.reason ?? null,
+          why: nextReason(scheduled, words),
+          blocked_by: blockedBy,
+          process: holderProcess(scheduled?.holder),
           health: healthOf(task, stalledTasks),
           last_ran: task.last_run_at,
           last_run_id: task.last_run_id,
@@ -76,6 +107,7 @@ export const status = async (options: StatusOptions) => {
         const table = rows.map((row) => ({
           task: row.task,
           schedule: row.schedule,
+          next: row.why && row.state !== "paused" ? `${row.next} · ${row.why}` : row.next,
           health: row.health,
           "last ran": row.last_ran == null ? "never" : formatAgo(now, row.last_ran),
           avg: formatMs(row.avg_ms),

@@ -27,6 +27,15 @@ export function formatMs(ms: number | null | undefined): string {
   return pair(Math.floor(hours / 24), "d", hours % 24, "h");
 }
 
+/**
+ * `30s`, `10m 19s`, `2h`: a delay until a next run, to the second. Unlike
+ * `formatMs`, which measures how long something took, it has no use for
+ * hundredths.
+ */
+export function formatDelay(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)}s` : formatMs(ms);
+}
+
 function pair(big: number, bigUnit: string, small: number, smallUnit: string): string {
   return small ? `${big}${bigUnit} ${small}${smallUnit}` : `${big}${bigUnit}`;
 }
@@ -38,4 +47,21 @@ export function formatSpan(ms: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
   if (seconds < 48 * 3600) return `${Math.floor(seconds / 3600)} h`;
   return `${Math.floor(seconds / 86_400)} d`;
+}
+
+const UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+};
+
+/** A duration as ngn takes one: milliseconds, or `"500ms"`, `"30s"`, `"4m"`, `"2h"`, `"1d"`. */
+export function parseDuration(value: string | number | null | undefined): number | null {
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value !== "string") return null;
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)?\s*$/.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * UNIT_MS[match[2] ?? "ms"]!;
 }

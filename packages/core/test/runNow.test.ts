@@ -11,7 +11,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await running?.stop();
+  await running?.stop({ graceMs: 1_000 });
   running = null;
   h.dispose();
 });
@@ -44,7 +44,7 @@ describe("runNow", () => {
     const gates = createGates();
     const { scheduler, errors } = await start();
 
-    expect(scheduler.runNow("tasks/report.ts")).toEqual({ started: true });
+    expect(await scheduler.runNow("tasks/report.ts")).toEqual({ started: true });
     await until(async () => (await statuses()).includes("running"));
 
     gates.open("done");
@@ -57,11 +57,12 @@ describe("runNow", () => {
     const gates = createGates();
     const { scheduler } = await start();
 
-    scheduler.runNow("tasks/report.ts");
+    await scheduler.runNow("tasks/report.ts");
     await until(async () => (await statuses()).includes("running"));
-    expect(scheduler.runNow("tasks/report.ts")).toEqual({
+    const [run] = await h.query<{ id: number }>("SELECT id FROM task_runs");
+    expect(await scheduler.runNow("tasks/report.ts")).toEqual({
       started: false,
-      reason: "a run of it is still going",
+      reason: `run ${run!.id} of tasks/report.ts is in progress`,
     });
     expect(await statuses()).toEqual(["running"]);
 
@@ -71,7 +72,7 @@ describe("runNow", () => {
 
   it("refuses a task this scheduler does not run", async () => {
     const { scheduler } = await start();
-    expect(scheduler.runNow("tasks/other.ts")).toEqual({
+    expect(await scheduler.runNow("tasks/other.ts")).toEqual({
       started: false,
       reason: "tasks/other.ts is not scheduled by this ngn run",
     });

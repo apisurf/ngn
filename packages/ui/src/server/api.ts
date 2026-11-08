@@ -14,13 +14,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest as currentRequest } from "@tanstack/react-start/server";
 import type { TaskName } from "../lib/ngn";
-import { cronOf, describeCron, describeTask, parseRunQuery } from "../lib/ngn";
+import { describeTask, describeTiming, parseRunQuery, timingOf } from "../lib/ngn";
 import type { Db, SchemaState } from "./db";
 import { dbPath, fileBytes, getDb, schemaState } from "./db";
 import { descriptionPath, projectRoot, readDescription } from "./description";
 import { refuseRun, RUN_TOKEN } from "./guard";
-import type { LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
-import { executeLive, liveTarget, probeLive, runTaskNow } from "./live";
+import type { ControlResult, LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
+import { controlTask, executeLive, liveTarget, probeLive, runTaskNow } from "./live";
 import type {
   ActivityBucket,
   Attempt,
@@ -33,8 +33,11 @@ import type {
   LogRow,
   Neighbours,
   Outcome,
+  RunDecision,
   RunFilter,
   RunRow,
+  ScheduleEventRow,
+  ScheduleInfo,
   SkipCount,
   StalledRun,
   TaskRow,
@@ -47,7 +50,7 @@ import type {
 import * as q from "./queries";
 
 export type { SchemaState } from "./db";
-export type { LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
+export type { ControlResult, LiveLanguage, LiveOutcome, LiveStatus, RunNowResult } from "./live";
 export type {
   ActivityBucket,
   Attempt,
@@ -58,7 +61,10 @@ export type {
   KvRow,
   LockRow,
   LogRow,
+  RunDecision,
   RunRow,
+  ScheduleEventRow,
+  ScheduleInfo,
   SkipCount,
   StalledRun,
   TaskRow,
@@ -69,8 +75,9 @@ export type {
   WorkspaceCounts,
 } from "./queries";
 
-/** A task with how its path reads, and its newest Stalled run, if it has one. */
-export type TaskItem = TaskRow & TaskName & { stalled_run_id: number | null };
+/** A task with how its path reads, its newest Stalled run, if it has one, and its schedule. */
+export type TaskItem = TaskRow &
+  TaskName & { stalled_run_id: number | null; schedule: ScheduleInfo | null };
 export type RunItem = RunRow & TaskName;
 export type LogItem = LogRow & TaskName;
 
@@ -120,13 +127,17 @@ function describe<T extends { path: string }>(row: T): T & TaskName {
   return { ...row, ...describeTask(row.path) };
 }
 
-/** A task row as pages get it: described, and with its newest Stalled run. */
-function taskItem(row: TaskRow, stalled: ReadonlyMap<number, StalledRun>): TaskItem {
+/** A task row as pages get it: described, with its newest Stalled run and its schedule. */
+function taskItem(
+  row: TaskRow,
+  stalled: ReadonlyMap<number, StalledRun>,
+  schedules: ReadonlyMap<number, ScheduleInfo>,
+): TaskItem {
   let newest: number | null = null;
   for (const run of stalled.values()) {
     if (run.task_id === row.id && (newest == null || run.run_id > newest)) newest = run.run_id;
   }
-  return { ...describe(row), stalled_run_id: newest };
+  return { ...describe(row), stalled_run_id: newest, schedule: schedules.get(row.id) ?? null };
 }
 
 /** The workspace's counts, with Stalled runs counted apart from the ones still running. */
@@ -172,12 +183,13 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
       return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [] };
     }
     const stalled = q.stalledRuns(db, base.now);
+    const schedules = q.listSchedules(db);
     const counts = q.workspaceCounts(db);
     return {
       ...base,
       bytes: fileBytes(),
       counts: { ...counts, open: counts.open - stalled.size, stalled: stalled.size },
-      tasks: q.listTasks(db).map((task) => taskItem(task, stalled)),
+      tasks: q.listTasks(db).map((task) => taskItem(task, stalled, schedules)),
     };
   },
 );
@@ -226,11 +238,11 @@ export const getOverview = createServerFn({ method: "GET" }).handler(
     const tasks = all
       .filter((task) => !describeTask(task.path).editor)
       .map((task): OverviewTask => {
-        const cron = cronOf(q.getVersionCode(db, task.id)?.compiled_code);
+        const timing = timingOf(q.getVersionCode(db, task.id)?.compiled_code);
         const spell = task.last_outcome === "failure" ? q.failingSpell(db, task.id) : null;
         return {
           id: task.id,
-          schedule: cron ? (describeCron(cron) ?? cron) : null,
+          schedule: describeTiming(timing),
           recent: q.recentOutcomes(db, task.id, RECENT_RUNS),
           failing: spell && {
             ...spell,
@@ -359,7 +371,10 @@ export const getTask = createServerFn({ method: "GET" })
     if (!db) return null;
     const task = q.getTask(db, data.taskId);
     if (!task) return null;
-    return { task: taskItem(task, q.stalledRuns(db)), latest: q.getVersionCode(db, task.id) };
+    return {
+      task: taskItem(task, q.stalledRuns(db), q.listSchedules(db)),
+      latest: q.getVersionCode(db, task.id),
+    };
   });
 
 /** A task's tabs: its run history, timings, keys and versions. */
@@ -372,6 +387,8 @@ export interface TaskDetails {
   logCount: number;
   /** Why its runs were skipped, most common first. */
   skips: SkipCount[];
+  /** Its schedule's log, newest first. */
+  scheduleEvents: ScheduleEventRow[];
   /** The version picked in the Versions tab, or the newest. */
   code: VersionCode | null;
   /**
@@ -401,6 +418,7 @@ export const getTaskDetails = createServerFn({ method: "GET" })
       keys: q.listKeys(db, taskId),
       logCount: q.countTaskLines(db, taskId),
       skips: q.skipReasons(db, taskId),
+      scheduleEvents: q.scheduleEvents(db, taskId),
       code:
         (data.versionId === undefined ? null : q.getVersionCode(db, taskId, data.versionId)) ??
         q.getVersionCode(db, taskId),
@@ -435,6 +453,8 @@ export interface RunPage {
   locks: LockRow[];
   /** Why the run is Stalled, when it is. */
   stall: StalledRun | null;
+  /** The next run decided after this run's tick, when it was its final run. */
+  decision: RunDecision | null;
 }
 
 /** The task a run belongs to, so a bare run link can be sent to it. */
@@ -458,7 +478,7 @@ export const getRun = createServerFn({ method: "GET" })
     const stalled = q.stalledRuns(db);
     return {
       run: describe(run),
-      task: taskItem(task, stalled),
+      task: taskItem(task, stalled, q.listSchedules(db)),
       logs,
       timings: q.listRunTimings(db, run.id),
       failure: run.status === "failure" ? q.failureMessage(logs) : null,
@@ -468,6 +488,7 @@ export const getRun = createServerFn({ method: "GET" })
       attempts: q.tickAttempts(db, run),
       locks: q.listLocks(db).filter((lock) => lock.run_id === run.id),
       stall: stalled.get(run.id) ?? null,
+      decision: q.runDecision(db, run.id),
     };
   });
 
@@ -559,4 +580,42 @@ export const runTask = createServerFn({ method: "POST" })
       };
     }
     return runTaskNow(liveTarget()!, task.path);
+  });
+
+/** What Pause, Resume and Run next ask of the runtime. */
+export type ScheduleAction = "pause" | "resume" | "next";
+
+/**
+ * Pause, resume or move a scheduled task's next run, through the `ngn run`
+ * the editor uses: the same transitions `ngn pause`, `resume` and `next` make,
+ * logged with source `cli`. ngnui itself only reads the database.
+ */
+export const steerTask = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const r = record(input);
+    guard(r.token);
+    const action = r.action;
+    if (action !== "pause" && action !== "resume" && action !== "next") {
+      throw new Error('action must be "pause", "resume" or "next"');
+    }
+    return { taskId: id(r.taskId, "taskId"), action: action as ScheduleAction };
+  })
+  .handler(async ({ data }): Promise<ControlResult> => {
+    const db = readable();
+    const task = db ? q.getTask(db, data.taskId) : null;
+    if (!task) return { ok: false, error: "No such task in this database." };
+    const status = await probeLive(liveTarget());
+    if (status.state === "off") {
+      return { ok: false, error: "No runtime: start `ngn run` in this project." };
+    }
+    if (status.state === "down") return { ok: false, error: `${status.url} ${status.error}.` };
+    if (!status.schedule) {
+      return {
+        ok: false,
+        error: `ngn ${status.version ?? ""} cannot pause or move a task; update it, or use ngn ${data.action} in a terminal.`,
+      };
+    }
+    const command =
+      data.action === "next" ? { kind: "next" as const, delayMs: 0 } : { kind: data.action };
+    return controlTask(liveTarget()!, task.path, command);
   });

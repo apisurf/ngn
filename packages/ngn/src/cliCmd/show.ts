@@ -4,6 +4,7 @@
  * logged, its timings and what it returned.
  */
 import {
+  describeDecision,
   describeTask,
   explainRun,
   failureMessage,
@@ -61,7 +62,7 @@ type RunPage = NonNullable<Awaited<ReturnType<typeof readRun>>>;
 async function readRun(store: RunStore, id: number, now: number) {
   const run = await store.run(id, now);
   if (!run) return null;
-  const [logs, timings, result, attempts, locks, stall, code] = await Promise.all([
+  const [logs, timings, result, attempts, locks, stall, code, decision] = await Promise.all([
     store.logs({ runId: id, lifecycle: true, limit: 50_000 }),
     store.timings(id),
     store.result(id),
@@ -69,6 +70,7 @@ async function readRun(store: RunStore, id: number, now: number) {
     store.locks(),
     store.stalledRuns(now).then((all) => all.get(id) ?? null),
     store.latestCode(run.task_id),
+    store.decision(id),
   ]);
   const held = locks.filter((lock) => lock.run_id === id).map((lock) => lock.name);
   const attempt = attempts.findIndex((a) => a.id === id) + 1 || 1;
@@ -84,13 +86,14 @@ async function readRun(store: RunStore, id: number, now: number) {
     now,
   );
   const lines = logs.filter((log) => !isLifecycle(log.value));
-  return { run, story, attempt, attempts, held, lines, timings, result };
+  return { run, story, attempt, attempts, held, lines, timings, result, decision };
 }
 
-function asJson({ run, story, attempts, held, lines, timings, result }: RunPage): string {
+function asJson({ run, story, attempts, held, lines, timings, result, decision }: RunPage): string {
   return renderJson({
     run: runJson(run),
     story,
+    next: decision,
     attempts: attempts.map((a) => ({ id: a.id, status: a.status })),
     locks: held,
     logs: lines.map((log) => ({
@@ -104,8 +107,10 @@ function asJson({ run, story, attempts, held, lines, timings, result }: RunPage)
 }
 
 function asText(page: RunPage, now: number): string {
-  const { story, attempts, held, result } = page;
+  const { story, attempts, held, result, decision } = page;
   const out = [...heading(page, now)];
+  const next = decision && describeDecision(decision.next_at, decision.reason, decision.source);
+  if (next) out.push(`Then: ${next}`);
   if (story) out.push("", story.title, ...wrap(story.detail).map((line) => `  ${line}`));
   if (attempts.length > 1) {
     const tries = attempts.map((a) => `#${a.id} ${runStatusWord(a.status, false)}`).join(", ");

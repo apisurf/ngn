@@ -3,7 +3,7 @@
  * the actions are passed in, so a test can parse a command line and see what
  * the action would get.
  *
- * Flags are kebab-case and named from the glossary (DEV/ia/glossary.md):
+ * Flags are kebab-case and named after ngn's own terms:
  * `--db`, `--port`, `--config`, `--env-file`. A name a flag had before stays as
  * a hidden alias.
  */
@@ -12,7 +12,8 @@ import { VERSION } from "./version.js";
 import { everything, isTopic, overview, TOPICS } from "./help.js";
 import { DEFAULT_API_PORT, DEFAULT_MATCH_PATTERN } from "./constants.js";
 
-const DESCRIPTION = "schedule TypeScript and JavaScript task files with cron and record every run";
+const DESCRIPTION =
+  "schedule TypeScript and JavaScript task files on cron patterns or intervals and record every run";
 
 type Action = Parameters<Command["action"]>[0];
 
@@ -63,6 +64,10 @@ export interface Actions {
   sql: Action;
   ui: Action;
   status: Action;
+  schedule: Action;
+  pause: Action;
+  resume: Action;
+  next: Action;
   runs: Action;
   show: Action;
   logs: Action;
@@ -139,7 +144,10 @@ export function buildProgram(actions: Actions, { debug = false } = {}): Command 
     .description("Schedule tasks (blocks), or run one now with --once")
     .argument("[task...]", "Task names or globs; every task the config matches when none")
     .option("--once", "Run the one named task now, record it, and exit")
-    .option("-t, --timing <cron>", "Schedule the one named file on this pattern instead of its own")
+    .option(
+      "-t, --timing <cron|duration>",
+      "Schedule the one named file on this pattern, or every this long (5m), instead of its own",
+    )
     .option("--no-config", "With --timing: ignore ngn.config.ts, load no env, record nothing")
     .option("--root <path>", "Project root (default: cwd)")
     .addOption(new Option("--match <glob>").hideHelp())
@@ -152,6 +160,7 @@ Forms
   ngn run scrape.ts --once         run it now, record it, exit
   ngn run scrape.ts -t "*/2 * * * * *"
                                    schedule it on this pattern  (blocks)
+  ngn run scrape.ts -t 5m          schedule it every 5 minutes  (blocks)
 
 Matching
   A name is tried as the path from the project root, then under tasks/, then
@@ -161,7 +170,14 @@ Matching
   \`match\` in ngn.config.ts are candidates, except that --timing also takes a
   file outside it by its path.
 
---once exits non-zero if the task throws, or if the name fits several tasks.
+One run of a task at a time
+  Every run of a task goes through its lease in the database, so --once never
+  starts beside a run of it in another process: it names the run in progress
+  and exits 1. Ctrl-C lets runs in progress end for up to 10 s, then closes
+  the rest as interrupted; a second Ctrl-C exits at once.
+
+--once exits non-zero if the task throws, if a run of it is in progress, or if
+the name fits several tasks.
 `,
     )
     .action((tasks: string[], options: RunFlags) => runForm(actions, tasks, options));
@@ -176,7 +192,7 @@ Matching
   program
     .command("run:single", { hidden: true })
     .argument("<filePath>")
-    .requiredOption("-t, --timing <cron>")
+    .requiredOption("-t, --timing <cron|duration>")
     .option("--root <path>")
     .action((filePath: string, options: { root?: string; timing: string }) =>
       actions.runSingle(filePath, { ...options, config: false }),
@@ -195,6 +211,88 @@ Exits 0 when every task is healthy, 2 when the verdict names a problem
 `,
     )
     .action(actions.status);
+
+  dbOptions(
+    program
+      .command("schedule")
+      .description("When a task runs next and why, and what happened to its schedule")
+      .argument("<task>", "A task name, as `ngn run` takes one")
+      .option("--limit <n>", "The newest n events of its log (default 20)"),
+  )
+    .addHelpText(
+      "after",
+      `
+States
+  waiting   the next run is set and not due yet
+  blocked   due, but another run of the task holds it
+  running   a run of it is in progress
+  paused    a person held it
+
+Every change is an event in the task's log: scheduled, started, decided, ended,
+overdue, reclamped, interrupted, blocked, superseded, recovered, lease lost,
+paused, pause requested, resumed, moved, next run requested.
+`,
+    )
+    .action(actions.schedule);
+
+  /** `--db` and `--root`, and `--json` for what the command did. */
+  const controlHelp = `
+Works on cron and interval tasks alike, and needs no running ngn run: the change
+is written to the database, and a running ngn run picks it up within seconds.
+See where it stands with ngn schedule <task>.
+`;
+
+  dbOptions(
+    program
+      .command("pause")
+      .description("Hold a task: no new scheduled runs until ngn resume")
+      .argument("<task>", "A task name, as `ngn run` takes one"),
+  )
+    .addHelpText(
+      "after",
+      `
+A run in progress finishes, then the task pauses. A paused task records nothing:
+no skipped runs, no hooks. ngn run <task> --once still runs it, and it stays
+paused. ngn status lists it as paused, never as a problem.
+${controlHelp}`,
+    )
+    .action(actions.pause);
+
+  dbOptions(
+    program
+      .command("resume")
+      .description("Let a paused task run again")
+      .argument("<task>", "A task name, as `ngn run` takes one"),
+  )
+    .addHelpText(
+      "after",
+      `
+Runs at its stored next run, or now if that went by while it was paused. A cron
+task takes its next slot after now instead, as after downtime.
+${controlHelp}`,
+    )
+    .action(actions.resume);
+
+  dbOptions(
+    program
+      .command("next")
+      .description("Move a task's next run: now, or in a while")
+      .argument("<task>", "A task name, as `ngn run` takes one")
+      .argument("<when>", '"now", or a duration from now: 30s, 10m, 2h'),
+  )
+    .addHelpText(
+      "after",
+      `
+Examples
+  ngn next scrape now     run as soon as possible
+  ngn next scrape 10m     run in ten minutes, then the schedule takes over again
+
+During a run, it replaces the next run that run decides. Not held to the task's
+min, but at least 1s. On the leading edge the moved run starts a new grid; a cron
+task goes back to its pattern after it. A paused task needs ngn resume first.
+${controlHelp}`,
+    )
+    .action(actions.next);
 
   dbOptions(
     program

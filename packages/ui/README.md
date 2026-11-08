@@ -3,8 +3,8 @@
 A local browser UI for the database [ngn](https://www.npmjs.com/package/@apisurf/ngn) records its runs into, laid
 out the way wireui is: tasks down the left, open tabs across the top, and each
 run shown with its logs and timings on one clock. Everything in it is read-only
-except the Editor and a task's **Run now**, which do not run anything themselves:
-they ask a running `ngn run` to.
+except the Editor and a task's **Run now**, **Pause**, **Resume** and **Run next**,
+which do not run or change anything themselves: they ask a running `ngn run` to.
 
 ```bash
 ngn run      # schedules tasks, writes dbPath from ngn.config.ts
@@ -124,8 +124,17 @@ except that the breaker does not hold it back. It is refused while a run of the 
 is still going, and turns on Follow so the new run shows up as it goes. Without a
 runtime the button is off and says why.
 
+**Pause**, **Resume** and **Run next** do what `ngn pause`, `ngn resume` and
+`ngn next <task> now` do, through the same `ngn run`, and show up in the task's
+schedule log like the commands. They appear only when that `ngn run` says it can
+make them (`schedule: true` in its `/api/meta`); otherwise the header shows the
+command to run in a terminal. A paused task is marked **Paused** in the header and
+in the sidebar, and is never counted as unhealthy.
+
 **A task** shows its schedule — the `timing` export, read out of the newest
-compiled version and put into words when it is a common shape — and, under it,
+compiled version and put into words when it is a common shape, with its `min`–`max`
+when it sets them — then when it runs next, why, and who chose it (the default
+policy, its `next` hook, or a person), and, under it,
 whatever changes how ngn runs it: `retry` and its breaker, `budget`, `overlap`,
 `exclusive` locks, and the hooks it exports. A task on the defaults shows none of
 that line. A task whose latest run failed is marked **Failing**, and **Circuit
@@ -146,11 +155,15 @@ header says so — `latest #6 skipped: still running` — and links to it. Its t
 - **Timings**: each `ctx.timing` label's count, average, p50, p95, max and trend
 - **Stored values**: what it keeps between runs with `ctx.kv`, as it stands now, JSON pretty-printed
 - **Versions**: each distinct build of the file, how its runs went, and its code
+- **Schedule**: its state (waiting, blocked on a run, running, paused), its next
+  run and why, and every change to its schedule, newest first, in the words
+  `ngn schedule` uses, each linked to the run it was about
 
 **A run** opens under its task's header, shrunk to one line that links back to the
 task (and keeps Run now). The run is the title, `Run #41`, with its verdict beside it
 and its figures in one line under it: when it ran, how long it took, its log lines
-with their warnings and errors, its timed spans and the version that ran. Anything
+with their warnings and errors, its timed spans, what was decided after it (`then
+next run 15:05, set by the next hook: 312 jobs left`) and the version that ran. Anything
 it did not record is said in that line rather than shown as zeros. A failed run shows what it threw and the
 stage it was thrown in (`Failed in shouldSkip: …`), as ngn recorded it; a run from
 before ngn recorded that shows the last error the task logged. A retried run lists every try of its tick, each a link, and
@@ -180,13 +193,14 @@ The code that ran is not repeated: the run links to its version in the task's
 `[` and `]` step to the previous or next run of the same task and keep the same
 tab open when that run has something there.
 
-**Overview** opens with a one-line verdict — every task healthy, or what is wrong, stalled runs included —
+**Overview** opens with a one-line verdict — every task healthy, or what is wrong, stalled runs included, and how many are paused —
 and the last 24 hours in numbers. Under it, **Needs attention** lists each task whose
 latest run failed (for how long, how many runs, the last error it logged, a link to
 the failure), each Stalled run (since when, and how many ticks it has held back) and
 any lock a stopped process left behind; it is not shown when there
 is nothing to list. **Tasks** is one row per scheduled task: its schedule in words,
-its latest runs as a strip of ticks, when it last ran, its average duration, and any
+when it runs next (`in 4m`, `paused`, `overdue`, `blocked by run #41`, with why on
+hover), its latest runs as a strip of ticks, when it last ran, its average duration, and any
 lock it holds now. Runs per hour over the last day close the page, when there were any. For anything the
 pages do not answer, `ngn sql` queries the same file from the terminal.
 
@@ -213,7 +227,7 @@ whenever you switch back to its tab. Themes are light, dark or system.
   failing, until the next `ngn run` migrates the file.
 - **It only reads.** The database is opened `readonly` and `query_only`, so nothing in
   the UI can change it. SQLite refuses the write, not a check in this code.
-- **The editor and Run now execute nothing here.** Code, or the path of a task to run,
+- **The editor, Run now and the schedule buttons execute nothing here.** Code, or the path of a task to run,
   goes to the `--live` URL given at start-up, or the loopback port the config names,
   and only there. The browser cannot point them anywhere else.
 - **It is local.** The server binds to `127.0.0.1`. The database holds whatever

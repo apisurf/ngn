@@ -15,7 +15,7 @@ import { circuitOpen } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
 import { tabKey, useTabs } from "~/lib/tabs";
 import type { TaskItem } from "~/server/api";
-import { IconTask } from "./icons";
+import { IconTask, IconPause } from "./icons";
 import { Dot, Empty, FilterInput, Pill, truncate } from "./primitives";
 
 const root = getRouteApi("__root__");
@@ -122,6 +122,14 @@ function TaskNode({ task, active }: { task: TaskItem; active: boolean }) {
       </span>
       <span className={cx(truncate, css({ flex: "1", fontWeight: "500" }))}>{task.file}</span>
       {task.status !== "active" ? <Pill>{task.status}</Pill> : null}
+      {task.schedule?.state === "paused" ? (
+        <span
+          title="Paused: no runs until resumed"
+          className={css({ color: "muted", display: "inline-flex" })}
+        >
+          <IconPause size={12} />
+        </span>
+      ) : null}
       <Health task={task} />
     </Link>
   );

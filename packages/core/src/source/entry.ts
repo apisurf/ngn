@@ -84,6 +84,7 @@ export class Entry {
       onSuccess: taskExports.onSuccess as EntryExports["onSuccess"],
       onError: taskExports.onError as EntryExports["onError"],
       onComplete: taskExports.onComplete as EntryExports["onComplete"],
+      next: taskExports.next as EntryExports["next"],
     };
   }
 

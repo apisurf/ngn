@@ -1,11 +1,13 @@
 import invariant from "tiny-invariant";
-import { getCwd, handleSigInt, handleSigTerm, createFileDescriptor } from "@apisurf/ngn-os";
+import { getCwd, createFileDescriptor } from "@apisurf/ngn-os";
+import { describeTiming, type TimingValue } from "@apisurf/ngn-schema/describe";
 import {
   Compiler,
   Task,
+  TaskLibrary,
+  TaskLibraryScheduler,
   createControlsGenerator,
-  isCronPatternValid,
-  scheduleTask,
+  timingFromFlag,
   setupDbClient,
   getDbClient,
   closeTaskDatabases,
@@ -16,7 +18,8 @@ import { CliOptions } from "../types.js";
 import { getRunConfig } from "../config.js";
 import { describeAmbiguous, describeNoMatch } from "../util/matchTasks.js";
 import { describeDbPath } from "../util/dbPath.js";
-import { describeUnrecorded, printProblems } from "../util/reportRun.js";
+import { describeUnrecorded, printProblems, printScheduleProblem } from "../util/reportRun.js";
+import { onStopSignal } from "../util/stopSignal.js";
 import {
   DEFAULT_DB_PATH,
   DEFAULT_API_PORT,
@@ -58,7 +61,7 @@ async function getSingleTaskConfig(rootDir: string, filePath: string): Promise<C
 }
 
 /**
- * One task on a pattern of the caller's choosing, with everything else the
+ * One task on a timing of the caller's choosing, with everything else the
  * project's: its config, env and database, so its runs are recorded like any
  * other. The task is found the way `ngn run` finds one; a file outside the
  * config's `match` is taken by its path. Null (after reporting) when the name
@@ -91,10 +94,12 @@ export const runSingle = async (
   const rootDirAbs = getCwd(process.cwd(), options.root);
 
   // Bad input from the caller, not a broken invariant: report it without a stack.
-  if (!isCronPatternValid(options.timing)) {
+  const timing = timingFromFlag(options.timing);
+  if (timing == null) {
     console.error(
-      `ngn: invalid cron pattern "${options.timing}".\n` +
-        "     Expected 6 fields, seconds first, e.g. '*/2 * * * * *'.",
+      `ngn: --timing "${options.timing}" is neither a duration nor a cron pattern.\n` +
+        "     A duration runs the task that often on the leading edge, e.g. -t 5m;\n" +
+        "     a pattern has 6 fields, seconds first, or 5, e.g. -t '*/2 * * * * *'.",
     );
     process.exitCode = 1;
     return;
@@ -109,7 +114,7 @@ export const runSingle = async (
     process.exitCode = 1;
     return;
   }
-  let scheduledTask: ReturnType<typeof scheduleTask> | null = null;
+  let scheduler: TaskLibraryScheduler | null = null;
 
   try {
     await setupDbClient(config.configFileOptions.dbPath);
@@ -130,43 +135,42 @@ export const runSingle = async (
     const descriptor = config.descriptors[sourcePath];
     invariant(descriptor, `No descriptor found for source path: ${sourcePath}`);
 
-    const task = new Task({
-      buildConfigFn: generateControlsFn,
-      entryParams: {
-        compiledCode,
-        descriptor,
-        tasksRootDir: config.rootDir,
+    const library = new TaskLibrary();
+    library.add(
+      new Task({
+        buildConfigFn: generateControlsFn,
+        entryParams: { compiledCode, descriptor, tasksRootDir: config.rootDir },
+      }),
+    );
+
+    // The same engine as `ngn run`, on the caller's timing. A recorded failure
+    // was printed by `report`; this is what threw before a run existed.
+    scheduler = new TaskLibraryScheduler({
+      taskLibrary: library,
+      timing,
+      onRunError: (path, error) => {
+        if (failedRunId(error) == null) console.error(describeUnrecorded(path, error));
       },
+      onScheduleProblem: printScheduleProblem,
     });
-
-    // Load the task to ensure it's valid
-    await task.loadEntry();
-    invariant(task.hasTaskExport(), `Task function is missing in ${filePath}`);
-
-    // Schedule the task with the provided cron pattern
-    // A recorded failure was printed by `report`; this is what threw before a run existed.
-    scheduledTask = scheduleTask(task, options.timing, (error) => {
-      if (failedRunId(error) == null) console.error(describeUnrecorded(filePath, error));
-    });
+    const report = await scheduler.start();
+    const [failed] = report.failed;
+    if (failed) throw new Error(`${failed.path} not scheduled: ${failed.reason}`);
 
     const db = describeDbPath(config.configFileOptions.dbPath);
+    const words = describeTiming(timing as TimingValue) ?? options.timing;
     console.log(
-      `scheduled ${filePath} on ${options.timing}, recording to ${db.absolute ?? ":memory: (kept nowhere)"}  (Ctrl-C to stop)`,
+      `scheduled ${filePath} ${words}, recording to ${db.absolute ?? ":memory: (kept nowhere)"}  (Ctrl-C to stop)`,
     );
   } catch (error) {
     console.error(`ngn: ${error instanceof Error ? error.message : String(error)}`);
+    closeTaskDatabases();
     process.exit(1);
   }
 
-  handleSigInt(async () => {
-    scheduledTask?.stop();
+  onStopSignal(async () => {
+    await scheduler?.stop();
     closeTaskDatabases();
-    process.exit(0);
-  });
-  handleSigTerm(async () => {
-    scheduledTask?.stop();
-    closeTaskDatabases();
-    process.exit(0);
   });
 
   // Keep the process running

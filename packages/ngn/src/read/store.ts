@@ -84,6 +84,34 @@ export interface LogRow {
   created_at: number;
 }
 
+/** A task's schedule, the fold of its event log. */
+export interface ScheduleRow {
+  task_id: number;
+  state: string;
+  next_at: number | null;
+  reason: string | null;
+  source: string | null;
+  holder: string | null;
+  request: string | null;
+}
+
+export interface ScheduleEventRow {
+  id: number;
+  at: number;
+  event: string;
+  from_state: string | null;
+  to_state: string;
+  origin: string | null;
+  next_at: number | null;
+  previous_next_at: number | null;
+  reason: string | null;
+  source: string | null;
+  holder: string | null;
+  first_run_id: number | null;
+  run_id: number | null;
+  request: string | null;
+}
+
 export interface TimingRow {
   label: string;
   value: number;
@@ -91,7 +119,13 @@ export interface TimingRow {
 }
 
 export class RunStore {
-  private columnsCache: { result: boolean; retryOf: boolean; skipReason: boolean } | null = null;
+  private columnsCache: {
+    result: boolean;
+    retryOf: boolean;
+    skipReason: boolean;
+    nextAt: boolean;
+  } | null = null;
+  private tablesCache: Set<string> | null = null;
   private constructor(private readonly client: Client) {}
 
   /** A read-only session that leaves the journal mode of someone else's file alone. */
@@ -101,6 +135,14 @@ export class RunStore {
 
   close() {
     this.client.close();
+  }
+
+  /**
+   * The connection, for the commands that change schedules (`ngn pause`,
+   * `resume`, `next`); null on a file from before schedules were stored.
+   */
+  async writableSchedules(): Promise<Client | null> {
+    return (await this.hasTable("schedules")) ? this.client : null;
   }
 
   private async all<T>(sql: string, args: Value[] = []): Promise<T[]> {
@@ -119,9 +161,62 @@ export class RunStore {
         result: names.has("result"),
         retryOf: names.has("retry_of"),
         skipReason: names.has("skip_reason"),
+        nextAt: names.has("next_at"),
       };
     }
     return this.columnsCache;
+  }
+
+  /** Whether the file has `table`: one an older ngn made may not. */
+  private async hasTable(table: string): Promise<boolean> {
+    this.tablesCache ??= new Set(
+      (await this.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")).map(
+        (t) => t.name,
+      ),
+    );
+    return this.tablesCache.has(table);
+  }
+
+  /** Every task's schedule, by task id. Empty for a file from before schedules were stored. */
+  async schedules(): Promise<Map<number, ScheduleRow>> {
+    if (!(await this.hasTable("schedules"))) return new Map();
+    const rows = await this.all<ScheduleRow>(
+      "SELECT file_task_id AS task_id, state, next_at, reason, source, holder, request FROM schedules",
+    );
+    return new Map(rows.map((row) => [row.task_id, row]));
+  }
+
+  /** A task's newest `limit` schedule events, oldest first. */
+  async scheduleEvents(taskId: number, limit = 20): Promise<ScheduleEventRow[]> {
+    if (!(await this.hasTable("schedule_events"))) return [];
+    const rows = await this.all<ScheduleEventRow>(
+      `SELECT id, at, event, from_state, to_state, origin, next_at, previous_next_at, reason,
+              source, holder, first_run_id, run_id, request
+       FROM schedule_events WHERE file_task_id = ? ORDER BY id DESC LIMIT ?`,
+      [taskId, Math.min(Math.max(limit, 1), 5000)],
+    );
+    return rows.toReversed();
+  }
+
+  /** The next run decided after a tick, recorded on the tick's final run. */
+  async decision(
+    runId: number,
+  ): Promise<{ next_at: number; reason: string | null; source: string | null } | null> {
+    if (!(await this.columns()).nextAt) return null;
+    const [row] = await this.all<{
+      next_at: number | null;
+      reason: string | null;
+      source: string | null;
+    }>(
+      `SELECT r.next_at, r.next_reason AS reason,
+              (SELECT e.source FROM schedule_events e
+               WHERE e.run_id = r.id AND e.event = 'decided' ORDER BY e.id DESC LIMIT 1) AS source
+       FROM task_runs r WHERE r.id = ?`,
+      [runId],
+    );
+    return row?.next_at == null
+      ? null
+      : { next_at: row.next_at, reason: row.reason, source: row.source };
   }
 
   async tasks(): Promise<TaskRow[]> {

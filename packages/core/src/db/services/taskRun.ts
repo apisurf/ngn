@@ -46,7 +46,7 @@ export class TaskRunService {
 
   async skipTaskRun(taskRunId: number, reason: string | null = null) {
     await this.db.execute({
-      sql: "UPDATE task_runs SET status = 'skipped', ended_at = :ended_at, skip_reason = :reason WHERE id = :id",
+      sql: "UPDATE task_runs SET status = 'skipped', ended_at = :ended_at, skip_reason = :reason WHERE id = :id AND ended_at IS NULL",
       args: { id: taskRunId, ended_at: Date.now(), reason },
     });
   }
@@ -84,7 +84,7 @@ export class TaskRunService {
 
   async startTaskRun(taskRunId: number) {
     await this.db.execute({
-      sql: "UPDATE task_runs SET started_at = :started_at, status = 'running' WHERE id = :id",
+      sql: "UPDATE task_runs SET started_at = :started_at, status = 'running' WHERE id = :id AND ended_at IS NULL",
       args: {
         started_at: Date.now(),
         id: taskRunId,
@@ -92,9 +92,13 @@ export class TaskRunService {
     });
   }
 
+  /**
+   * Record how a run ended. False when it already had an end: ngn closed it as
+   * interrupted while it was still going, and that record stands.
+   */
   async endTaskRun(taskRunId: number, status: "success" | "failure", result: string | null = null) {
-    await this.db.execute({
-      sql: "UPDATE task_runs SET ended_at = :ended_at, status = :status, result = :result WHERE id = :id",
+    const { rowsAffected } = await this.db.execute({
+      sql: "UPDATE task_runs SET ended_at = :ended_at, status = :status, result = :result WHERE id = :id AND ended_at IS NULL",
       args: {
         ended_at: Date.now(),
         status,
@@ -102,6 +106,7 @@ export class TaskRunService {
         id: taskRunId,
       },
     });
+    return rowsAffected > 0;
   }
 
   async getById(taskId: number) {

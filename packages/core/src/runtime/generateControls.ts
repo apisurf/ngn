@@ -22,6 +22,7 @@ import { LogService } from "../db/services/log.js";
 import { KVService } from "../db/services/kv.js";
 import { TimingService } from "../db/services/timing.js";
 import { LockService } from "../db/services/lock.js";
+import { ScheduleStore } from "../db/services/schedule.js";
 import { createRunLocks } from "./locks.js";
 
 /**
@@ -36,6 +37,13 @@ async function recordSafely(runId: number, write: () => Promise<unknown>) {
     logTaskCallback(`Could not record what run ${runId} threw: ${errorSummary(error)}`);
   }
 }
+
+/**
+ * The line a run gets when it ends after ngn already closed it as interrupted
+ * (ngn stopped, or recovery found its lease expired): its row keeps what ngn
+ * recorded, and this says how it really came out.
+ */
+const lateEnd = (outcome: string) => `finished after ngn closed it as interrupted: ${outcome}`;
 
 // higher order function that returns a function that builds a task config
 export function createControlsGenerator({
@@ -54,6 +62,7 @@ export function createControlsGenerator({
   const kvService = new KVService(dbClient);
   const timingService = new TimingService(dbClient);
   const lockService = new LockService(dbClient);
+  const scheduling = { store: new ScheduleStore(dbClient), locks: lockService };
 
   // wrap in a function to allow for partial application of dbClient
   const generateControls: BuildCompiledTaskConfigFn = ({ sourcePath, compiledPath }) => {
@@ -115,7 +124,11 @@ export function createControlsGenerator({
         },
         async onFailure({ path, stage, error }) {
           await recordSafely(runId, async () => {
-            await taskRunService.endTaskRun(runId, "failure");
+            if (!(await taskRunService.endTaskRun(runId, "failure"))) {
+              await logService.logError(taskId, runId, failureLine(stage, error));
+              await logService.logWarning(taskId, runId, lateEnd("failed"));
+              return;
+            }
             await logService.logError(taskId, runId, failureLine(stage, error));
             await logService.logError(taskId, runId, "Task failed");
           });
@@ -130,7 +143,10 @@ export function createControlsGenerator({
           report?.({ path, runId, stage, error, fatal: false });
         },
         async onSuccess({ result }) {
-          await taskRunService.endTaskRun(runId, "success", serializeResult(result));
+          if (!(await taskRunService.endTaskRun(runId, "success", serializeResult(result)))) {
+            await logService.logWarning(taskId, runId, lateEnd("succeeded"));
+            return;
+          }
           await logService.logInfo(taskId, runId, "Task succeeded");
           logTaskCallback(`Task succeeded: ${taskId}, run ID: ${runId}`);
         },
@@ -177,6 +193,7 @@ export function createControlsGenerator({
           return taskRunService.countSkipsSince(fileTaskId, reason, afterId);
         },
       },
+      scheduling,
       env: env ?? {},
       // Scoped to this task's own folder — see createTaskSqlite
       sqlite: createTaskSqlite(sourcePath),

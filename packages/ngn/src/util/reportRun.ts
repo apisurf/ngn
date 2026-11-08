@@ -44,3 +44,11 @@ export const printProblems =
   (options: { frames?: boolean } = {}) =>
   (problem: RunProblem) =>
     console.error(describeProblem(problem, options));
+
+/**
+ * Something wrong with a task's schedule rather than a run: a transition the
+ * state table refused, a timing change that cannot apply. One line, on stderr.
+ */
+export function printScheduleProblem(_path: string, message: string) {
+  console.error(`warn    ${message}`);
+}

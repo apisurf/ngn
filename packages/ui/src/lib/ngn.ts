@@ -5,6 +5,7 @@
 // thing. What is left here is how the UI colours those answers.
 
 import type { LogLevel } from "@apisurf/ngn-schema/describe";
+import { describeNext, describeState, describeWhy } from "@apisurf/ngn-schema/describe";
 
 export * from "@apisurf/ngn-schema/describe";
 
@@ -40,4 +41,38 @@ export function seriesSlot(label: string, slots = 8): number {
   let hash = 0;
   for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) | 0;
   return Math.abs(hash) % slots;
+}
+
+/** A task's schedule as the pages read it: what `ngn status`'s next column says. */
+interface ScheduleReadout {
+  state: string;
+  next_at: number | null;
+  reason: string | null;
+  source: string | null;
+  holder: string | null;
+  request: string | null;
+  blocked_by: number | null;
+}
+
+/**
+ * When a task runs next, in the words `ngn status` uses (`in 4m`, `paused`,
+ * `overdue`, `blocked by run #41`), why on hover, and its colour: a paused
+ * task is held on purpose, not a problem.
+ */
+export function nextRunWords(
+  schedule: ScheduleReadout | null,
+  now: number,
+): { text: string; why: string | null; tone: Tone } {
+  if (!schedule) return { text: "—", why: null, tone: "neutral" };
+  const text =
+    schedule.state === "blocked"
+      ? describeState(schedule, schedule.blocked_by)
+      : describeNext(schedule, now);
+  const tone: Tone =
+    text === "overdue" || schedule.state === "blocked"
+      ? "warn"
+      : schedule.state === "running"
+        ? "info"
+        : "neutral";
+  return { text, why: describeWhy(schedule), tone };
 }

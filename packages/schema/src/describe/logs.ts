@@ -36,7 +36,7 @@ export function isLifecycle(value: string): boolean {
 }
 
 /**
- * Where in a run something was thrown. The first five end the run as failed;
+ * Where in a run something was thrown. The first six end the run as failed;
  * the hooks' own errors are recorded on the run without changing its outcome
  * (and `onError`'s never replaces the error that called it).
  *
@@ -44,6 +44,8 @@ export function isLifecycle(value: string): boolean {
  * - `start`: ngn's checks before the task (the breaker, `exclusive` locks)
  * - `shouldSkip`, `task`: the task's own code
  * - `record`: storing the task's result
+ * - `interrupted`: ngn closed a run it could not see end (it stopped, or the
+ *   process running it died)
  */
 export type RunStage =
   | "load"
@@ -51,9 +53,11 @@ export type RunStage =
   | "shouldSkip"
   | "task"
   | "record"
+  | "interrupted"
   | "onSuccess"
   | "onError"
-  | "onComplete";
+  | "onComplete"
+  | "next";
 
 const STAGES: ReadonlySet<string> = new Set<RunStage>([
   "load",
@@ -61,14 +65,16 @@ const STAGES: ReadonlySet<string> = new Set<RunStage>([
   "shouldSkip",
   "task",
   "record",
+  "interrupted",
   "onSuccess",
   "onError",
   "onComplete",
+  "next",
 ]);
 
 /** The stages whose errors fail the run; a hook's error only gets recorded. */
 export function isFatalStage(stage: RunStage): boolean {
-  return stage !== "onSuccess" && stage !== "onError" && stage !== "onComplete";
+  return stage !== "onSuccess" && stage !== "onError" && stage !== "onComplete" && stage !== "next";
 }
 
 /** ngn writes the error a run threw as an error line starting with this. */

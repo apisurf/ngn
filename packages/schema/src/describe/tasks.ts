@@ -28,7 +28,14 @@ export function describeTask(path: string): TaskName {
   return { dir, file, editor: dir === "" && EDITOR_TASK.test(file) };
 }
 
-export const HOOKS = ["shouldSkip", "shouldRetry", "onSuccess", "onError", "onComplete"] as const;
+export const HOOKS = [
+  "shouldSkip",
+  "shouldRetry",
+  "onSuccess",
+  "onError",
+  "onComplete",
+  "next",
+] as const;
 
 /**
  * The cron pattern a task exports, read out of its compiled code.
@@ -138,7 +145,7 @@ function exportsOf(code: string): string[] {
  * string, a number, or an object or array of those. Anything else — a call, an
  * identifier, a template with substitutions — is undefined.
  */
-function literalOf(code: string, name: string): unknown {
+export function literalOf(code: string, name: string): unknown {
   const start = new RegExp(`\\b(?:var|let|const)\\s+${name}\\s*=\\s*`).exec(code);
   if (!start) return undefined;
   const rest = code.slice(start.index + start[0].length);

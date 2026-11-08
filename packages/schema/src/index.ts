@@ -56,6 +56,10 @@ export const $taskRun = z.object({
   retry_of: z.number().nullable(),
   /** Why ngn skipped the run; null when it was not skipped, or `shouldSkip` did it. */
   skip_reason: z.string().nullable(),
+  /** For a tick's final run: when the next run was set for, after it. */
+  next_at: z.number().nullable(),
+  /** Why the next run was set for then, in words. */
+  next_reason: z.string().nullable(),
 });
 
 export const $taskRunInsert = $taskRun.omit({
@@ -66,6 +70,49 @@ export const $taskRunInsert = $taskRun.omit({
   result: true,
   retry_of: true,
   skip_reason: true,
+  next_at: true,
+  next_reason: true,
+});
+
+export const $scheduleState = z.enum(["waiting", "blocked", "running", "paused"]);
+
+/** A scheduled task's schedule: the fold of its `schedule_events`. */
+export const $schedule = z.object({
+  file_task_id: z.number(),
+  state: $scheduleState,
+  next_at: z.number().nullable(),
+  reason: z.string().nullable(),
+  /** Who set the next run: `policy`, `hook` or `cli`. */
+  source: z.string().nullable(),
+  /** The lease holder (`<pid>:<uuid>`) holding the task, or blocking it. */
+  holder: z.string().nullable(),
+  /** The leading edge's grid anchor. */
+  anchor: z.number().nullable(),
+  /** A request from the CLI waiting for the tick in progress to end. */
+  request: z.string().nullable(),
+  updated_at: z.number(),
+});
+
+/** One transition of a schedule, with the row as it left it. */
+export const $scheduleEvent = z.object({
+  id: z.number(),
+  file_task_id: z.number(),
+  at: z.number(),
+  event: z.string(),
+  from_state: $scheduleState.nullable(),
+  to_state: $scheduleState,
+  next_at: z.number().nullable(),
+  reason: z.string().nullable(),
+  source: z.string().nullable(),
+  holder: z.string().nullable(),
+  anchor: z.number().nullable(),
+  request: z.string().nullable(),
+  /** For `started`: scheduled, catch-up or manual. */
+  origin: z.string().nullable(),
+  first_run_id: z.number().nullable(),
+  run_id: z.number().nullable(),
+  /** The next run before the event, where it moved it. */
+  previous_next_at: z.number().nullable(),
 });
 
 export const $timing = z.object({

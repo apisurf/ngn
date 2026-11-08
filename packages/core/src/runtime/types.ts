@@ -1,6 +1,8 @@
 import type { RunStage } from "@apisurf/ngn-schema/describe";
 import { TaskContext } from "../source/types.js";
 import type { RunLocks } from "./locks.js";
+import type { ScheduleStore } from "../db/services/schedule.js";
+import type { LockService } from "../db/services/lock.js";
 
 export type { RunStage };
 
@@ -92,4 +94,6 @@ export type TaskConfig = {
   env: TaskContext["env"];
   kv: TaskContext["kv"];
   sqlite: TaskContext["sqlite"];
+  /** The run database's schedules and leases, for whatever schedules or starts the task. */
+  scheduling: { store: ScheduleStore; locks: LockService };
 };

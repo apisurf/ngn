@@ -1,16 +1,41 @@
 export { Compiler } from "./source/compiler.js";
 export { executeEsm } from "./runtime/vm.js";
 export { failedRunId, runFailure, Task } from "./runtime/task.js";
+export type { ExecuteSchedule, TickOutcome, TickStatus } from "./runtime/task.js";
 export { TaskLibrary } from "./runtime/taskLibrary.js";
 export { TaskLibraryScheduler } from "./runtime/taskLibraryScheduler.js";
 export type { RunNowOutcome, ScheduleReport } from "./runtime/taskLibraryScheduler.js";
 export { TaskOnceRunner } from "./runtime/taskOnceRunner.js";
-export { isCronPatternValid, scheduleTask } from "./runtime/schedule.js";
+export { isCronPatternValid } from "./runtime/cron.js";
+export { resolveTiming, timingFromFlag } from "./runtime/timing.js";
+export type {
+  Edge,
+  IntervalTiming,
+  ResolvedTiming,
+  TimingBackoff,
+  TimingExport,
+} from "./runtime/timing.js";
+export { runOnce, STOP_GRACE_MS } from "./runtime/taskSchedule.js";
+export { controlSchedule } from "./runtime/scheduleControl.js";
+export type {
+  ScheduleCommand,
+  ScheduleControlResult,
+  ScheduleControlTarget,
+} from "./runtime/scheduleControl.js";
+export { ScheduleStore } from "./db/services/schedule.js";
+export { systemClock } from "./runtime/clock.js";
+export type { Clock } from "./runtime/clock.js";
 export { setupDbClient, getDbClient } from "./db/db.js";
 export { initDbFileIfNotExists } from "./db/db.js";
 export { createControlsGenerator } from "./runtime/generateControls.js";
 export { TaskContext } from "./source/types.js";
-export type { OverlapPolicy, TaskRun } from "./source/types.js";
+export type {
+  NextDecision,
+  NextDelay,
+  NextOutcome,
+  OverlapPolicy,
+  TaskRun,
+} from "./source/types.js";
 export type { RunProblem, RunStage } from "./runtime/types.js";
 export type { Duration } from "./runtime/duration.js";
 export { LockBusyError } from "./runtime/locks.js";

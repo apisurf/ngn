@@ -42,6 +42,31 @@ export class LockService {
     return rowsAffected > 0;
   }
 
+  /** Who holds `name`, and until when; null when nobody has it. Expired leases included. */
+  async holderOf(
+    name: string,
+  ): Promise<{ holder: string; taskRunId: number | null; expiresAt: number } | null> {
+    const { rows } = await this.db.execute({
+      sql: "SELECT holder, task_run_id, expires_at FROM locks WHERE name = ?",
+      args: [name],
+    });
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      holder: row.holder as string,
+      taskRunId: (row.task_run_id as number | null) ?? null,
+      expiresAt: row.expires_at as number,
+    };
+  }
+
+  /** Record which run a held lease is working for. */
+  async setRun(name: string, holder: string, taskRunId: number) {
+    await this.db.execute({
+      sql: "UPDATE locks SET task_run_id = :taskRunId WHERE name = :name AND holder = :holder",
+      args: { name, holder, taskRunId },
+    });
+  }
+
   async release(name: string, holder: string) {
     await this.db.execute({
       sql: "DELETE FROM locks WHERE name = :name AND holder = :holder",

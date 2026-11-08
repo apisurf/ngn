@@ -32,7 +32,9 @@ ngn run # start running all tasks (blocks until Ctrl-C)
 ngn run test.ts # run a subset: task names, or quoted globs
 ngn run test.ts --once # run one task now, then exit
 ngn run test.ts -t "*/2 * * * * *" # schedule one task on your own pattern
-ngn status # is anything wrong: the verdict, then each task's health
+ngn run test.ts -t 5m # or every five minutes
+ngn status # is anything wrong: the verdict, then each task's health and next run
+ngn schedule test # when a task runs next, why, and what happened to its schedule
 ngn runs --status failed --since 24h # run history, filtered
 ngn show 41 # one run: why, its logs, timings and result
 ngn logs scrape --level warn # a task's log lines across its runs
@@ -42,8 +44,8 @@ ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20" # query a run histor
 
 ## Writing a task
 
-A task file exports `timing` — a cron pattern — and `task`. Everything else is
-optional.
+A task file exports `timing` — a cron pattern, or an interval — and `task`.
+Everything else is optional.
 
 ```ts
 // tasks/scrape.ts
@@ -65,8 +67,9 @@ export const task = async (ctx: TaskContext) => {
 ```
 
 `timing` takes six fields, seconds first (`"*/5 * * * * *"`), or the usual
-five, minutes first (`"*/5 * * * *"`). Whatever `task` returns is recorded with
-the run, as JSON in `task_runs.result`.
+five, minutes first (`"*/5 * * * *"`). Or a period, `{ every: "5m" }`, when
+"every five minutes" is what you mean ([more](#cron-patterns-and-intervals)).
+Whatever `task` returns is recorded with the run, as JSON in `task_runs.result`.
 
 Anything else a task needs, it imports itself:
 
@@ -82,13 +85,13 @@ that runs.
 
 | Export | Is | |
 | --- | --- | --- |
-| `timing` | cron pattern | required for `ngn run` |
+| `timing` | cron pattern, or `{ every, edge, min, max, backoff }` | required for `ngn run` ([more](#cron-patterns-and-intervals)) |
 | `task` | `async (ctx) => result` | required |
-| `overlap` | `"skip"` \| `"allow"` | what a tick does while the last run is still going ([more](#when-a-run-is-still-going)) |
 | `budget` | duration | the longest a run should take ([more](#how-long-a-run-has)) |
 | `retry` | `{ attempts, delay, breaker }` | retry a failed run inside its tick ([more](#when-a-run-fails)) |
 | `exclusive` | lock name or names | locks held for the whole run ([more](#keeping-tasks-out-of-each-others-way)) |
 | `shouldSkip`, `shouldRetry`, `onSuccess`, `onError`, `onComplete` | hooks | [below](#hooks) |
+| `next` | `(outcome, ctx) => when` | an interval task picks its own next run ([more](#choosing-the-next-run)) |
 
 A duration is milliseconds or a string: `"500ms"`, `"30s"`, `"4m"`, `"2h"`,
 `"1d"`. A bad value fails when the task is scheduled, with the task's name, not
@@ -196,9 +199,10 @@ export const task = async (ctx: TaskContext) => {
   return { length: html.length };
 };
 
-// Skip the run entirely — nothing below this fires
+// Skip the run entirely — nothing below this fires. (To hold a task for a
+// while, `ngn pause` does it without recording a skip on every tick.)
 export const shouldSkip = async (ctx: TaskContext) => {
-  return (await ctx.kv.get("paused")) === "1";
+  return (await ctx.kv.get("maintenance")) === "1";
 };
 
 export const onSuccess = async (ctx: TaskContext) => {
@@ -218,21 +222,62 @@ export const onComplete = async (ctx: TaskContext) => {
 
 ## Scheduling
 
-### When a run is still going
+### Cron patterns and intervals
 
-A tick can arrive before the previous run has finished. By default ngn does not
-start a second run beside it: it records the tick as a `skipped` run, with
-`skip_reason = 'previous run still in progress'`, and waits for the next one.
+`timing` is either a cron pattern or a period. Both run on the same engine; the
+only difference is where a task's slots come from.
 
 ```ts
-export const timing = "*/5 * * * *";
-export const overlap = "allow"; // start another run anyway
+export const timing = "0 */5 * * * *"; // on the pattern: :00, :05, :10…
+export const timing = { every: "5h" }; // every five hours, from the first run
+export const timing = { every: "5m", edge: "trailing" }; // five minutes after each run ends
 ```
 
-| `overlap` | A tick during a run |
-| --- | --- |
-| `"skip"` (default) | is recorded as skipped; nothing of the task runs, `shouldSkip` included |
-| `"allow"` | starts a second run beside the first |
+A pattern like `0 */5 * * *` does not quite mean "every five hours": the gap
+from 20:00 to midnight is four. `{ every: "5h" }` does. An interval task runs
+as soon as it is first scheduled, then every `every` on one of two edges:
+
+| `edge` | Runs | Pick it when |
+| --- | --- | --- |
+| `"leading"` (default) | on a fixed grid, `every` apart from the planned start of the last run. A 5-hour task that takes 20 minutes still starts at 00:00, 05:00, 10:00 | the task should keep a rhythm: reports, syncs, health checks |
+| `"trailing"` | `every` after the last run ended, retries included | the task drains a queue and should rest a full period after it finishes |
+
+`every` is a duration of at least `1s`. A typo (an unknown key, `"5 minutes"`)
+fails when the task is scheduled, naming the task. Switching a task between a
+pattern and an interval needs a restart of `ngn run`.
+
+A run that ends past its slot (on the leading edge, or on a pattern) is
+followed by the first slot after it ended. Missed slots are neither run
+back to back nor recorded as skipped runs; the decision says how far over it
+ran: `ran 1h12m past its slot; next slot 15:00`, or for a pattern
+`ran past 2 slots; next 15:00`.
+
+### One run at a time
+
+A task never has two runs going at once, however they were started: by its
+schedule, by Run now in ngnui, by `ngn run x --once` in another terminal, or by
+a second `ngn run` on the same database. Every start goes through the task's
+lease in the `locks` table (named `ngn:task:<path>`; lock names starting with
+`ngn:` are ngn's own, and `exclusive` and `ctx.lock` refuse them).
+
+- A run that comes due while another is going waits for it, then starts. Nothing
+  is recorded as skipped.
+- Run now and `--once` refuse while a run is going, naming it — `run 41 of
+  tasks/scrape.ts is in progress` — and write nothing.
+- Two `ngn run` processes on one database start each due run once between them.
+- A process that dies mid-run holds its lease for one minute. The next process
+  to look then closes its open runs as failed, in stage `interrupted`, and
+  decides the next run as for a failed one.
+
+**The one limit:** a process frozen for longer than a minute (a stuck event
+loop, a database it cannot reach) can find, when it wakes, that another process
+recovered its task and started a new run. Its own run's signal aborts with
+`the run lost its lease`, its decision is thrown away, and `ngn schedule` shows
+`lease lost` on one side and `recovered` on the other. That is the only way two
+runs of a task can overlap.
+
+`overlap: "allow"` fails at schedule time. `overlap: "skip"` is still accepted
+and changes nothing.
 
 ### How long a run has
 
@@ -253,21 +298,24 @@ export const task = async (ctx: TaskContext) => {
 | Member | Is |
 | --- | --- |
 | `id` | this run's `task_runs.id` |
-| `scheduledAt` | when the tick fired, epoch ms |
-| `nextAt` | when the next tick is due |
+| `scheduledAt` | when the run was planned for, epoch ms |
+| `nextAt` | when the next run is due; null on the trailing edge |
 | `deadline` | when to stop starting new work |
-| `signal` | an `AbortSignal` that fires at `deadline`; pass it to `fetch` and friends |
+| `signal` | an `AbortSignal` that fires at `deadline`, or when ngn stops; pass it to `fetch` and friends |
 
-The deadline is a tenth of the period before the next tick, and never more than
-five seconds before it. `export const budget = "2m"` brings it closer.
-`ngn run --once` has no next tick, so it gets a deadline only from a budget. The
+On a pattern or the leading edge, the deadline is a tenth of the period before
+the next slot, and never more than five seconds before it. On the trailing
+edge, whose next run depends on when this one ends, it is `every` from the
+start. `export const budget = "2m"` brings it closer either way.
+`ngn run --once` has no next run, so it gets a deadline only from a budget. The
 signal is a request: ngn does not stop a run that ignores it.
 
 ### When a run fails
 
 `retry` retries a failed run inside its tick, but never into the next one: a
-retry that would not start before the next tick is left to that tick instead.
-Each attempt is its own run, with `retry_of` pointing at the tick's first.
+retry that would not start before the next slot is left to that slot instead.
+On the trailing edge only `attempts` bounds it. Each attempt is its own run,
+with `retry_of` pointing at the tick's first.
 
 ```ts
 export const timing = "*/10 * * * *";
@@ -281,13 +329,179 @@ export const retry = {
 export const shouldRetry = async (error: Error) => !error.message.includes("401");
 ```
 
-`breaker` stops a task that keeps failing from failing on every tick. After
-`after` ticks in a row that failed, ngn skips the next tick, then lets one
+An interval task that keeps failing slows down on its own instead, and speeds
+back up after one success. After each tick, the default policy picks the delay:
+
+| The tick | Next run |
+| --- | --- |
+| succeeded, or was skipped (`shouldSkip`, a busy lock) | `every` (the next grid slot on the leading edge) |
+| failed | `every × factor^failedInARow`, capped at `max`, give or take `jitter` of it, from when it ended |
+
+```ts
+export const timing = {
+  every: "5m",
+  min: "15s", // the shortest delay a run may choose; default: every
+  max: "2h", // the longest delay anything may choose; default: every × 32
+  backoff: { factor: 2, jitter: 0.1 }, // the default; false keeps failures on every
+};
+```
+
+The jitter keeps tasks that fail together from all coming back at the same
+moment. The streak is read from the run history, so restarting `ngn run` does
+not reset it, and ticks closed as `interrupted` count as failures. On the
+leading edge, the run after a backoff starts a new grid. `min` is at least
+`1s`, and `min ≤ every ≤ max` must hold; ngn checks both at schedule time,
+naming the task. The decision says what happened, in `ngn status`, `ngn show`
+and ngnui: `backing off after 3 failures in a row: 40m`.
+
+### Choosing the next run
+
+An interval task can decide when it runs next from what its run found, with a
+`next` hook. A queue worker that stopped at its deadline with a backlog comes
+back at `min`; one that found the queue empty goes to `max`:
+
+```ts
+import type { NextOutcome, TaskContext } from "@apisurf/ngn";
+
+export const timing = { every: "5m", min: "15s", max: "2h" };
+
+export const task = async (ctx: TaskContext) => {
+  const jobs = await ctx.queue<{ url: string }>("jobs");
+  // Works until the queue is empty or the run's deadline; `stoppedBy` says which.
+  const { stoppedBy, remaining } = await jobs.work(async (job) => read(job.payload.url));
+  return { stoppedBy, remaining };
+};
+
+export const next = ({ status, result, error }: NextOutcome) => {
+  if (status === "failure") return error.message.includes("429") ? "max" : undefined;
+  if (result.stoppedBy === "deadline") return { in: "min", reason: `${result.remaining} jobs left` };
+  if (result.remaining === 0) return "max";
+};
+```
+
+It is a hook rather than something `task` calls, because a task that threw
+never gets to call anything, and failures are when the decision matters most.
+ngn calls it after every scheduled tick, after `onComplete`, with the final
+attempt's `ctx` and:
+
+| Field | Is |
+| --- | --- |
+| `status` | `success`, `failure` or `skipped` |
+| `result` | what `task` returned, on success |
+| `error` | what the final attempt threw, on failure |
+| `skipReason` | why ngn skipped it; null for `shouldSkip` |
+| `failedInARow` | the failure streak, this tick included |
+| `previousDelayMs` | the delay that led to this tick |
+| `runId` | the tick's final run |
+
+It returns one of:
+
+- `undefined`: the default policy decides (`every`, or backoff after a failure)
+- a duration (`"30s"`, `90_000`), from when the tick ended
+- `"every"`, `"min"` or `"max"`; `"every"` on the leading edge is the next grid slot
+- `{ in, reason }`: either of the above, with a reason that is stored and shown
+
+ngn keeps the delay within `[min, max]` and says so in the reason
+(`1s kept to min 15s`). On the leading edge, anything but `"every"` starts a new
+grid. A hook that throws, returns something else, or takes longer than 5
+seconds is recorded on the run in stage `next` (`Failed in next: …`), and the
+default policy decides; the run's outcome does not change. The hook runs while
+the tick still holds the task, so the 5 seconds also cap how long it can keep
+it. It is not called for a run ngn interrupted or recovered, nor for Run now or
+`--once`, which do not move the next run. `next` on a cron task fails at
+schedule time. `ngn show` says who decided: `Then: next run 15:05, set by the
+next hook: 312 jobs left`.
+
+### When a cron task keeps failing
+
+`breaker` stops a cron task that keeps failing from failing on every tick.
+After `after` ticks in a row that failed, ngn skips the next tick, then lets one
 through; if that fails too it skips two, then four, up to `maxSkip` (32 by
 default). One tick that succeeds closes it. Skipped ticks are recorded with
 `skip_reason = 'circuit open after repeated failures'`. The streak is read from
 the run history, so restarting `ngn run` does not reset it. Only scheduled ticks
-are held back: `ngn run --once` always runs.
+are held back: `ngn run --once` always runs. For interval tasks, `backoff`
+replaces the breaker: a `breaker` on an interval task fails at schedule time.
+
+### Stopping and starting again
+
+Each task's schedule lives in the run database, so restarting `ngn run` picks
+up where it left off:
+
+- **A next run still to come** is waited for.
+- **One missed while ngn was not running:** an interval task runs once now (a
+  catch-up, never one run per missed period), then carries on its grid. A cron
+  task skips to its next slot, as cron always has.
+- **A next run further off than the timing could choose** (the clock went
+  back, `every` was shortened) is brought back in, and logged as `reclamped`.
+
+Ctrl-C (or SIGTERM) stops `ngn run` starting runs, aborts the signal of every
+run in progress and waits up to 10 seconds for them. A run that ends in time is
+recorded as usual. One still going after that is closed as failed in stage
+`interrupted` ("ngn stopped before the run ended"), and is due again at once
+next time. A second Ctrl-C exits straight away and leaves the run for the next
+`ngn run` to recover.
+
+### Pausing and moving a task
+
+A person can hold a scheduled task, cron or interval, let it go again, or move
+its next run, without editing the task file or restarting `ngn run`:
+
+```bash
+ngn pause scrape        # no new runs; a run in progress finishes
+ngn resume scrape       # runs now if it came due while paused, otherwise at its next run
+ngn next scrape now     # run as soon as possible
+ngn next scrape 10m     # run in ten minutes, then the schedule takes over again
+```
+
+Each writes one change to the task's schedule in the database, with source
+`cli`, so no live runtime is needed; a running `ngn run` picks it up within a
+few seconds. Tasks are named the way `ngn run` takes them.
+
+| Command | Waiting (or blocked) | During a run | Paused |
+| --- | --- | --- | --- |
+| `pause` | paused at once | pauses when the run ends | already paused |
+| `resume` | not paused | not paused | resumed |
+| `next` | moved | the run's own decision is replaced when it ends | refused: resume it first |
+
+- **Paused** means nothing happens: no runs, no skipped rows, no hooks.
+  `ngn run scrape --once` still runs it, because a person asked, and it stays
+  paused. `ngn status` lists it as paused, and its verdict mentions it ("2
+  paused") without counting it as a problem.
+- **`ngn next` with a duration** isn't held to `min`, but is at least `1s`. On
+  the leading edge the moved run starts a new grid; a cron task goes back to its
+  pattern after it.
+- **Resuming a cron task** that missed slots takes its next slot after now, as
+  after downtime, instead of running at once.
+
+This replaces reading a "paused" flag from `ctx.kv` in `shouldSkip`, which
+recorded a skipped run on every tick.
+
+### What the schedule is doing
+
+Every change to a task's schedule is written to a log, in the same transaction
+as the change, so every gap between two runs has an explanation:
+
+```bash
+ngn status            # a "next" column: in 4m, running, blocked, overdue, and why when it's not the schedule
+ngn schedule scrape   # its state, next run and why, then each step of its log
+ngn show 41           # "Then: next run 15:05:00: every 5 minutes"
+```
+
+A schedule is in one of four states — `waiting`, `blocked` (due, but another
+run holds the task), `running`, `paused` — and moves between them by events:
+`scheduled`, `started` (scheduled, catch-up or manual), `decided`, `ended` (a
+manual run; the next run stays put), `overdue`, `reclamped`, `interrupted`,
+`blocked`, `superseded`, `recovered`, `lease_lost`, and from the commands above
+`paused`, `pause_requested`, `resumed`, `rescheduled` and `override_requested`. They are in the
+`schedules` and `schedule_events` tables for `ngn sql`, all with `--json`.
+
+ngnui shows the same in the same words: a next column on the Overview (why on
+hover), the next run and who chose it in a task's header, what was decided
+after each run on its page, and a task's state and log on its Schedule tab.
+Paused tasks are marked in the sidebar and never counted as unhealthy. With a
+live `ngn run`, the header has Pause, Resume and Run next, which make the same
+changes as the commands above; without one, it shows the command to run.
 
 ## Queues
 
@@ -458,6 +672,8 @@ export const exclusive = ["browser"];
 duration) and `ttl`: how long the lock outlives a process that died holding
 it, one minute by default. It is renewed while held. When it cannot be had in
 time it throws a `LockBusyError`; check `error.name === "LockBusyError"`.
+Names starting with `ngn:` are ngn's own (each task's lease is one) and are
+refused.
 
 ## Reading what your tasks did
 
@@ -513,6 +729,7 @@ The word after `Failed in` is the stage it was thrown in:
 | `shouldSkip` | the task's `shouldSkip` |
 | `task` | the task itself |
 | `record` | storing what the task returned |
+| `interrupted` | ngn closed the run: it stopped before the run ended, or the process running it died |
 | `onSuccess`, `onError`, `onComplete` | a hook; recorded, the run's outcome stands |
 
 Its first line is what `ngn show` leads with. The frames under it stop where
@@ -555,6 +772,26 @@ ngn ui 41     # straight to run 41
 It starts in the project folder with the database chosen. The editor in that UI
 needs a runtime to execute against, which only a running `ngn run` has; ngnui
 finds it on the config's `port` and connects whenever one is up.
+
+## Upgrading from 0.4.x
+
+Every task, cron or interval, now runs on one engine that keeps its schedule in
+the database. For cron tasks that changes a few things on purpose:
+
+| Before | Now |
+| --- | --- |
+| A tick during a run was recorded as a skipped run, "previous run still in progress" | No skipped row: the next run takes the first slot after the run ends, and the decision says it overran |
+| `overlap: "allow"` started a second run beside the first | Fails at schedule time, naming the task: one run at a time holds for every task |
+| Ctrl-C left runs in progress marked `running` | Runs get 10 seconds to end, then are closed as failed in stage `interrupted` |
+| A process that died left its runs open | The next process recovers them |
+| `--once` and a second `ngn run` could overlap a scheduled run | Both go through the task's lease |
+
+The breaker and its skipped runs are unchanged, and so are the "circuit open"
+health and the words for old "still running" skips. Missed ticks while ngn was
+down are still not caught up for cron tasks; they are now logged as `overdue`.
+The database gains `schedules`, `schedule_events` and two `task_runs` columns,
+`next_at` and `next_reason`, the first time `ngn run` opens it. ngnui shows
+the new runs in the same words.
 
 ## Upgrading from 0.2.9
 

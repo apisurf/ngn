@@ -9,6 +9,8 @@ import { addTask } from "./cliCmd/addTask.js";
 import { sql } from "./cliCmd/sql.js";
 import { ui } from "./cliCmd/ui.js";
 import { status } from "./cliCmd/status.js";
+import { schedule } from "./cliCmd/schedule.js";
+import { next, pause, resume } from "./cliCmd/control.js";
 import { runs } from "./cliCmd/runs.js";
 import { show } from "./cliCmd/show.js";
 import { logs } from "./cliCmd/logs.js";
@@ -24,6 +26,10 @@ buildProgram(
     sql,
     ui,
     status,
+    schedule,
+    pause,
+    resume,
+    next,
     runs,
     show,
     logs,

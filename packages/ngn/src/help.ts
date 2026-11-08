@@ -32,13 +32,21 @@ export const HELP_GROUPS: { title: string; entries: HelpEntry[] }[] = [
     entries: [
       { usage: "run [task…]", summary: "schedule the matching tasks", blocks: true },
       { usage: "run <task> --once", summary: "run one task now, record it, exit" },
-      { usage: "run <file> -t <cron>", summary: "schedule one file on a pattern", blocks: true },
+      {
+        usage: "run <file> -t <cron|5m>",
+        summary: "schedule one file on a pattern or period",
+        blocks: true,
+      },
+      { usage: "pause <task>", summary: "hold a task: no runs until resumed" },
+      { usage: "resume <task>", summary: "let a paused task run again" },
+      { usage: "next <task> <now|10m>", summary: "move a task's next run" },
     ],
   },
   {
     title: "Inspect",
     entries: [
       { usage: "status", summary: "is anything wrong: the verdict and every task" },
+      { usage: "schedule <task>", summary: "when a task runs next, why, and its log" },
       { usage: "runs [filter…]", summary: "run history, filtered (status:failed since:24h)" },
       { usage: "show <run>", summary: "one run: why, its logs, timings and result" },
       { usage: "logs <task|run>", summary: "log lines, oldest first" },
@@ -53,14 +61,16 @@ export const TOPICS = {
   A task file exports \`timing\` and \`task\`; everything else is optional.
 
   export const timing = "*/5 * * * * *"    // cron: 6 fields seconds first, or 5
+  export const timing = { every: "5m" }    // or an interval: edge, min, max, backoff
   export const task = async (ctx) => {}    // required; its return is stored
 
-  overlap      "skip" (default) | "allow"   a tick while the last run is going
   budget       "4m"                         the longest a run should take
   retry        { attempts, delay, breaker } retry a failed run inside its tick
   exclusive    "browser" | ["a", "b"]       locks held for the whole run
   shouldSkip, shouldRetry, onSuccess, onError, onComplete    hooks, given ctx
+  next         ({ status, result }) => "max"  an interval task's next run
 
+  A task never runs beside itself, in any process on the database.
   Durations are milliseconds or "500ms", "30s", "4m", "2h", "1d".
   Only your file is bundled; imports resolve from your node_modules.
   See also: ngn help ctx`,
@@ -109,8 +119,13 @@ ctx.sqlite
   file_task_versions   id, file_task_id, version, md5_hash, compiled_code
   task_runs            id, file_task_id, file_task_version_id, started_at,
                        ended_at, created_at, result (what task returned, JSON),
-                       retry_of (first run of a retried tick), skip_reason
+                       retry_of (first run of a retried tick), skip_reason,
+                       next_at, next_reason (the next run decided after it)
                        status: pending | skipped | running | success | failure
+  schedules            file_task_id, state, next_at, reason, source, holder
+                       state: waiting | blocked | running | paused
+  schedule_events      file_task_id, at, event, from_state, to_state, next_at,
+                       reason, origin, first_run_id, run_id (every transition)
   logs                 id, file_task_id, task_run_id, status, value, created_at
   timings              id, file_task_id, task_run_id, label, value, created_at
   kvs                  id, file_task_id, key, value, created_at
@@ -127,6 +142,8 @@ const EXAMPLES = `Examples
   ngn add scrape.ts               create tasks/scrape.ts from a template
   ngn run                         schedule every matching task   (blocks)
   ngn run "api/**/*.ts"           schedule a subset              (blocks)
+  ngn pause scrape                hold it; ngn resume scrape lets it go
+  ngn next scrape now             run it as soon as possible
   ngn run scrape.ts --once        run one task now, then exit
   ngn sql "SELECT * FROM task_runs ORDER BY id DESC LIMIT 20"`;
 

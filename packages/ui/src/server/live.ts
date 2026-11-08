@@ -48,6 +48,8 @@ export type LiveStatus =
       version: string | null;
       /** Whether it can start a task's run on request; runtimes before 0.4 cannot. */
       run: boolean;
+      /** Whether it can pause, resume and move a task (`POST /api/schedule`). */
+      schedule: boolean;
     }
   | { state: "down"; url: string; error: string; source: LiveTarget["source"] };
 
@@ -72,6 +74,7 @@ export async function probeLive(target: LiveTarget | null): Promise<LiveStatus> 
       version?: unknown;
       live?: unknown;
       run?: unknown;
+      schedule?: unknown;
       db?: unknown;
     };
     if (meta.live !== true) return down("is not an ngn live endpoint");
@@ -86,6 +89,7 @@ export async function probeLive(target: LiveTarget | null): Promise<LiveStatus> 
       runtime: typeof meta.runtime === "string" ? meta.runtime : "ngn",
       version: typeof meta.version === "string" ? meta.version : null,
       run: meta.run === true,
+      schedule: meta.schedule === true,
     };
   } catch (err) {
     return { state: "down", url: target.url, error: reason(err), source: target.source };
@@ -152,6 +156,49 @@ export async function runTaskNow(target: LiveTarget, path: string): Promise<RunN
     });
     const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
     if (response.ok) return { ok: true };
+    return {
+      ok: false,
+      error:
+        typeof body?.error === "string"
+          ? `ngn run: ${body.error}`
+          : `ngn run answered ${response.status}`,
+    };
+  } catch (err) {
+    return { ok: false, error: `Could not reach ${target.url}: ${reason(err)}` };
+  }
+}
+
+/** How a Pause, Resume or Run next went: done (or nothing to do), with what ngn said, or why not. */
+export type ControlResult =
+  | { ok: true; applied: boolean; message: string }
+  | { ok: false; error: string };
+
+export type ControlCommand =
+  | { kind: "pause" }
+  | { kind: "resume" }
+  | { kind: "next"; delayMs: number };
+
+/** Ask `ngn run` to pause, resume or move one of its tasks, as the CLI would. */
+export async function controlTask(
+  target: LiveTarget,
+  path: string,
+  command: ControlCommand,
+): Promise<ControlResult> {
+  try {
+    const response = await fetch(`${target.url}/api/schedule`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, command }),
+      signal: AbortSignal.timeout(RUN_NOW_TIMEOUT_MS),
+    });
+    const body = (await response.json().catch(() => null)) as {
+      applied?: unknown;
+      message?: unknown;
+      error?: unknown;
+    } | null;
+    if (response.ok && typeof body?.message === "string") {
+      return { ok: true, applied: body.applied === true, message: body.message };
+    }
     return {
       ok: false,
       error:

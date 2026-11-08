@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { liveTarget, probeLive, runTaskNow } from "../src/server/live";
+import { controlTask, liveTarget, probeLive, runTaskNow } from "../src/server/live";
 
 /**
  * A stand-in `ngn run` that answers `/api/meta` with whatever `meta` holds, and
@@ -10,12 +10,24 @@ import { liveTarget, probeLive, runTaskNow } from "../src/server/live";
 let meta: Record<string, unknown> = {};
 let runAnswer: { status: number; body: unknown } = { status: 200, body: { started: true } };
 let ranPath: string | null = null;
+let controlAnswer: { status: number; body: unknown } = { status: 200, body: {} };
+let controlled: unknown = null;
 let server: Server;
 let url: string;
 
 beforeAll(async () => {
   server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
+    if (req.url === "/api/schedule") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        controlled = JSON.parse(body);
+        res.statusCode = controlAnswer.status;
+        res.end(JSON.stringify(controlAnswer.body));
+      });
+      return;
+    }
     if (req.url === "/api/run") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -63,7 +75,16 @@ describe("probeLive", () => {
 
   it("says when the runtime can start a task's run", async () => {
     meta = { runtime: "ngn", version: "0.4.0", live: true, run: true };
-    expect(await probeLive(target("flag"))).toMatchObject({ state: "up", run: true });
+    expect(await probeLive(target("flag"))).toMatchObject({
+      state: "up",
+      run: true,
+      schedule: false,
+    });
+  });
+
+  it("says when the runtime can pause and move a task", async () => {
+    meta = { runtime: "ngn", version: "0.5.0", live: true, run: true, schedule: true };
+    expect(await probeLive(target("flag"))).toMatchObject({ state: "up", schedule: true });
   });
 
   it("refuses a runtime found in the config that serves another database", async () => {
@@ -99,5 +120,30 @@ describe("runTaskNow", () => {
       ok: false,
       error: "ngn run: a run of it is still going",
     });
+  });
+});
+
+describe("controlTask", () => {
+  it("asks the runtime to pause the task by its path, and passes on what it said", async () => {
+    controlAnswer = {
+      status: 200,
+      body: { applied: true, event: "paused", message: "paused tasks/extract.ts" },
+    };
+    expect(await controlTask(target("flag")!, "tasks/extract.ts", { kind: "pause" })).toEqual({
+      ok: true,
+      applied: true,
+      message: "paused tasks/extract.ts",
+    });
+    expect(controlled).toEqual({ path: "tasks/extract.ts", command: { kind: "pause" } });
+  });
+
+  it("passes on why the runtime would not", async () => {
+    controlAnswer = {
+      status: 409,
+      body: { error: "tasks/extract.ts is paused; run ngn resume first" },
+    };
+    expect(
+      await controlTask(target("flag")!, "tasks/extract.ts", { kind: "next", delayMs: 0 }),
+    ).toEqual({ ok: false, error: "ngn run: tasks/extract.ts is paused; run ngn resume first" });
   });
 });

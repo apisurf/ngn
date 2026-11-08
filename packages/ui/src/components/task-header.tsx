@@ -20,16 +20,28 @@ import { formatAgo } from "~/lib/format";
 import {
   circuitOpen,
   configOf,
-  cronOf,
-  describeCron,
+  describeLimits,
+  describeTiming,
+  nextReason,
+  nextRunWords,
+  timingOf,
+  timingSource,
   hooksOf,
   readSkip,
   runStateLabel,
 } from "~/lib/ngn";
 import { useNow, usePrefs } from "~/lib/prefs";
-import type { TaskItem, TaskPage } from "~/server/api";
-import { runTask } from "~/server/api";
-import { IconCheck, IconClock, IconCode, IconPlay, IconTask } from "./icons";
+import type { LiveStatus, ScheduleAction, TaskItem, TaskPage } from "~/server/api";
+import { getLiveStatus, runTask, steerTask } from "~/server/api";
+import {
+  IconCheck,
+  IconClock,
+  IconCode,
+  IconPause,
+  IconPlay,
+  IconSkipForward,
+  IconTask,
+} from "./icons";
 import { Button, mono, Pill, truncate, VerdictBadge } from "./primitives";
 
 const root = getRouteApi("__root__");
@@ -147,8 +159,9 @@ function TaskTitle({ page }: { page: TaskPage }) {
   const { task, latest } = page;
   const now = useNow(Date.now(), 60_000);
   const code = latest?.compiled_code;
-  const cron = cronOf(code);
-  const cadence = cron ? describeCron(cron) : null;
+  const timing = timingOf(code);
+  const cadence = describeTiming(timing);
+  const limits = describeLimits(timing);
 
   return (
     <>
@@ -165,8 +178,12 @@ function TaskTitle({ page }: { page: TaskPage }) {
           {task.file}
         </h1>
         <Health task={task} />
+        {task.schedule?.state === "paused" ? (
+          <Pill title="A person paused it: no runs until it is resumed">Paused</Pill>
+        ) : null}
         {task.status !== "active" ? <Pill>{task.status}</Pill> : null}
         <span className={actions}>
+          <ScheduleControls task={task} />
           <RunNowButton task={task} />
         </span>
       </div>
@@ -174,15 +191,23 @@ function TaskTitle({ page }: { page: TaskPage }) {
         <span className={mono} title="Path relative to the project root">
           {task.path}
         </span>
-        {cron ? (
+        {timing ? (
           <span
             className={css({ display: "inline-flex", alignItems: "center", gap: "1" })}
-            title={`timing = "${cron}"`}
+            title={`timing = ${timingSource(timing)}`}
           >
             <IconClock size={12} />
-            {cadence ?? <span className={mono}>{cron}</span>}
+            {typeof timing === "string" && cadence === timing ? (
+              <span className={mono}>{timing}</span>
+            ) : (
+              cadence
+            )}
+            {limits ? (
+              <span title="min–max: how fast and how slow its runs may go">{` · ${limits}`}</span>
+            ) : null}
           </span>
         ) : null}
+        <NextRun task={task} words={cadence} now={now} />
         {task.last_run_at ? <span>last ran {formatAgo(now, task.last_run_at)}</span> : null}
         <LatestRun task={task} />
       </div>
@@ -329,6 +354,156 @@ function Behaviour({ code }: { code: string | null | undefined }) {
         </span>
       ))}
     </div>
+  );
+}
+
+/** `next in 4m`, `paused`, `blocked by run #41`, with why and who chose it on hover. */
+function NextRun({ task, words, now }: { task: TaskItem; words: string | null; now: number }) {
+  if (!task.schedule) return null;
+  const { text, why, tone } = nextRunWords(task.schedule, now);
+  // Inline only when it says more than the schedule beside it; the tooltip has it all.
+  const reason = nextReason(task.schedule, words);
+  const state = task.schedule.state;
+  const label =
+    state === "paused" || state === "running" || state === "blocked" ? text : `next ${text}`;
+  return (
+    <span
+      title={why ?? undefined}
+      className={cx(
+        css({ display: "inline-flex", alignItems: "center", gap: "1" }),
+        tone === "warn" ? css({ color: "warn" }) : undefined,
+      )}
+    >
+      {label}
+      {reason && state !== "paused" ? (
+        <span className={cx(truncate, css({ color: "faint", maxW: "420px" }))}>· {reason}</span>
+      ) : null}
+    </span>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Pause, Resume and Run next
+// -----------------------------------------------------------------------------
+
+/** How long what ngn said about a Pause, Resume or Run next stays up; an error stays. */
+const NOTE_MS = 4000;
+
+/** Whether the `ngn run` ngnui forwards to can pause and move tasks; asked once per page. */
+function useLiveStatus(): LiveStatus | null {
+  const ws = root.useLoaderData();
+  const [status, setStatus] = React.useState<LiveStatus | null>(null);
+  React.useEffect(() => {
+    if (ws.live == null) return setStatus({ state: "off" });
+    let current = true;
+    getLiveStatus()
+      .then((answer) => current && setStatus(answer))
+      .catch(() => current && setStatus({ state: "off" }));
+    return () => {
+      current = false;
+    };
+  }, [ws.live]);
+  return status;
+}
+
+/**
+ * Pause or Resume, and Run next, through the live runtime: the same changes
+ * as `ngn pause`, `resume` and `next`, logged with source `cli`. Without a
+ * runtime that can make them, the commands to run instead.
+ */
+function ScheduleControls({ task }: { task: TaskItem }) {
+  const ws = root.useLoaderData();
+  const status = useLiveStatus();
+  const { set, refresh } = usePrefs();
+  const [busy, setBusy] = React.useState(false);
+  const [note, setNote] = React.useState<{ error: boolean; text: string } | null>(null);
+  React.useEffect(() => {
+    if (!note || note.error) return;
+    const timer = window.setTimeout(() => setNote(null), NOTE_MS);
+    return () => window.clearTimeout(timer);
+  }, [note]);
+  const schedule = task.schedule;
+  if (!schedule || status == null) return null;
+
+  const paused = schedule.state === "paused";
+  if (status.state !== "up" || !status.schedule) {
+    const command = `ngn ${paused ? "resume" : "pause"} ${task.path}`;
+    return (
+      <span
+        className={cx(mono, css({ color: "faint", fontSize: "11.5px" }))}
+        title={
+          status.state === "up"
+            ? "This ngn run cannot pause or move tasks; update it, or run this in a terminal"
+            : "No runtime to do it from here: run this in a terminal (ngn next <task> now moves its next run)"
+        }
+      >
+        {command}
+      </span>
+    );
+  }
+
+  const act = async (action: ScheduleAction) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const outcome = await steerTask({ data: { token: ws.token, taskId: task.id, action } });
+      setNote(
+        outcome.ok ? { error: false, text: outcome.message } : { error: true, text: outcome.error },
+      );
+      set("follow", true);
+      refresh();
+    } catch (err) {
+      setNote({ error: true, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {note ? (
+        <span
+          role="status"
+          title={note.text}
+          className={cx(
+            truncate,
+            css({ fontSize: "12px", maxW: "320px" }),
+            note.error ? css({ color: "bad" }) : css({ color: "muted" }),
+          )}
+        >
+          {note.text}
+        </span>
+      ) : null}
+      {paused ? (
+        <Button
+          onClick={() => void act("resume")}
+          disabled={busy}
+          title="ngn resume: let it run again"
+        >
+          <IconPlay size={12} />
+          Resume
+        </Button>
+      ) : (
+        <Button
+          onClick={() => void act("pause")}
+          disabled={busy}
+          title="ngn pause: no new runs; a run in progress finishes first"
+        >
+          <IconPause size={12} />
+          Pause
+        </Button>
+      )}
+      <Button
+        onClick={() => void act("next")}
+        disabled={busy || paused}
+        title={
+          paused ? "Resume it first" : "ngn next now: its next scheduled run, as soon as possible"
+        }
+      >
+        <IconSkipForward size={12} />
+        Run next
+      </Button>
+    </>
   );
 }
 

@@ -111,4 +111,43 @@ export const migrations: NgnMigration[] = [
     up: `ALTER TABLE task_runs ADD COLUMN retry_of INTEGER REFERENCES task_runs(id) ON DELETE CASCADE;
     ALTER TABLE task_runs ADD COLUMN skip_reason TEXT`,
   },
+  // Each scheduled task's schedule, a small state machine, and the log of every
+  // change to it: a transition updates the row and appends its event in one
+  // write, and each event carries the row as it left it, so the row is always
+  // the fold of its log. A tick's final run records the next run decided after it.
+  {
+    id: "0005-schedules",
+    up: `CREATE TABLE IF NOT EXISTS schedules (
+      file_task_id INTEGER PRIMARY KEY NOT NULL REFERENCES file_tasks(id) ON DELETE CASCADE,
+      state TEXT NOT NULL,
+      next_at INTEGER,
+      reason TEXT,
+      source TEXT,
+      holder TEXT,
+      anchor INTEGER,
+      request TEXT,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS schedule_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      file_task_id INTEGER NOT NULL REFERENCES file_tasks(id) ON DELETE CASCADE,
+      at INTEGER NOT NULL,
+      event TEXT NOT NULL,
+      from_state TEXT,
+      to_state TEXT NOT NULL,
+      next_at INTEGER,
+      reason TEXT,
+      source TEXT,
+      holder TEXT,
+      anchor INTEGER,
+      request TEXT,
+      origin TEXT,
+      first_run_id INTEGER,
+      run_id INTEGER,
+      previous_next_at INTEGER
+    );
+    CREATE INDEX schedule_events_task_idx ON schedule_events(file_task_id, id);
+    ALTER TABLE task_runs ADD COLUMN next_at INTEGER;
+    ALTER TABLE task_runs ADD COLUMN next_reason TEXT`,
+  },
 ];

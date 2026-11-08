@@ -1,13 +1,11 @@
 import invariant from "tiny-invariant";
 import {
   getCwd,
-  handleSigInt,
-  handleSigTerm,
   // FsDirWatcher,
   // absOrJoinWithRoot,
   // extractSourceDirsFromGlobs,
 } from "@apisurf/ngn-os";
-import { describeCron } from "@apisurf/ngn-schema/describe";
+import { describeTiming, type TimingValue } from "@apisurf/ngn-schema/describe";
 import {
   Compiler,
   type ScheduleReport,
@@ -22,7 +20,8 @@ import {
 import { getRunConfig } from "../config.js";
 import { runLiveServer, LIVE_HOST } from "../liveServer.js";
 import { runLiveTask } from "../util/runLiveTask.js";
-import { describeUnrecorded, printProblems } from "../util/reportRun.js";
+import { describeUnrecorded, printProblems, printScheduleProblem } from "../util/reportRun.js";
+import { onStopSignal } from "../util/stopSignal.js";
 import { describeDbPath } from "../util/dbPath.js";
 import { describeNoMatch } from "../util/matchTasks.js";
 import { VERSION } from "../version.js";
@@ -62,7 +61,9 @@ function printReadout(dbPath: string, port: number, report: ScheduleReport, matc
 /** One line per task: what it runs on, or why it is not running at all. */
 function taskLines(report: ScheduleReport, match: string[]): string[] {
   const rows = [
-    ...report.scheduled.map((t) => [t.path, describeCron(t.pattern) ?? t.pattern] as const),
+    ...report.scheduled.map(
+      (t) => [t.path, describeTiming(t.timing as TimingValue) ?? String(t.timing)] as const,
+    ),
     ...report.failed.map((t) => [t.path, `not scheduled: ${t.reason}`] as const),
   ];
   if (rows.length === 0) {
@@ -146,6 +147,7 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
       onRunError: (path, error) => {
         if (failedRunId(error) == null) console.error(describeUnrecorded(path, error));
       },
+      onScheduleProblem: printScheduleProblem,
     });
 
     const report = await scheduler.start();
@@ -165,6 +167,7 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
         });
       },
       runTaskNow: (path) => scheduler.runNow(path),
+      controlTask: (path, command) => scheduler.control(path, command),
     });
 
     printReadout(config.configFileOptions.dbPath, port, report, config.configFileOptions.match);
@@ -174,16 +177,9 @@ export const run = async (options: { root?: string; tasks?: string[] }) => {
     process.exit(1);
   }
 
-  handleSigInt(async () => {
-    await scheduler?.stop();
+  onStopSignal(async () => {
     liveServer?.close();
-    closeTaskDatabases();
-    process.exit(0);
-  });
-  handleSigTerm(async () => {
     await scheduler?.stop();
-    liveServer?.close();
     closeTaskDatabases();
-    process.exit(0);
   });
 };

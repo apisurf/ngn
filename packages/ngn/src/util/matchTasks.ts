@@ -7,6 +7,7 @@
 import { matchTaskName, stripExtension } from "@apisurf/ngn-schema/describe";
 import outmatch from "outmatch";
 import { DEFAULT_TASKS_DIR } from "../constants.js";
+import type { RunStore, TaskRow } from "../read/store.js";
 
 export interface TaskMatch {
   /** What was asked for. */
@@ -95,4 +96,23 @@ export function describeAmbiguous(match: TaskMatch): string {
     `ngn: "${match.pattern}" matches ${match.paths.length} tasks; name one of them:`,
     ...match.paths.map((path) => `       ${path}`),
   ].join("\n");
+}
+
+/**
+ * The one task `target` names among the project's tasks, or null after saying
+ * why there is not exactly one.
+ */
+export async function findTask(store: RunStore, target: string): Promise<TaskRow | null> {
+  const tasks = (await store.tasks()).filter((task) => !task.editor);
+  const match = matchTasks(
+    tasks.map((task) => task.path),
+    target,
+  );
+  if (match.paths.length !== 1) {
+    process.stderr.write(
+      `${match.paths.length ? describeAmbiguous(match) : describeNoMatch(match)}\n`,
+    );
+    return null;
+  }
+  return tasks.find((t) => t.path === match.paths[0])!;
 }

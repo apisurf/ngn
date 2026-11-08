@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { breakerSkips, resolveRetry, retryFits } from "../src/runtime/retry.js";
-import { tick } from "../src/runtime/schedule.js";
 import { createHarness, type Harness } from "./helpers.js";
 
 let h: Harness;
@@ -119,7 +118,7 @@ export const task = async (ctx) => {
 };`;
 
   const ticks = async (task: Awaited<ReturnType<Harness["task"]>>, n: number) => {
-    for (let i = 0; i < n; i++) await tick(task, () => {}, scheduled());
+    for (let i = 0; i < n; i++) await task.executeTick(scheduled());
   };
   const pattern = async () =>
     (await runs()).map((run) => (run.status === "skipped" ? "skip" : run.status[0])).join(" ");

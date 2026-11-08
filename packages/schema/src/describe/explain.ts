@@ -53,9 +53,11 @@ const STAGE_TITLES: Record<RunStage, string> = {
   shouldSkip: "shouldSkip threw",
   task: "The task failed",
   record: "The result could not be recorded",
+  interrupted: "The run was interrupted",
   onSuccess: "The onSuccess hook threw",
   onError: "The onError hook threw",
   onComplete: "The onComplete hook threw",
+  next: "The next hook failed",
 };
 
 /** The failed run's headline: a retried tick says how it went, a single try where it failed. */

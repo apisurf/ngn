@@ -9,6 +9,8 @@
 //   Timings    each `ctx.timing` label's record: count, p50, p95, the trend
 //   Stored     what it keeps between runs with `ctx.kv`, as it stands now
 //   Versions   each distinct build of the file, how its runs went, its code
+//   Schedule   its state, when it runs next and why, and every change to it,
+//              in the words `ngn schedule` uses
 
 import {
   createFileRoute,
@@ -40,13 +42,21 @@ import {
 } from "~/components/primitives";
 import { formatAgo, formatCount, formatDateTime, formatMs, plural } from "~/lib/format";
 import { prettyJson } from "~/lib/json";
-import { percentile, readSkip } from "~/lib/ngn";
+import {
+  describeEvent,
+  describeState,
+  describeWhy,
+  nextRunWords,
+  percentile,
+  readSkip,
+} from "~/lib/ngn";
 import { useNow, usePrefs } from "~/lib/prefs";
 import { tabKey, useTab } from "~/lib/tabs";
 import type {
   KvRow,
   LogRow,
   RunRow,
+  ScheduleEventRow,
   SkipCount,
   TaskDetails,
   TaskItem,
@@ -55,7 +65,7 @@ import type {
 import { getLogs, getRunsPage, getTaskDetails } from "~/server/api";
 import { RunsView } from "~/components/runs-view";
 
-type TaskTab = "description" | "runs" | "logs" | "timings" | "keys" | "versions";
+type TaskTab = "description" | "runs" | "logs" | "timings" | "keys" | "versions" | "schedule";
 const TABS: ReadonlySet<string> = new Set([
   "description",
   "runs",
@@ -63,6 +73,7 @@ const TABS: ReadonlySet<string> = new Set([
   "timings",
   "keys",
   "versions",
+  "schedule",
 ]);
 
 const layout = getRouteApi("/tasks/$taskId");
@@ -150,6 +161,12 @@ function ProjectTaskPage() {
             { id: "timings", label: "Timings", count: timings.length },
             { id: "keys", label: "Stored values", count: keys.length },
             { id: "versions", label: "Versions", count: versions.length },
+            {
+              id: "schedule",
+              label: "Schedule",
+              count: details.scheduleEvents.length,
+              empty: task.schedule == null,
+            },
           ]}
           value={tab}
           onSelect={(next) =>
@@ -182,6 +199,13 @@ function ProjectTaskPage() {
         </div>
       ) : null}
       {tab === "versions" ? <VersionsTab details={details} now={now} /> : null}
+      {tab === "schedule" ? (
+        <div className={scrollPane}>
+          <div className={pagePad}>
+            <ScheduleTab task={task} events={details.scheduleEvents} now={now} />
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -583,5 +607,131 @@ function VersionsTab({ details, now }: { details: TaskDetails; now: number }) {
         )}
       </div>
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Schedule
+// -----------------------------------------------------------------------------
+
+/**
+ * The task's schedule as `ngn schedule` prints it: its state (waiting, blocked
+ * on a run, running, paused), when it runs next and why, then each change to
+ * it, newest first, linked to the runs it was about.
+ */
+function ScheduleTab({
+  task,
+  events,
+  now,
+}: {
+  task: TaskItem;
+  events: ScheduleEventRow[];
+  now: number;
+}) {
+  const schedule = task.schedule;
+  if (!schedule) {
+    return (
+      <Empty title="No schedule yet" icon={<IconClock size={22} />}>
+        <code>ngn run</code> keeps a schedule for each task it schedules, with every change to it.
+        This one has not been scheduled on this database.
+      </Empty>
+    );
+  }
+  const next = nextRunWords(schedule, now);
+  const why = describeWhy(schedule);
+  return (
+    <div className={css({ display: "flex", flexDir: "column", gap: "4" })}>
+      <Card>
+        <dl
+          className={css({
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            columnGap: "4",
+            rowGap: "1.5",
+            m: "0",
+            p: "3",
+            fontSize: "13px",
+            "& dt": { color: "faint" },
+            "& dd": { m: "0" },
+          })}
+        >
+          <dt>State</dt>
+          <dd>
+            {schedule.blocked_by != null ? (
+              <RunLink taskId={task.id} runId={schedule.blocked_by}>
+                {describeState(schedule, schedule.blocked_by)}
+              </RunLink>
+            ) : (
+              describeState(schedule)
+            )}
+          </dd>
+          <dt>Next run</dt>
+          <dd>
+            {schedule.next_at != null && schedule.state !== "paused"
+              ? `${formatDateTime(now, schedule.next_at)} (${next.text})`
+              : next.text}
+          </dd>
+          {why ? (
+            <>
+              <dt>Why</dt>
+              <dd>{why}</dd>
+            </>
+          ) : null}
+        </dl>
+      </Card>
+      <section>
+        <SectionTitle>Log</SectionTitle>
+        <Card>
+          {events.length === 0 ? (
+            <Empty title="Nothing logged yet" />
+          ) : (
+            <table className={table}>
+              <tbody>
+                {events.map((event) => (
+                  <tr key={event.id}>
+                    <td className={css({ color: "muted", whiteSpace: "nowrap", w: "0" })}>
+                      {formatDateTime(now, event.at)}
+                    </td>
+                    <td>
+                      {event.run_id != null ? (
+                        <RunLink taskId={task.id} runId={event.run_id}>
+                          {describeEvent(event)}
+                        </RunLink>
+                      ) : (
+                        describeEvent(event)
+                      )}
+                    </td>
+                    <td className={css({ color: "faint", whiteSpace: "nowrap", w: "0" })}>
+                      {event.source && event.source !== "policy" ? event.source : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </section>
+    </div>
+  );
+}
+
+function RunLink({
+  taskId,
+  runId,
+  children,
+}: {
+  taskId: number;
+  runId: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to="/tasks/$taskId/runs/$runId"
+      params={{ taskId: String(taskId), runId: String(runId) }}
+      className={css({ color: "fg", textDecoration: "none", _hover: { color: "accent" } })}
+      title={`Open run #${runId}`}
+    >
+      {children}
+    </Link>
   );
 }

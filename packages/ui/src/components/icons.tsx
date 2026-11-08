@@ -132,6 +132,18 @@ export const IconXCircle = icon(
   </>,
 );
 export const IconPlay = icon(<path d="M8 5v14l11-7z" />);
+export const IconPause = icon(
+  <>
+    <path d="M9 5v14" />
+    <path d="M15 5v14" />
+  </>,
+);
+export const IconSkipForward = icon(
+  <>
+    <path d="M6 5v14l10-7z" />
+    <path d="M18 5v14" />
+  </>,
+);
 export const IconTask = icon(
   <>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />

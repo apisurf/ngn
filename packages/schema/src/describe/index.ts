@@ -3,13 +3,12 @@
 // dashboard. Pure functions over plain row shapes — no database client, no
 // React, nothing Node-only — published as `@apisurf/ngn-schema/describe` so a
 // task bundle importing the schema never pulls them in.
-//
-// The vocabulary is the glossary's: DEV/ia/glossary.md in the ngn repository.
 
 export * from "./runs.js";
 export * from "./logs.js";
 export * from "./tasks.js";
 export * from "./cron.js";
+export * from "./schedule.js";
 export * from "./numbers.js";
 export * from "./stall.js";
 export * from "./time.js";

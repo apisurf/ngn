@@ -37,9 +37,15 @@ interface Held {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Lock names ngn keeps for itself: each task's lease is `ngn:task:<path>`. */
+export const RESERVED_LOCK_PREFIX = "ngn:";
+
 function assertLockName(name: unknown): asserts name is string {
   if (typeof name !== "string" || !name.trim()) {
     throw new Error(`A lock name must be a non-empty string, got ${JSON.stringify(name)}`);
+  }
+  if (name.startsWith(RESERVED_LOCK_PREFIX)) {
+    throw new Error(`Lock "${name}": names starting with "${RESERVED_LOCK_PREFIX}" are ngn's own`);
   }
 }
 
@@ -141,6 +147,11 @@ export function exclusiveNames(value: unknown, taskPath: string): string[] {
     if (typeof name !== "string" || !name.trim()) {
       throw new Error(
         `Invalid exclusive for ${taskPath}: expected a lock name or a list of them, got ${JSON.stringify(value)}`,
+      );
+    }
+    if (name.startsWith(RESERVED_LOCK_PREFIX)) {
+      throw new Error(
+        `Invalid exclusive for ${taskPath}: "${name}" starts with "${RESERVED_LOCK_PREFIX}", which ngn keeps for itself`,
       );
     }
   }

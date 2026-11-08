@@ -24,8 +24,11 @@ import {
   listRuns,
   listTasks,
   listVersions,
+  listSchedules,
   recentOutcomes,
   runActivity,
+  runDecision,
+  scheduleEvents,
   runNeighbours,
   skipReasons,
   stalledRuns,
@@ -527,5 +530,74 @@ describe("activity", () => {
     expect(buckets).toHaveLength(24);
     const last = buckets[buckets.length - 1]!;
     expect(last).toMatchObject({ success: 3, failure: 1, skipped: 1 });
+  });
+});
+
+describe("schedules", () => {
+  /** The sync task's schedule, as `ngn run` writes it: a decision after run 3, then a pause. */
+  function seedSchedule() {
+    const w = new Database(path);
+    const [sync] = w
+      .prepare("SELECT id FROM file_tasks WHERE path = 'tasks/api/sync.ts'")
+      .all() as {
+      id: number;
+    }[];
+    const event = w.prepare(
+      `INSERT INTO schedule_events (file_task_id, at, event, from_state, to_state, next_at, reason,
+         source, holder, anchor, request, origin, first_run_id, run_id, previous_next_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL)`,
+    );
+    event.run(sync!.id, T0, "scheduled", null, "waiting", T0, "first run", "policy", null, null);
+    event.run(
+      sync!.id,
+      T0 + 6050,
+      "decided",
+      "running",
+      "waiting",
+      T0 + 9000,
+      "312 jobs left",
+      "hook",
+      3,
+      3,
+    );
+    event.run(
+      sync!.id,
+      T0 + 7000,
+      "paused",
+      "waiting",
+      "paused",
+      T0 + 9000,
+      "312 jobs left",
+      "hook",
+      null,
+      null,
+    );
+    w.prepare(
+      `INSERT INTO schedules (file_task_id, state, next_at, reason, source, holder, anchor, request, updated_at)
+       VALUES (?, 'paused', ?, '312 jobs left', 'hook', NULL, NULL, NULL, ?)`,
+    ).run(sync!.id, T0 + 9000, T0 + 7000);
+    w.close();
+    return sync!.id;
+  }
+
+  it("reads each task's schedule, its log newest first, and the decision after a run", () => {
+    const sync = seedSchedule();
+    expect(listSchedules(db).get(sync)).toMatchObject({
+      state: "paused",
+      next_at: T0 + 9000,
+      source: "hook",
+      blocked_by: null,
+    });
+    expect(scheduleEvents(db, sync).map((e) => e.event)).toEqual([
+      "paused",
+      "decided",
+      "scheduled",
+    ]);
+    expect(runDecision(db, 3)).toEqual({
+      next_at: T0 + 9000,
+      reason: "312 jobs left",
+      source: "hook",
+    });
+    expect(runDecision(db, 1)).toBeNull();
   });
 });

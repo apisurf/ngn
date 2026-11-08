@@ -4,6 +4,7 @@ import type { Duration } from "../runtime/duration.js";
 import type { LockOptions } from "../runtime/locks.js";
 import type { Queue, QueueOptions } from "../runtime/queue/queue.js";
 import type { RetryPolicy } from "../runtime/retry.js";
+import type { TimingExport } from "../runtime/timing.js";
 
 /**
  * The run this context belongs to, and how long it has. Times are epoch
@@ -12,9 +13,13 @@ import type { RetryPolicy } from "../runtime/retry.js";
 export interface TaskRun {
   /** This run's `task_runs.id`. */
   id: number;
-  /** When the tick that started it fired; null for a run with no schedule. */
+  /** When the tick that started it was planned for; null for a run with no schedule. */
   scheduledAt: number | null;
-  /** When the next tick is due; null for a run with no schedule. */
+  /**
+   * When the next tick is due: the next slot of a cron pattern or the leading
+   * edge. Null on the trailing edge, whose next run depends on when this one
+   * ends, and for a run with no schedule.
+   */
   nextAt: number | null;
   /**
    * When to stop starting new work: shortly before `nextAt`, or sooner with a
@@ -86,14 +91,15 @@ export interface TaskContext {
 }
 
 /**
- * What a scheduled tick does when the task's previous run is still going:
- * `"skip"` records the tick as a skipped run, `"allow"` starts another run
- * beside it.
+ * ngn runs one run of a task at a time, so `"skip"` is the only policy: a run
+ * that comes due while one is going waits for it. `"allow"` fails at schedule
+ * time; it is kept in the type so the message can say why.
  */
 export type OverlapPolicy = "skip" | "allow";
 
 export interface EntryExports {
-  timing?: string;
+  /** A cron pattern, or `{ every, edge, min, max, backoff }`. */
+  timing?: TimingExport;
   overlap?: OverlapPolicy;
   /** The longest a run should take; caps `ctx.run.deadline`. */
   budget?: Duration;
@@ -111,7 +117,44 @@ export interface EntryExports {
   onSuccess?: (deps: TaskContext) => Promise<void>;
   onError?: (err: Error, deps: TaskContext) => Promise<void>;
   onComplete?: (deps: TaskContext) => Promise<void>;
+  /**
+   * An interval task's say in when it runs next, from how its tick went. Called
+   * after every scheduled tick, after `onComplete`; see `NextOutcome`.
+   */
+  next?: (outcome: NextOutcome, ctx: TaskContext) => NextDecision | Promise<NextDecision>;
 }
+
+interface NextOutcomeBase {
+  /** Failed ticks in a row, this one included. */
+  failedInARow: number;
+  /** The delay that led to this tick, in ms; null when there was none to measure. */
+  previousDelayMs: number | null;
+  /** The `task_runs.id` of the tick's final run. */
+  runId: number;
+}
+
+/** What the `next` hook is told about the tick that just ended. */
+export type NextOutcome<Result = any> = NextOutcomeBase &
+  (
+    | { status: "success"; result: Result; error: undefined; skipReason: null }
+    | { status: "failure"; result: undefined; error: Error; skipReason: null }
+    | {
+        status: "skipped";
+        result: undefined;
+        error: undefined;
+        /** Why ngn skipped it; null for a skip by the task's own `shouldSkip`. */
+        skipReason: string | null;
+      }
+  );
+
+/**
+ * When to run next: a duration from when the tick ended, or the task's own
+ * `every`, `min` or `max`. ngn keeps it within `[min, max]`.
+ */
+export type NextDelay = Duration | "every" | "min" | "max";
+
+/** What the `next` hook returns: undefined leaves it to the default policy. */
+export type NextDecision = undefined | void | NextDelay | { in: NextDelay; reason?: string };
 
 export interface OnTaskCodeLoaded {
   (md5Hash: string): Promise<void>;

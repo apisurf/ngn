@@ -13,6 +13,10 @@ async function parse(...argv: string[]) {
     sql: vi.fn(),
     ui: vi.fn(),
     status: vi.fn(),
+    schedule: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    next: vi.fn(),
     runs: vi.fn(),
     show: vi.fn(),
     logs: vi.fn(),
@@ -29,6 +33,22 @@ async function initWith(...argv: string[]) {
   const { init } = await parse("init", ...argv);
   return initOptions(init.mock.calls[0]![0]);
 }
+
+describe("ngn pause, resume and next", () => {
+  it("take a task, the database flags, and next a time", async () => {
+    const actions = await parse("pause", "scrape", "--db", "runs.db");
+    expect(actions.pause.mock.calls[0]!.slice(0, 2)).toEqual(["scrape", { db: "runs.db" }]);
+    expect((await parse("resume", "scrape", "--json")).resume.mock.calls[0]!.slice(0, 2)).toEqual([
+      "scrape",
+      { json: true },
+    ]);
+    expect((await parse("next", "scrape", "10m")).next.mock.calls[0]!.slice(0, 3)).toEqual([
+      "scrape",
+      "10m",
+      {},
+    ]);
+  });
+});
 
 describe("ngn init flags", () => {
   it("takes the glossary's names", async () => {

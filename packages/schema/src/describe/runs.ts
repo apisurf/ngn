@@ -1,6 +1,6 @@
 // How a run reads: its status in words, whether it is still going, and why a
-// skipped one was skipped. The words are the glossary's (DEV/ia/glossary.md),
-// shared by ngnui and the ngn CLI so both say the same thing about a run.
+// skipped one was skipped. The words are shared by ngnui and the ngn CLI, so
+// both say the same thing about a run.
 
 export type RunStatus = "pending" | "skipped" | "running" | "success" | "failure";
 
