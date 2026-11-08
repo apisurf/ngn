@@ -172,6 +172,43 @@ describe("a process that dies", () => {
   });
 });
 
+describe("a manual run after a process died mid-run", () => {
+  it("recovers the dead tick before it starts, so the runs do not overlap", async () => {
+    const gates = createGates();
+    const dead = await start({ "tasks/t.ts": GATED }, { leaseTtlMs: 100, random: () => 0.5 });
+    await until(() => gates.isWaiting("run1"));
+    dead.scheduler.abandon();
+    schedulers.length = 0;
+    await new Promise((resolve) => setTimeout(resolve, 150)); // its lease runs out
+
+    const other = await h.connect();
+    const once = runOnce(await other.task("tasks/t.ts", GATED), {
+      clock,
+      leaseTtlMs: 100,
+      onProblem: () => {},
+    });
+    await until(() => gates.isWaiting("run2"));
+    gates.open("run2");
+    await once;
+
+    expect(await eventNames(h, "tasks/t.ts")).toEqual([
+      "scheduled",
+      "started",
+      "recovered",
+      "started",
+      "ended",
+    ]);
+    const [first, second] = await h.query<{ status: string; started_at: number; ended_at: number }>(
+      "SELECT status, started_at, ended_at FROM task_runs ORDER BY id",
+    );
+    expect(first?.status).toBe("failure");
+    expect(first!.ended_at).toBeLessThanOrEqual(second!.started_at);
+
+    gates.open("run1");
+    await until(() => hasLogLine(h, "finished after ngn closed it as interrupted: succeeded"));
+  });
+});
+
 describe("a process that loses its lease", () => {
   it("aborts the run's signal, logs lease_lost, and discards its decision", async () => {
     const gates = createGates();

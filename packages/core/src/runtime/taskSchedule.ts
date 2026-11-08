@@ -29,7 +29,7 @@ import {
   type ScheduleControlResult,
 } from "./scheduleControl.js";
 import { resolveTiming, type ResolvedTiming, type TimingExport } from "./timing.js";
-import { timingRule, type Random, type RunWindow } from "./timingRule.js";
+import { timingRule, type Random, type RunWindow, type TimingRule } from "./timingRule.js";
 
 /** What Run now did: started a run, or why it did not. */
 export type RunNowOutcome = { started: true } | { started: false; reason: string };
@@ -119,6 +119,11 @@ interface ManualRunDeps {
   leaseTtlMs?: number;
   /** The run's window, when it has one: Run now's is the schedule's next run. */
   window?: Pick<RunWindow, "nextAt" | "periodMs">;
+  /**
+   * The task's timing rule, asked for only when a dead process's tick has to
+   * be recovered first, to decide its next run. Null when there is none to use.
+   */
+  recoveryRule?: () => Promise<TimingRule | null>;
   onProblem: (message: string) => void;
 }
 
@@ -177,6 +182,51 @@ async function writeTickEnd(
 }
 
 /**
+ * Close the tick a dead process left `running`: its open runs as interrupted,
+ * and the next run decided as for a failed tick. Only for a caller holding the
+ * task's lease, which proves the tick's process no longer does. Null when the
+ * row moved on meanwhile or the recovery could not be written.
+ */
+async function recoverAbandonedTick(
+  task: Task,
+  taskId: number,
+  rule: TimingRule,
+  clock: Clock,
+  writeEnd: (change: Transition) => Promise<ScheduleRow | null>,
+): Promise<ScheduleRow | null> {
+  const row = await task.scheduling.store.read(taskId);
+  if (row?.state !== "running") return null;
+  const at = clock.now();
+  const closed = await task.scheduling.store.closeOpenRuns(
+    taskId,
+    "the ngn process running it stopped",
+    { at: Date.now() },
+  );
+  // Its runs are now closed as failed, so the streak already counts it.
+  const decision = rule.decide({
+    plannedAt: at,
+    endedAt: at,
+    anchor: row.anchor,
+    status: "failure",
+    failedInARow: await task.failedInARow(),
+  });
+  return writeEnd({
+    event: "recovered",
+    at,
+    holder: row.holder,
+    set: {
+      next_at: decision.nextAt,
+      reason: `the process running it stopped; ${decision.reason}`,
+      source: "policy",
+      holder: null,
+      anchor: decision.anchor,
+    },
+    firstRunId: closed[0] ?? null,
+    runId: closed.at(-1) ?? null,
+  });
+}
+
+/**
  * Take the task's lease and start one run outside its schedule: Run now, or
  * `ngn run x --once`. It is logged as `started` (manual) and `ended`, and
  * leaves the next run where it was. When the task is busy, nothing is written.
@@ -195,7 +245,15 @@ async function startManual(
   const tick = new TickHandle("manual", lease);
   const outcome = (async () => {
     try {
-      const row = await task.scheduling.store.read(taskId);
+      let row = await task.scheduling.store.read(taskId);
+      // Holding the lease while the row says `running`: its process died.
+      const rule = row?.state === "running" ? await deps.recoveryRule?.() : null;
+      if (rule) {
+        await recoverAbandonedTick(task, taskId, rule, clock, (change) =>
+          writeTickEnd(task, taskId, change, onProblem),
+        );
+        row = await task.scheduling.store.read(taskId);
+      }
       if (row && canTransition(row.state, "started")) {
         // A paused task runs when a person asks, and pauses again after.
         const request =
@@ -249,12 +307,30 @@ async function startManual(
  * `ngn run x --once`: one run now, through the task's lease, from a process of
  * its own. Refused, writing nothing, while another run of the task is going.
  */
+/** The task's own timing rule, loading its exports; null when its `timing` export is not valid. */
+async function ruleOf(task: Task): Promise<TimingRule | null> {
+  try {
+    await task.loadEntry();
+    const timing = task.timing as TimingExport;
+    return timingRule(resolveTiming(timing, task.taskPath), timing);
+  } catch {
+    return null;
+  }
+}
+
 export async function runOnce(
   task: Task,
   { clock, leaseTtlMs, onProblem }: Pick<ManualRunDeps, "clock" | "leaseTtlMs" | "onProblem">,
 ): Promise<TickOutcome | { busy: string }> {
   const taskId = await task.register();
-  const started = await startManual({ task, taskId, clock, leaseTtlMs, onProblem });
+  const started = await startManual({
+    task,
+    taskId,
+    clock,
+    leaseTtlMs,
+    recoveryRule: () => ruleOf(task),
+    onProblem,
+  });
   return "busy" in started ? started : started.outcome;
 }
 
@@ -632,6 +708,7 @@ export class TaskSchedule implements Schedule {
         clock: this.clock,
         leaseTtlMs: this.ttlMs,
         window: { nextAt: periodMs == null ? this.nextAt() : null, periodMs },
+        recoveryRule: async () => this.rule(),
         onProblem: this.options.onProblem,
       },
       (lease) => this.leaseLost(lease),
@@ -687,38 +764,17 @@ export class TaskSchedule implements Schedule {
     const lease = await this.takeLease();
     if ("busy" in lease) return false;
     try {
-      const row = await this.store.read(this.taskId);
-      // Someone else moved it on in the meantime; the loop reads it again.
-      if (row?.state !== "running") return row != null;
-      const at = this.clock.now();
-      const closed = await this.store.closeOpenRuns(
+      const recovered = await recoverAbandonedTick(
+        this.task,
         this.taskId,
-        "the ngn process running it stopped",
-        { at: Date.now() },
+        this.rule(),
+        this.clock,
+        (change) => this.writeEnd(change),
       );
-      // Its runs are now closed as failed, so the streak already counts it.
-      const decision = this.rule().decide({
-        plannedAt: at,
-        endedAt: at,
-        anchor: row.anchor,
-        status: "failure",
-        failedInARow: await this.failedInARow(),
-      });
-      const recovered = await this.writeEnd({
-        event: "recovered",
-        at,
-        holder: row.holder,
-        set: {
-          next_at: decision.nextAt,
-          reason: `the process running it stopped; ${decision.reason}`,
-          source: "policy",
-          holder: null,
-          anchor: decision.anchor,
-        },
-        firstRunId: closed[0] ?? null,
-        runId: closed.at(-1) ?? null,
-      });
-      return recovered != null;
+      if (recovered) return true;
+      // Someone else moved it on meanwhile, and the loop reads it again; or the write failed.
+      const row = await this.store.read(this.taskId);
+      return row != null && row.state !== "running";
     } finally {
       await lease.release();
     }

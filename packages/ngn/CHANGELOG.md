@@ -8,6 +8,8 @@
 
   - `timing` takes `startIn`: how long after ngn starts an interval task first runs, then every `every` from there. `{ every: "5m", startIn: "30s" }` first runs 30 seconds after start. It defaults to `0`, so an interval task runs as soon as ngn starts.
 
+  - Run now and `ngn run x --once` no longer start beside a run left open by a process that died: they close it as interrupted first, as a scheduled run already did.
+
   **Behaviour changes for interval tasks:**
 
   - Every start begins a new schedule. A restart no longer keeps the stored grid or makes up a missed run with a catch-up run, and a next run set by `ngn next`, the `next` hook or backoff is replaced. A paused task stays paused. Cron tasks are unchanged.
