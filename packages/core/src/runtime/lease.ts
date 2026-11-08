@@ -48,10 +48,20 @@ export class TaskLease {
     }: { ttlMs?: number; onLost?: (lease: TaskLease) => void } = {},
   ): Promise<TaskLease | { busy: LeaseHolder }> {
     const name = taskLeaseName(taskPath);
-    const holder = await locks.tryAcquire(name, ttlMs, null);
-    if (holder) return new TaskLease(locks, name, holder, ttlMs, onLost);
+    const lease = await TaskLease.hold(locks, name, { ttlMs, onLost });
+    if (lease) return lease;
     const held = await locks.holderOf(name);
     return { busy: { holder: held?.holder ?? "", runId: held?.taskRunId ?? null } };
+  }
+
+  /** Take the lease called `name`, renewed until released; null when someone else holds it. */
+  static async hold(
+    locks: LockService,
+    name: string,
+    { ttlMs, onLost = () => {} }: { ttlMs: number; onLost?: (lease: TaskLease) => void },
+  ): Promise<TaskLease | null> {
+    const holder = await locks.tryAcquire(name, ttlMs, null);
+    return holder ? new TaskLease(locks, name, holder, ttlMs, onLost) : null;
   }
 
   /** Aborts when the lease is lost. */

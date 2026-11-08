@@ -59,6 +59,20 @@ export class LockService {
     };
   }
 
+  /** The leases whose names start with `prefix`, expired ones included. */
+  async list(prefix: string): Promise<{ name: string; expiresAt: number }[]> {
+    const { rows } = await this.db.execute({
+      sql: "SELECT name, expires_at FROM locks WHERE substr(name, 1, length(:prefix)) = :prefix",
+      args: { prefix },
+    });
+    return rows.map((row) => ({ name: row.name as string, expiresAt: row.expires_at as number }));
+  }
+
+  /** Delete `name` whoever holds it: for a lease left by a process known to be gone. */
+  async remove(name: string) {
+    await this.db.execute({ sql: "DELETE FROM locks WHERE name = ?", args: [name] });
+  }
+
   /** Record which run a held lease is working for. */
   async setRun(name: string, holder: string, taskRunId: number) {
     await this.db.execute({

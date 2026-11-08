@@ -46,6 +46,8 @@ export interface TaskScheduleOptions {
   clock: Clock;
   /** When ngn started, which `startIn` counts from. Defaults to when this schedule starts. */
   startedAt?: number;
+  /** Another ngn run was on the database when this one started: interval tasks keep their schedules. */
+  joined?: boolean;
   leaseTtlMs?: number;
   /** Where backoff's jitter comes from. Tests pass their own. */
   random?: Random;
@@ -336,7 +338,7 @@ export class TaskSchedule implements Schedule {
   /**
    * What a start finds in the database: no schedule yet, or a tick a dead
    * process left `running`. A waiting interval task starts afresh, `startIn`
-   * after ngn started; a cron task keeps its next run, unless it was missed
+   * after ngn started, unless another ngn run is already scheduling it; a cron task keeps its next run, unless it was missed
    * while ngn was not running or is further off than the pattern could choose.
    * A paused task stays paused.
    */
@@ -362,7 +364,7 @@ export class TaskSchedule implements Schedule {
     }
     if (row.state !== "waiting") return;
     if (rule.kind === "interval") {
-      await this.write({ event: "rescheduled", at: now, set });
+      if (!this.options.joined) await this.write({ event: "rescheduled", at: now, set });
       return;
     }
     if (row.next_at == null) return;

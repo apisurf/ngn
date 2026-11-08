@@ -11,6 +11,7 @@
   **Behaviour changes for interval tasks:**
 
   - Every start begins a new schedule. A restart no longer keeps the stored grid or makes up a missed run with a catch-up run, and a next run set by `ngn next`, the `next` hook or backoff is replaced. A paused task stays paused. Cron tasks are unchanged.
+  - An `ngn run` that starts while another is already running on the same database keeps the interval schedules it finds instead. Each `ngn run` holds an `ngn:process:` lock while it runs; one left by a process that crashed is cleared at the next start, at once when the process ran on the same machine, otherwise after 15 seconds.
 
 ### Patch Changes
 

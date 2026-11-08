@@ -5,6 +5,8 @@ import { TaskLibrary } from "./taskLibrary.js";
 import { systemClock, type Clock } from "./clock.js";
 import { resolveTiming, type TimingExport } from "./timing.js";
 import { TaskSchedule, type RunNowOutcome } from "./taskSchedule.js";
+import { enterPresence } from "./presence.js";
+import type { TaskLease } from "./lease.js";
 import type { ScheduleCommand, ScheduleControlResult } from "./scheduleControl.js";
 
 type Options = {
@@ -39,6 +41,8 @@ export class TaskLibraryScheduler {
   private scheduledTasks: Map<string, TaskSchedule> = new Map();
   /** When `start()` ran: what every task's `startIn` counts from, so they stay in step. */
   private startedAt: number | null = null;
+  /** This process's presence on the database, and whether another ngn run was already there. */
+  private presence: { lease: TaskLease | null; joined: boolean } | null = null;
 
   constructor(options: Options) {
     this.taskLibrary = options.taskLibrary;
@@ -48,6 +52,8 @@ export class TaskLibraryScheduler {
   async start(): Promise<ScheduleReport> {
     logTaskLibraryScheduler("Starting scheduler");
     this.startedAt = (this.options.clock ?? systemClock).now();
+    const locks = this.taskLibrary.getTasks()[0]?.scheduling.locks;
+    if (locks) this.presence = await enterPresence(locks);
     const report: ScheduleReport = { scheduled: [], failed: [] };
     const scheduledTasks = this.taskLibrary.getTasks().map(async (task) => {
       try {
@@ -79,11 +85,13 @@ export class TaskLibraryScheduler {
         return schedule.stop(options);
       }),
     );
+    await this.presence?.lease?.release();
   }
 
   /** Stop as a process that died would, writing nothing. For tests standing in for a crash. */
   abandon() {
     for (const schedule of this.scheduledTasks.values()) schedule.abandon();
+    this.presence?.lease?.abandon();
   }
 
   /**
@@ -119,6 +127,7 @@ export class TaskLibraryScheduler {
       override: this.options.timing != null,
       clock: this.options.clock ?? systemClock,
       startedAt: this.startedAt ?? undefined,
+      joined: this.presence?.joined,
       leaseTtlMs: this.options.leaseTtlMs,
       random: this.options.random,
       nextTimeoutMs: this.options.nextTimeoutMs,
