@@ -14,7 +14,6 @@ import { RunsView } from "~/components/runs-view";
 import { useUnreadable } from "~/components/states";
 import { useNow } from "~/lib/prefs";
 import { runsQueryOf } from "~/lib/runs-query";
-import { tabKey, useTab } from "~/lib/tabs";
 import { getRunsPage } from "~/server/api";
 
 const root = getRouteApi("__root__");
@@ -35,7 +34,6 @@ export const Route = createFileRoute("/runs/")({
 });
 
 function RunsPage() {
-  useTab({ key: tabKey.runs(), title: "Runs", icon: "runs" });
   const unreadable = useUnreadable();
   const ws = root.useLoaderData();
   const now = useNow(ws.now, 60_000);
@@ -48,7 +46,7 @@ function RunsPage() {
   );
 
   if (unreadable) return unreadable;
-  // No heading: the sidebar says where this is, and the list starts under the
+  // No heading: the crumbs say where this is, and the list starts under the
   // filter rather than under a title that repeats it.
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "full", minH: "0" })}>

@@ -9,7 +9,7 @@ import { formatBytes } from "~/lib/format";
 import type { ThemePref } from "~/lib/prefs";
 import { usePrefs } from "~/lib/prefs";
 import { IconSettings } from "./icons";
-import { CopyButton, IconButton, mono, Segmented, Toggle } from "./primitives";
+import { CopyButton, IconButton, mono, Segmented } from "./primitives";
 
 const root = getRouteApi("__root__");
 
@@ -82,13 +82,6 @@ export function SettingsMenu({
               ]}
               value={prefs.theme}
               onSelect={(theme) => set("theme", theme)}
-            />
-          </Field>
-          <Field label="Pages">
-            <Toggle
-              checked={prefs.tabs}
-              onChange={(on) => set("tabs", on)}
-              label="Keep pages open as tabs"
             />
           </Field>
           <Field label="Database">

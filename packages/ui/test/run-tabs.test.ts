@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { defaultRunTab, hasContent, pickRunTab, type RunContent } from "../src/lib/run-tabs";
+import {
+  defaultRunTab,
+  hasContent,
+  pickRunTab,
+  type RunContent,
+  visibleRunTabs,
+} from "../src/lib/run-tabs";
 
 const quiet: RunContent = { failed: false, taskLines: 0, timings: 0, hasResult: false };
 
@@ -25,8 +31,20 @@ describe("run tabs", () => {
     expect(hasContent("details", quiet)).toBe(true);
   });
 
-  it("honours a tab asked for by name, even an empty one", () => {
-    expect(pickRunTab(quiet, "timings", undefined)).toBe("timings");
+  it("hides empty tabs, but always shows Logs and Details", () => {
+    expect(visibleRunTabs(quiet)).toEqual(["logs", "details"]);
+    expect(visibleRunTabs({ ...quiet, taskLines: 1, hasResult: true })).toEqual([
+      "timeline",
+      "logs",
+      "result",
+      "details",
+    ]);
+  });
+
+  it("honours a tab asked for by name, unless it is hidden", () => {
+    expect(pickRunTab({ ...quiet, timings: 1 }, "timings", undefined)).toBe("timings");
+    expect(pickRunTab(quiet, "logs", undefined)).toBe("logs");
+    expect(pickRunTab(quiet, "timings", undefined)).toBe("details");
   });
 
   it("keeps a carried tab only where this run has something", () => {

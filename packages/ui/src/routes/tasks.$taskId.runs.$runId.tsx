@@ -1,8 +1,8 @@
-// A run, under its task's header, read like a job's result page: the verdict
-// and what it cost up top, in one line, then everything the task did on one
-// clock — its log lines and its timing spans. The task shrinks to a line above
-// the run: the way back to it, and Run now. The code that ran is the task's, so the run links
-// to that version rather than showing it again.
+// A run, read like a job's result page: the verdict and what it cost up top,
+// in one line, then everything the task did on one clock — its log lines and
+// its timing spans. The crumbs above name the task, so the page does not
+// repeat it. The code that ran is the task's, so the run links to that version
+// rather than showing it again. Tabs with nothing in them are left out.
 //
 // `[` and `]` step to the previous and next run of the same task and keep the
 // same sub-tab open, so a task's history can be walked without a list.
@@ -27,7 +27,7 @@ import {
 import { JsonView } from "~/components/json-view";
 import { KvTable } from "~/components/kv-table";
 import { LogList } from "~/components/log-list";
-import { TaskHeader } from "~/components/task-header";
+import { RunNowButton, TaskHeader } from "~/components/task-header";
 import {
   Callout,
   Card,
@@ -43,7 +43,6 @@ import {
   seriesText,
   TabList,
   table,
-  Segmented,
   Toggle,
   TONE_BAR,
   truncate,
@@ -74,14 +73,21 @@ import {
   SKIP_TITLES,
 } from "~/lib/ngn";
 import { useNow } from "~/lib/prefs";
-import { hasContent, pickRunTab, RUN_TABS, type RunContent, type RunTab } from "~/lib/run-tabs";
-import { tabKey, useTab } from "~/lib/tabs";
+import { pickRunTab, RUN_TABS, type RunContent, type RunTab, visibleRunTabs } from "~/lib/run-tabs";
 import type { LogRow, RunPage as RunPageData, TimingRow } from "~/server/api";
 import { getRun } from "~/server/api";
 
 const layout = getRouteApi("/tasks/$taskId");
 
 const TABS: ReadonlySet<string> = new Set(RUN_TABS);
+
+const TAB_LABEL: Record<RunTab, string> = {
+  timeline: "Timeline",
+  logs: "Logs",
+  timings: "Timings",
+  result: "Result",
+  details: "Details",
+};
 const asTab = (value: unknown): RunTab | undefined =>
   TABS.has(value as string) ? (value as RunTab) : undefined;
 
@@ -119,13 +125,6 @@ function RunPage() {
   const search = Route.useSearch();
   const { log } = search;
   const navigate = useNavigate({ from: Route.fullPath });
-  useTab({
-    key: tabKey.run(run.id),
-    title: `${run.editor ? "Editor run" : run.file} #${run.id}`,
-    icon: "run",
-    failed: run.status === "failure",
-  });
-
   const taskLines = logs.filter((l) => !isLifecycle(l.value));
   const problems = taskLines.filter((l) => logLevel(l.status) !== "info").length;
   const start = run.started_at ?? run.created_at;
@@ -165,29 +164,20 @@ function RunPage() {
       <TaskHeader page={layout.useLoaderData()} linked>
         <RunHeader page={page} go={go} />
         <TabList
-          items={[
-            {
-              id: "timeline",
-              label: "Timeline",
-              count: taskLines.length + timings.length,
-              empty: !hasContent("timeline", content),
-            },
-            {
-              id: "logs",
-              label: "Logs",
-              count: taskLines.length,
-              tone: run.error_count ? "bad" : problems ? "warn" : undefined,
-              empty: !hasContent("logs", content),
-            },
-            {
-              id: "timings",
-              label: "Timings",
-              count: timings.length,
-              empty: !hasContent("timings", content),
-            },
-            { id: "result", label: "Result", empty: !hasContent("result", content) },
-            { id: "details", label: "Details" },
-          ]}
+          items={visibleRunTabs(content).map((id) => ({
+            id,
+            label: TAB_LABEL[id],
+            count:
+              id === "timeline"
+                ? taskLines.length + timings.length
+                : id === "logs"
+                  ? taskLines.length
+                  : id === "timings"
+                    ? timings.length
+                    : undefined,
+            tone:
+              id === "logs" ? (run.error_count ? "bad" : problems ? "warn" : undefined) : undefined,
+          }))}
           dense
           value={tab}
           onSelect={(next) => void navigate({ search: { tab: next } })}
@@ -205,7 +195,7 @@ function RunPage() {
           empty="This run wrote no log lines"
         />
       ) : null}
-      {tab === "timings" ? <TimingsTab timings={timings} start={start} /> : null}
+      {tab === "timings" ? <TimingsTab timings={timings} /> : null}
       {tab === "result" ? <ResultTab result={page.result} /> : null}
       {tab === "details" ? <DetailsTab page={page} /> : null}
     </>
@@ -253,7 +243,20 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
       <VerdictBadge tone={runTone(run.status, run.stalled)}>
         {runStateLabel(run.status, run.stalled)}
       </VerdictBadge>
-      <div className={css({ display: "flex", gap: "1", flexShrink: 0, ml: "auto" })}>
+      <div
+        className={css({
+          display: "flex",
+          alignItems: "center",
+          gap: "1",
+          flexShrink: 0,
+          ml: "auto",
+        })}
+      >
+        {page.task.editor ? null : (
+          <span className={css({ display: "flex", alignItems: "center", gap: "2", mr: "2" })}>
+            <RunNowButton task={page.task} label="Run again" />
+          </span>
+        )}
         <IconButton
           label="Older run of this task ([)"
           disabled={neighbours.prev == null}
@@ -273,11 +276,6 @@ function RunTitle({ page, go }: { page: RunPageData; go: (id: number | null) => 
   );
 }
 
-/**
- * What the run cost and recorded, in one line: when, how long, its log lines
- * (with their warnings and errors), its timed spans, the version that ran.
- * What it did not record is said in the same line rather than as zeros.
- */
 /** What ngn decided after the run, when it was its tick's final run: `then next run 15:05: …`. */
 function decisionPart(decision: RunPageData["decision"]): { key: string; node: React.ReactNode }[] {
   if (!decision) return [];
@@ -294,11 +292,13 @@ function decisionPart(decision: RunPageData["decision"]): { key: string; node: R
   ];
 }
 
+/**
+ * The run in one line: when it ran, how long it took, what ngn decided after
+ * it, and the version that ran. What it logged and timed is counted on the tabs.
+ */
 function RunFacts({ page }: { page: RunPageData }) {
-  const { run, task, timings } = page;
+  const { run, task } = page;
   const now = useNow(Date.now(), 1000);
-  const taskLines = page.logs.filter((l) => !isLifecycle(l.value));
-  const warns = taskLines.filter((l) => logLevel(l.status) === "warn").length;
   const behind = run.version != null && run.version < task.version;
   const running = isOpen(run.status) && run.started_at != null ? now - run.started_at : null;
   // A skipped run never started: every figure would be a dash.
@@ -325,38 +325,6 @@ function RunFacts({ page }: { page: RunPageData }) {
         ) : (
           "never started"
         ),
-    });
-    parts.push({
-      key: "logs",
-      node: taskLines.length ? (
-        <span>
-          {plural(taskLines.length, "log line")}
-          {run.error_count ? (
-            <span className={css({ color: "bad", fontWeight: "500" })}>
-              {" "}
-              · {plural(run.error_count, "error")}
-            </span>
-          ) : null}
-          {warns ? (
-            <span className={css({ color: "warn", fontWeight: "500" })}>
-              {" "}
-              · {plural(warns, "warning")}
-            </span>
-          ) : null}
-        </span>
-      ) : (
-        <span className={css({ color: "faint" })}>no log lines</span>
-      ),
-    });
-    parts.push({
-      key: "timings",
-      node: timings.length ? (
-        <span title={`${formatMs(timings.reduce((sum, t) => sum + t.value, 0))} in total`}>
-          {plural(timings.length, "timed span")}
-        </span>
-      ) : (
-        <span className={css({ color: "faint" })}>no ctx.timing calls</span>
-      ),
     });
   }
   parts.push(...decisionPart(page.decision));
@@ -578,16 +546,12 @@ type Entry =
   | { type: "log"; at: number; row: LogRow }
   | { type: "timing"; at: number; row: TimingRow };
 
-/** What the timeline lists: everything, or only one kind of entry. */
-type TimelineShow = "all" | "logs" | "timings";
-
 const isProblem = (row: LogRow) => logLevel(row.status) !== "info";
 
 function TimelineTab({ page }: { page: RunPageData }) {
   const navigate = useNavigate();
   const { run, logs, timings } = page;
   const [lifecycle, setLifecycle] = React.useState(false);
-  const [show, setShow] = React.useState<TimelineShow>("all");
   // Warnings and errors only: what went wrong in this run, in one click.
   const [problems, setProblems] = React.useState(false);
 
@@ -609,17 +573,15 @@ function TimelineTab({ page }: { page: RunPageData }) {
   const entries: Entry[] = React.useMemo(
     () =>
       [
-        ...(show === "timings"
-          ? []
-          : lines
-              .filter((row) => !problems || isProblem(row))
-              .map((row): Entry => ({ type: "log", at: row.created_at, row }))),
+        ...lines
+          .filter((row) => !problems || isProblem(row))
+          .map((row): Entry => ({ type: "log", at: row.created_at, row })),
         // A timing is never a problem: with Problems only it is left out.
-        ...(show === "logs" || problems
+        ...(problems
           ? []
           : timings.map((row): Entry => ({ type: "timing", at: row.created_at - row.value, row }))),
       ].toSorted((a, b) => a.at - b.at || a.row.id - b.row.id),
-    [lines, timings, show, problems],
+    [lines, timings, problems],
   );
 
   if (logs.length === 0 && timings.length === 0) {
@@ -639,15 +601,6 @@ function TimelineTab({ page }: { page: RunPageData }) {
           flexShrink: 0,
         })}
       >
-        <Segmented
-          items={[
-            { id: "all", label: <Counted label="All" count={lines.length + timings.length} /> },
-            { id: "logs", label: <Counted label="Logs" count={lines.length} /> },
-            { id: "timings", label: <Counted label="Timings" count={timings.length} /> },
-          ]}
-          value={show}
-          onSelect={setShow}
-        />
         <Toggle
           checked={problems}
           onChange={setProblems}
@@ -664,11 +617,7 @@ function TimelineTab({ page }: { page: RunPageData }) {
           ngn recorded around it.
         </Empty>
       ) : entries.length === 0 ? (
-        <Empty title={problems ? "No warnings or errors" : "Nothing of this kind"}>
-          {problems
-            ? "The run logged no warning or error lines."
-            : "This run recorded none. Pick All to see everything it did."}
-        </Empty>
+        <Empty title="No warnings or errors">The run logged no warning or error lines.</Empty>
       ) : (
         <div className={scrollPane}>
           <table className={table}>
@@ -711,15 +660,6 @@ function TimelineTab({ page }: { page: RunPageData }) {
 }
 
 const infoTick = css({ bg: "faint" });
-
-function Counted({ label, count }: { label: string; count: number }) {
-  return (
-    <>
-      {label}
-      <span className={css({ color: "faint", fontVariantNumeric: "tabular-nums" })}>{count}</span>
-    </>
-  );
-}
 
 function LogEntry({
   row,
@@ -823,7 +763,8 @@ function TimingEntry({ row, start, span }: { row: TimingRow; start: number; span
 // Timings, folded by label
 // -----------------------------------------------------------------------------
 
-function TimingsTab({ timings, start }: { timings: TimingRow[]; start: number }) {
+/** Spans folded by label; each span on its own is on the Timeline. */
+function TimingsTab({ timings }: { timings: TimingRow[] }) {
   if (timings.length === 0) {
     return (
       <Empty title="No timings in this run" icon={<IconClock size={22} />}>
@@ -847,7 +788,6 @@ function TimingsTab({ timings, start }: { timings: TimingRow[]; start: number })
     <div className={scrollPane}>
       <div className={pagePad}>
         <section>
-          <SectionTitle>By label</SectionTitle>
           <Card>
             <table className={table}>
               <thead>
@@ -874,43 +814,6 @@ function TimingsTab({ timings, start }: { timings: TimingRow[]; start: number })
                     <td className="num">{l.count}</td>
                     <td className={cx("num", mono)}>{formatMs(l.total)}</td>
                     <td className={cx("num", mono)}>{formatMs(l.max)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </section>
-        <section>
-          <SectionTitle>Every span</SectionTitle>
-          <Card>
-            <table className={table}>
-              <thead>
-                <tr>
-                  <th>Label</th>
-                  <th className="num">Began</th>
-                  <th className="num">Took</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timings.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <span
-                        className={css({ display: "inline-flex", alignItems: "center", gap: "2" })}
-                      >
-                        <span
-                          className={cx(
-                            css({ w: "8px", h: "8px", rounded: "xs" }),
-                            seriesBg(t.label),
-                          )}
-                        />
-                        <span className={mono}>{t.label}</span>
-                      </span>
-                    </td>
-                    <td className={cx("num", mono, css({ color: "muted" }))}>
-                      {formatOffset(t.created_at - t.value - start)}
-                    </td>
-                    <td className={cx("num", mono)}>{formatMs(t.value)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as LiveRouteImport } from './routes/live'
+import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as RunsIndexRouteImport } from './routes/runs.index'
 import { Route as RunsRunIdRouteImport } from './routes/runs.$runId'
 import { Route as TasksTaskIdRouteImport } from './routes/tasks.$taskId'
@@ -31,6 +32,11 @@ const HistoryRoute = HistoryRouteImport.update({
 const LiveRoute = LiveRouteImport.update({
   id: '/live',
   path: '/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OverviewRoute = OverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunsIndexRoute = RunsIndexRouteImport.update({
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/overview': typeof OverviewRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
   '/runs/': typeof RunsIndexRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/overview': typeof OverviewRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/runs': typeof RunsIndexRoute
   '/tasks/$taskId': typeof TasksTaskIdIndexRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/overview': typeof OverviewRoute
   '/runs/$runId': typeof RunsRunIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRouteWithChildren
   '/runs/': typeof RunsIndexRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
+    | '/overview'
     | '/runs/$runId'
     | '/tasks/$taskId'
     | '/runs/'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
+    | '/overview'
     | '/runs/$runId'
     | '/runs'
     | '/tasks/$taskId'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/live'
+    | '/overview'
     | '/runs/$runId'
     | '/tasks/$taskId'
     | '/runs/'
@@ -125,6 +137,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
   LiveRoute: typeof LiveRoute
+  OverviewRoute: typeof OverviewRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
   TasksTaskIdRoute: typeof TasksTaskIdRouteWithChildren
   RunsIndexRoute: typeof RunsIndexRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       path: '/live'
       fullPath: '/live'
       preLoaderRoute: typeof LiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/overview': {
+      id: '/overview'
+      path: '/overview'
+      fullPath: '/overview'
+      preLoaderRoute: typeof OverviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/runs/': {
@@ -209,6 +229,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
   LiveRoute: LiveRoute,
+  OverviewRoute: OverviewRoute,
   RunsRunIdRoute: RunsRunIdRoute,
   TasksTaskIdRoute: TasksTaskIdRouteWithChildren,
   RunsIndexRoute: RunsIndexRoute,

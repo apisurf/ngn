@@ -4,7 +4,6 @@ import type * as React from "react";
 import { Shell } from "~/components/shell";
 import { NotFound, RouteError } from "~/components/states";
 import { PrefsProvider, THEME_BOOT_SCRIPT } from "~/lib/prefs";
-import { TabsProvider } from "~/lib/tabs";
 import { getWorkspace } from "~/server/api";
 import appCss from "~/styles/globals.css?url";
 
@@ -21,8 +20,8 @@ export const Route = createRootRoute({
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
     ],
   }),
-  // The frame — sidebar, tabs, status bar — is part of every
-  // page, so what it draws is loaded once, here, and re-read on refresh/Live.
+  // The frame — the canvas, the status bar — is part of every page, so what it
+  // draws is loaded once, here, and re-read on refresh and Follow.
   loader: () => getWorkspace(),
   // Loader data is always re-read: this is a viewer over a file that changes.
   staleTime: 0,
@@ -45,9 +44,7 @@ function RootLayout() {
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <PrefsProvider>
-      <TabsProvider>
-        <Shell>{children}</Shell>
-      </TabsProvider>
+      <Shell>{children}</Shell>
     </PrefsProvider>
   );
 }

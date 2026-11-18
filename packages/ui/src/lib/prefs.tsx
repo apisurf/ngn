@@ -1,8 +1,7 @@
 // Per-viewer preferences and the Follow switch.
 //
 // Everything here is a convenience: the theme, how the editor's code and
-// result panes are arranged, whether the task sidebar is open and how wide. It is
-// kept in localStorage and read after mount — the server renders the defaults,
+// result panes are arranged, and Follow. It is kept in localStorage and read after mount — the server renders the defaults,
 // so the first paint and hydration agree — and every access is wrapped,
 // because storage can be missing or blocked and the UI must work without it.
 
@@ -15,21 +14,14 @@ export type PaneLayout = "side" | "stacked";
 export interface Prefs {
   theme: ThemePref;
   layout: PaneLayout;
-  sidebarWidth: number;
-  sidebarOpen: boolean;
   /** Follow: re-read the database every couple of seconds while the page is visible. */
   follow: boolean;
-  /** Open pages as tabs, the way an API client keeps them. Off: one page at a time. */
-  tabs: boolean;
 }
 
 const DEFAULTS: Prefs = {
   theme: "system",
   layout: "side",
-  sidebarWidth: 300,
-  sidebarOpen: true,
   follow: false,
-  tabs: false,
 };
 
 const STORAGE_KEY = "ngnui:prefs";
@@ -120,10 +112,11 @@ function readStored(): Partial<Prefs> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Prefs> & { live?: unknown };
+    const parsed = JSON.parse(raw) as Partial<Prefs> & Record<string, unknown>;
     if (typeof parsed !== "object" || !parsed) return {};
+    // The sidebar and the tab strip are gone: what they stored is dropped.
+    const { live, sidebarWidth: _width, sidebarOpen: _open, tabs: _tabs, ...rest } = parsed;
     // Follow was called Live; keep the switch where the viewer left it.
-    const { live, ...rest } = parsed;
     return typeof live === "boolean" && rest.follow === undefined
       ? { ...rest, follow: live }
       : rest;

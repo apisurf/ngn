@@ -1,85 +1,89 @@
-// The frame every page renders inside:
+// The frame every page renders inside: the canvas, with the open page over it.
 //
-//   ┌ top bar: ngnui / file · Follow · Refresh · Settings ─────────────────────┐
-//   ├ sidebar ────────────────┬ the page ───────────────────────────────────────┤
-//   │ Overview                │ Tasks / extract.ts / Run #2                    │
-//   │ Runs                    │                                                │
-//   │ Editor                  │                                                │
-//   │ Tasks      [filter]     │                                                │
-//   │  tasks/api/             │                                                │
-//   │   sync-users.ts      ●  │                                                │
-//   ├─────────────────────────┴────────────────────────────────────────────────┤
-//   └ status bar: runtime · running · stalled · Follow state ─────────────────┘
+//   ┌ top bar: ngnui / file · Go to… ⌘K · Overview · Runs · Editor · Follow ⟳ ⚙ ┐
+//   ├ crumbs: Canvas › sync-users.ts › #41 ───────────────────────────────────── ┤
+//   │ canvas: tasks and their runs, pan and zoom, or the open page laid flat   │
+//   │ over it                                                                  │
+//   ├──────────────────────────────────────────────────────────────────────────┤
+//   └ status bar: runtime · running · stalled · Follow state ──────────────────┘
 //
-// One navigation column: the global pages on top, the project's tasks below.
-// Collapsed, it leaves a strip with the pages' icons and a way back. The tab
-// strip is opt-in (Settings); every view has its own URL either way. Nothing in
-// the frame remounts on navigation, so it keeps its scroll and its filter.
+// The canvas is the home page. Opening anything (a node, a link, ⌘K) drops its
+// page as a flat layer over the canvas, one layer per crumb. Nothing in the
+// frame remounts on navigation, so the canvas keeps its viewport under
+// whatever is open.
 
-import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import * as React from "react";
 import { css, cx } from "styled-system/css";
+import { Canvas } from "~/canvas/canvas";
+import { CrumbBar, Layers, useDepth } from "~/canvas/layers";
 import { basename, formatAgo, formatCount } from "~/lib/format";
 import { useNow, usePrefs } from "~/lib/prefs";
-import type { Tab } from "~/lib/tabs";
-import { useTabs } from "~/lib/tabs";
-import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconClose,
-  IconCode,
-  IconHistory,
-  IconOverview,
-  IconRefresh,
-  IconRun,
-  IconTask,
-} from "./icons";
-import { IconButton, mono, truncate } from "./primitives";
-import { CommandPalette } from "./command-palette";
+import { CommandPalette, useCommandPalette } from "./command-palette";
+import { IconCode, IconHistory, IconOverview, IconRefresh, IconSearch } from "./icons";
+import { IconButton, Kbd, mono, truncate } from "./primitives";
 import { SettingsMenu } from "./settings-menu";
-import { TasksPanel } from "./sidebar-tasks";
+import { useUnreadable } from "./states";
 
 const root = getRouteApi("__root__");
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { prefs } = usePrefs();
   useSlashToFilter();
+  const [palette, setPalette] = useCommandPalette();
+  const onCanvas = useDepth() === 0;
+  const unreadable = useUnreadable();
+  const { refresh } = usePrefs();
+
+  // Back on the canvas, re-read the file, so it shows the runs that landed
+  // while a page was open over it.
+  const wasCovered = React.useRef(false);
+  React.useEffect(() => {
+    if (onCanvas && wasCovered.current) refresh();
+    wasCovered.current = !onCanvas;
+  }, [onCanvas, refresh]);
 
   return (
     <div className={css({ display: "flex", flexDir: "column", h: "100vh", bg: "chrome" })}>
-      <TopBar />
-      <div className={css({ display: "flex", flex: "1", minH: "0" })}>
-        {prefs.sidebarOpen ? <Sidebar /> : <CollapsedSidebar />}
-        <main
-          className={css({
-            display: "flex",
-            flexDir: "column",
-            flex: "1",
-            minW: "0",
-            bg: "canvas",
-            borderLeft: "1px solid",
-            borderTop: "1px solid",
-            borderColor: "line",
-            roundedTopLeft: "lg",
-            overflow: "hidden",
-          })}
-        >
-          {prefs.tabs ? <TabStrip /> : null}
-          <div className={css({ flex: "1", minH: "0", display: "flex", flexDir: "column" })}>
-            {children}
+      <TopBar onGoTo={() => setPalette(true)} />
+      {palette ? <CommandPalette close={() => setPalette(false)} /> : null}
+      <CrumbBar />
+      <main
+        className={css({
+          position: "relative",
+          flex: "1",
+          minH: "0",
+          overflow: "hidden",
+          borderTop: "1px solid {colors.line}",
+        })}
+      >
+        <Canvas covered={!onCanvas} />
+        {unreadable && onCanvas ? (
+          // Says why the canvas has no tasks or runs on it.
+          <div
+            className={css({
+              position: "absolute",
+              top: "4",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 4,
+              w: "min(560px, calc(100% - 32px))",
+              bg: "raised",
+              border: "1px solid {colors.line}",
+              rounded: "lg",
+              boxShadow: "masthead",
+            })}
+          >
+            {unreadable}
           </div>
-        </main>
-      </div>
+        ) : null}
+        <Layers>{children}</Layers>
+      </main>
       <StatusBar />
-      <CommandPalette />
     </div>
   );
 }
 
-/**
- * `/` focuses the page's own filter (Runs has one), as in most tools with one,
- * and nothing else: getting to a task is ⌘K's job.
- */
+/** `/` focuses the open page's own filter, when it has one (Runs has one). */
 function useSlashToFilter() {
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -87,7 +91,6 @@ function useSlashToFilter() {
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))
         return;
-      event.preventDefault();
       const own = document.querySelector<HTMLInputElement>("main input[data-page-filter]");
       if (!own) return;
       event.preventDefault();
@@ -102,7 +105,39 @@ function useSlashToFilter() {
 // Top bar
 // -----------------------------------------------------------------------------
 
-function TopBar() {
+/** The pages that sit straight over the canvas, in the order the top bar lists them. */
+const PAGES = [
+  {
+    to: "/overview",
+    label: "Overview",
+    hint: "Is anything wrong, and every task's health",
+    icon: IconOverview,
+  },
+  { to: "/runs", label: "Runs", hint: "Every run of every task, filtered", icon: IconHistory },
+  {
+    to: "/live",
+    label: "Editor",
+    hint: "Run code once in this project's ngn run, with its config and env",
+    icon: IconCode,
+  },
+] as const;
+
+const pageLink = css({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "1.5",
+  h: "28px",
+  px: "2.5",
+  rounded: "md",
+  color: "muted",
+  fontSize: "12px",
+  fontWeight: "500",
+  textDecoration: "none",
+  _hover: { color: "fg", bg: "hover" },
+  "&.active": { color: "accent", bg: "accentSoft" },
+});
+
+function TopBar({ onGoTo }: { onGoTo: () => void }) {
   const ws = root.useLoaderData();
   const { prefs, set, refresh } = usePrefs();
   const [settings, setSettings] = React.useState(false);
@@ -159,7 +194,49 @@ function TopBar() {
         {basename(ws.path)}
       </button>
 
-      <div className={css({ ml: "auto", display: "flex", alignItems: "center", gap: "1.5" })}>
+      <button
+        type="button"
+        onClick={onGoTo}
+        title="Go to a task, a run or a page (⌘K)"
+        className={css({
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "2",
+          h: "28px",
+          w: "min(320px, 30vw)",
+          px: "2.5",
+          mx: "auto",
+          rounded: "md",
+          border: "1px solid",
+          borderColor: "line",
+          bg: "raised",
+          color: "faint",
+          cursor: "pointer",
+          fontSize: "12px",
+          _hover: { color: "muted", borderColor: "lineStrong" },
+        })}
+      >
+        <IconSearch size={13} />
+        <span>Go to…</span>
+        <span className={css({ ml: "auto" })}>
+          <Kbd>⌘K</Kbd>
+        </span>
+      </button>
+
+      <div className={css({ display: "flex", alignItems: "center", gap: "1.5" })}>
+        {PAGES.map(({ to, label, hint, icon: Icon }) => (
+          <Link
+            key={to}
+            to={to}
+            title={hint}
+            className={pageLink}
+            activeOptions={{ exact: true, includeSearch: false }}
+          >
+            <Icon size={13} />
+            {label}
+          </Link>
+        ))}
+        <span className={css({ w: "1px", h: "18px", bg: "line", mx: "1" })} />
         <button
           type="button"
           aria-pressed={prefs.follow}
@@ -201,319 +278,6 @@ function TopBar() {
         <SettingsMenu open={settings} setOpen={setSettings} />
       </div>
     </header>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Rail and sidebar
-// -----------------------------------------------------------------------------
-
-const navItem = css({
-  display: "flex",
-  alignItems: "center",
-  gap: "2",
-  h: "28px",
-  px: "2",
-  rounded: "sm",
-  color: "fg",
-  textDecoration: "none",
-  fontSize: "13px",
-  fontWeight: "500",
-  _hover: { bg: "hover" },
-  "& svg": { color: "muted" },
-  "&[data-active=true]": { bg: "selected" },
-  "&[data-active=true] svg": { color: "accent" },
-});
-
-/** The global pages, in the order the sidebar lists them. */
-const PAGES = [
-  {
-    to: "/",
-    label: "Overview",
-    hint: "Is anything wrong, and every task's health",
-    icon: IconOverview,
-    exact: true,
-  },
-  {
-    to: "/runs",
-    label: "Runs",
-    hint: "Every run of every task, filtered",
-    icon: IconHistory,
-    exact: false,
-  },
-  {
-    to: "/live",
-    label: "Editor",
-    hint: "Run code once in this project's ngn run, with its config and env",
-    icon: IconCode,
-    exact: false,
-  },
-] as const;
-
-function PageLinks() {
-  return (
-    <nav
-      aria-label="Pages"
-      className={css({ display: "flex", flexDir: "column", gap: "0.5", px: "1.5" })}
-    >
-      {PAGES.map(({ to, label, hint, icon: Icon, exact }) => (
-        <Link
-          key={to}
-          to={to}
-          title={hint}
-          className={navItem}
-          activeProps={{ "data-active": true }}
-          activeOptions={{ exact, includeSearch: false }}
-        >
-          <Icon size={15} />
-          {label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-const MIN_SIDEBAR = 220;
-const MAX_SIDEBAR = 560;
-
-function Sidebar() {
-  const { prefs, set } = usePrefs();
-  const [dragging, setDragging] = React.useState(false);
-  const [width, setWidth] = React.useState(prefs.sidebarWidth);
-  React.useEffect(() => setWidth(prefs.sidebarWidth), [prefs.sidebarWidth]);
-
-  return (
-    <aside
-      className={css({
-        position: "relative",
-        display: "flex",
-        flexDir: "column",
-        flexShrink: 0,
-        minH: "0",
-        pt: "1",
-      })}
-      style={{ width }}
-    >
-      <div
-        className={css({
-          display: "flex",
-          justifyContent: "flex-end",
-          pr: "1.5",
-          flexShrink: 0,
-        })}
-      >
-        <IconButton label="Collapse the sidebar" onClick={() => set("sidebarOpen", false)}>
-          <IconChevronLeft size={14} />
-        </IconButton>
-      </div>
-      <PageLinks />
-      <div
-        className={css({
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          h: "30px",
-          mt: "3",
-          pl: "3",
-          pr: "1.5",
-          flexShrink: 0,
-        })}
-      >
-        <span className={css({ fontWeight: "600", fontSize: "12px" })}>Tasks</span>
-      </div>
-      <div className={css({ flex: "1", minH: "0" })}>
-        <TasksPanel />
-      </div>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        onPointerDown={(e) => {
-          e.preventDefault();
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          setDragging(true);
-        }}
-        onPointerMove={(e) => {
-          if (!dragging) return;
-          const aside = (e.target as HTMLElement).parentElement;
-          if (!aside) return;
-          const left = aside.getBoundingClientRect().left;
-          setWidth(Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, e.clientX - left)));
-        }}
-        onPointerUp={() => {
-          if (!dragging) return;
-          setDragging(false);
-          set("sidebarWidth", width);
-        }}
-        className={cx(
-          css({
-            position: "absolute",
-            top: "0",
-            bottom: "0",
-            right: "-3px",
-            w: "6px",
-            cursor: "col-resize",
-            zIndex: "2",
-            _hover: { bg: "accent", opacity: 0.4 },
-          }),
-          dragging && css({ bg: "accent", opacity: 0.4 }),
-        )}
-      />
-    </aside>
-  );
-}
-
-/**
- * What the sidebar leaves when collapsed: the pages as icons, so they stay a
- * click away, and a button to bring the sidebar back.
- */
-function CollapsedSidebar() {
-  const { set } = usePrefs();
-  return (
-    <div
-      className={css({
-        display: "flex",
-        flexDir: "column",
-        alignItems: "center",
-        gap: "1",
-        w: "40px",
-        pt: "1",
-        flexShrink: 0,
-      })}
-    >
-      <IconButton label="Expand the sidebar" onClick={() => set("sidebarOpen", true)}>
-        <IconChevronRight size={14} />
-      </IconButton>
-      <nav aria-label="Pages" className={css({ display: "flex", flexDir: "column", gap: "1" })}>
-        {PAGES.map(({ to, label, hint, icon: Icon, exact }) => (
-          <Link
-            key={to}
-            to={to}
-            aria-label={label}
-            title={`${label}: ${hint}`}
-            className={cx(navItem, css({ w: "28px", px: "0", justifyContent: "center" }))}
-            activeProps={{ "data-active": true }}
-            activeOptions={{ exact, includeSearch: false }}
-          >
-            <Icon size={15} />
-          </Link>
-        ))}
-      </nav>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Tabs
-// -----------------------------------------------------------------------------
-
-function TabStrip() {
-  const { tabs, activeKey, pin, close } = useTabs();
-  const navigate = useNavigate();
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Open tabs"
-      className={css({
-        display: "flex",
-        alignItems: "stretch",
-        h: "36px",
-        flexShrink: 0,
-        bg: "chrome",
-        borderBottom: "1px solid",
-        borderColor: "line",
-        overflowX: "auto",
-        scrollbarWidth: "none",
-      })}
-    >
-      {tabs.map((tab) => (
-        <div
-          key={tab.key}
-          role="tab"
-          tabIndex={0}
-          aria-selected={tab.key === activeKey}
-          data-preview={tab.preview}
-          title={tab.preview ? `${tab.title} — preview; double-click to keep open` : tab.title}
-          onClick={() => void navigate({ href: tab.href })}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void navigate({ href: tab.href });
-          }}
-          onDoubleClick={() => pin(tab.key)}
-          onAuxClick={(e) => {
-            if (e.button === 1) close(tab.key);
-          }}
-          className={css({
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            gap: "1.5",
-            pl: "3",
-            pr: "1",
-            minW: "0",
-            maxW: "220px",
-            flexShrink: 0,
-            borderRight: "1px solid",
-            borderColor: "line",
-            cursor: "pointer",
-            color: "muted",
-            userSelect: "none",
-            _hover: { color: "fg", bg: "hover" },
-            "&[aria-selected=true]": {
-              bg: "canvas",
-              color: "fg",
-              _before: {
-                content: '""',
-                position: "absolute",
-                left: "0",
-                right: "0",
-                top: "0",
-                h: "2px",
-                bg: "accent",
-              },
-            },
-            "&[data-preview=true] .tab-title": { fontStyle: "italic" },
-            "& .tab-close": { opacity: 0 },
-            "&:hover .tab-close, &[aria-selected=true] .tab-close": { opacity: 1 },
-          })}
-        >
-          <TabGlyph tab={tab} />
-          <span
-            className={cx(
-              "tab-title",
-              truncate,
-              css({ fontSize: "12px" }),
-              tab.failed ? css({ color: "bad" }) : undefined,
-            )}
-          >
-            {tab.title}
-          </span>
-          <IconButton
-            label="Close tab"
-            className={cx("tab-close", css({ w: "20px", h: "20px" }))}
-            onClick={(e) => {
-              e.stopPropagation();
-              close(tab.key);
-            }}
-          >
-            <IconClose size={12} />
-          </IconButton>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TabGlyph({ tab }: { tab: Tab }) {
-  const glyph = {
-    overview: <IconOverview size={13} />,
-    runs: <IconHistory size={13} />,
-    task: <IconTask size={13} />,
-    run: <IconRun size={12} />,
-    live: <IconCode size={13} />,
-  }[tab.icon];
-  return (
-    <span className={css({ display: "inline-flex", color: "faint", flexShrink: 0 })}>{glyph}</span>
   );
 }
 

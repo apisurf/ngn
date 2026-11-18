@@ -157,6 +157,8 @@ export interface Workspace {
   counts: Counts | null;
   /** Every task, most recently run first. */
   tasks: TaskItem[];
+  /** The newest runs of every task, newest first: the canvas's runs column. */
+  recentRuns: RunItem[];
   /** The `--live` endpoint this server forwards to, or null when the editor is off. */
   live: string | null;
   /** Required by every function that runs something; only this server's pages have it. */
@@ -164,6 +166,9 @@ export interface Workspace {
   /** The server's clock, so relative times agree on both sides of hydration. */
   now: number;
 }
+
+/** Runs the canvas lists; older ones are in Runs. */
+export const CANVAS_RUNS = 16;
 
 export const getWorkspace = createServerFn({ method: "GET" }).handler(
   async (): Promise<Workspace> => {
@@ -180,7 +185,7 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
     };
     const db = readable();
     if (!db) {
-      return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [] };
+      return { ...base, bytes: handle ? fileBytes() : 0, counts: null, tasks: [], recentRuns: [] };
     }
     const stalled = q.stalledRuns(db, base.now);
     const schedules = q.listSchedules(db);
@@ -190,6 +195,7 @@ export const getWorkspace = createServerFn({ method: "GET" }).handler(
       bytes: fileBytes(),
       counts: { ...counts, open: counts.open - stalled.size, stalled: stalled.size },
       tasks: q.listTasks(db).map((task) => taskItem(task, stalled, schedules)),
+      recentRuns: q.listRuns(db, { limit: CANVAS_RUNS }, base.now).map(describe),
     };
   },
 );

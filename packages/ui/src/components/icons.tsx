@@ -50,6 +50,14 @@ export const IconOverview = icon(
     <rect x="3" y="16" width="7" height="5" rx="1.5" />
   </>,
 );
+/** Two nodes and the line between them: the canvas. */
+export const IconCanvas = icon(
+  <>
+    <rect x="3" y="4" width="7" height="6" rx="1.5" />
+    <rect x="14" y="14" width="7" height="6" rx="1.5" />
+    <path d="M10 7h2a2 2 0 0 1 2 2v6" />
+  </>,
+);
 export const IconRun = icon(<path d="M7 4v16l13-8z" />);
 export const IconChevronRight = icon(<path d="M9 6l6 6-6 6" />);
 export const IconChevronDown = icon(<path d="M6 9l6 6 6-6" />);

@@ -5,9 +5,8 @@
 // run's title and figures, then the page's tabs), so the header reads as a
 // single piece and never as one of the details below it.
 //
-// Under a run it shrinks to one line, the task's name as the way back, and says
-// nothing about the task's health: that is about its newest run, which the run
-// below may not be.
+// Under a run it has no task line at all: the crumbs above already name the
+// task, and its health is about its newest run, which the run below may not be.
 //
 // The schedule, the exports that shape how it runs (retry, budget, overlap,
 // exclusive locks) and its hooks are read out of the newest version's compiled
@@ -33,15 +32,7 @@ import {
 import { useNow, usePrefs } from "~/lib/prefs";
 import type { LiveStatus, ScheduleAction, TaskItem, TaskPage } from "~/server/api";
 import { getLiveStatus, runTask, steerTask } from "~/server/api";
-import {
-  IconCheck,
-  IconClock,
-  IconCode,
-  IconPause,
-  IconPlay,
-  IconSkipForward,
-  IconTask,
-} from "./icons";
+import { IconCheck, IconClock, IconPause, IconPlay, IconSkipForward, IconTask } from "./icons";
 import { Button, mono, Pill, truncate, VerdictBadge } from "./primitives";
 
 const root = getRouteApi("__root__");
@@ -52,7 +43,7 @@ export function TaskHeader({
   children,
 }: {
   page: TaskPage;
-  /** A page under the task (a run): the task shrinks to a line that links back to it. */
+  /** A page under the task (a run): the band holds only what the page puts in it. */
   linked?: boolean;
   /** What the page puts in the band under the task: a run's title, then the tabs. */
   children?: React.ReactNode;
@@ -72,79 +63,28 @@ export function TaskHeader({
         "& > [role=tablist]": { borderBottom: "none" },
       })}
     >
-      <div
-        className={css({
-          display: "flex",
-          flexDir: "column",
-          gap: "0.5",
-          px: "5",
-          pt: linked ? "2.5" : "4",
-          pb: children ? "1" : "3",
-          fontSize: "12px",
-          color: "muted",
-        })}
-      >
-        {page.task.editor ? (
-          <EditorLine />
-        ) : linked ? (
-          <TaskLine task={page.task} />
-        ) : (
+      {linked ? null : (
+        <div
+          className={css({
+            display: "flex",
+            flexDir: "column",
+            gap: "0.5",
+            px: "5",
+            pt: "4",
+            pb: children ? "1" : "3",
+            fontSize: "12px",
+            color: "muted",
+          })}
+        >
           <TaskTitle page={page} />
-        )}
-      </div>
+        </div>
+      )}
       {children}
     </header>
   );
 }
 
 const row = css({ display: "flex", alignItems: "center", gap: "2", minW: "0" });
-
-const backLink = cx(
-  truncate,
-  css({
-    fontSize: "13px",
-    fontWeight: "600",
-    color: "fg",
-    textDecoration: "none",
-    _hover: { color: "accent", textDecoration: "underline" },
-  }),
-);
-
-/** An editor run is not one of the project's tasks: its way back is the Editor. */
-function EditorLine() {
-  return (
-    <div className={row}>
-      <span className={css({ display: "inline-flex", color: "faint" })}>
-        <IconCode size={14} />
-      </span>
-      <Link to="/live" className={backLink} title="Back to the Editor and its recent runs">
-        Editor
-      </Link>
-    </div>
-  );
-}
-
-/** Above a run: only the way back, and Run now. */
-function TaskLine({ task }: { task: TaskItem }) {
-  return (
-    <div className={row}>
-      <span className={css({ display: "inline-flex", color: "faint" })}>
-        <IconTask size={14} />
-      </span>
-      <Link
-        to="/tasks/$taskId"
-        params={{ taskId: String(task.id) }}
-        className={backLink}
-        title={`${task.path}: the task's runs`}
-      >
-        {task.file}
-      </Link>
-      <span className={actions}>
-        <RunNowButton task={task} />
-      </span>
-    </div>
-  );
-}
 
 const actions = css({
   ml: "auto",
@@ -518,7 +458,7 @@ const STARTED_MS = 2500;
  * Start a run of the task now, in the `ngn run` the editor uses. The run is
  * recorded like any tick's; Follow is turned on so it shows up as it goes.
  */
-function RunNowButton({ task }: { task: TaskItem }) {
+export function RunNowButton({ task, label = "Run now" }: { task: TaskItem; label?: string }) {
   const ws = root.useLoaderData();
   const { set, refresh } = usePrefs();
   const [state, setState] = React.useState<
@@ -566,7 +506,7 @@ function RunNowButton({ task }: { task: TaskItem }) {
         }
       >
         {state.kind === "started" ? <IconCheck size={13} /> : <IconPlay size={12} />}
-        {state.kind === "started" ? "Started" : state.kind === "starting" ? "Starting…" : "Run now"}
+        {state.kind === "started" ? "Started" : state.kind === "starting" ? "Starting…" : label}
       </Button>
     </>
   );

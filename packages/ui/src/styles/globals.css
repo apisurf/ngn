@@ -1,1 +1,106 @@
-@layer reset, base, tokens, recipes, utilities;
+@layer reset, base, flow, tokens, recipes, utilities;
+
+/* React Flow's own styles, under the app's utilities so a node's classes win. */
+@import "@xyflow/react/dist/style.css" layer(flow);
+
+/* The canvas in the app's palette: React Flow reads these variables. */
+@layer flow {
+  .react-flow {
+    --xy-background-color: var(--colors-chrome);
+    --xy-background-pattern-color: var(--colors-line-strong);
+    --xy-minimap-background-color: var(--colors-raised);
+    --xy-minimap-mask-background-color: color-mix(in srgb, var(--colors-chrome) 70%, transparent);
+    --xy-minimap-mask-stroke-color: var(--colors-accent);
+    --xy-minimap-node-background-color: var(--colors-line-strong);
+    --xy-controls-button-background-color: var(--colors-raised);
+    --xy-controls-button-background-color-hover: var(--colors-hover);
+    --xy-controls-button-color: var(--colors-muted);
+    --xy-controls-button-color-hover: var(--colors-fg);
+    --xy-controls-button-border-color: var(--colors-line);
+    --xy-attribution-background-color: transparent;
+    font-family: inherit;
+  }
+
+  /* A card added or gone moves the ones below it: glide, rather than jump. */
+  .react-flow__node {
+    transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .react-flow__controls,
+  .react-flow__minimap {
+    border: 1px solid var(--colors-line);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  }
+}
+
+/*
+ * The layers over the canvas (canvas/layers.tsx), animated with view
+ * transitions. The open page is always named `layer`, and every layer, the
+ * canvas included, is the same flat rectangle under the crumbs, so nothing
+ * moves: a step only changes which layer is on top.
+ *
+ * Down (`layerTransition` in router.tsx): the new page flies in over the open
+ * one, a short way from the right (the way the crumbs grow), fading in.
+ * Up: the open page flies out to the right, fading, and the one under it is
+ * already there. From the canvas there is no old layer, and back
+ * to it there is no new one; the canvas has its own group and stays still.
+ */
+::view-transition-group(layer) {
+  animation: none;
+}
+
+::view-transition-old(layer),
+::view-transition-new(layer) {
+  mix-blend-mode: normal;
+  animation: none;
+}
+
+html:active-view-transition-type(down)::view-transition-new(layer) {
+  animation: layer-fly-in 240ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+html:active-view-transition-type(up)::view-transition-old(layer) {
+  z-index: 1;
+  animation: layer-fly-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+::view-transition-group(canvas) {
+  animation: none;
+}
+
+::view-transition-old(canvas) {
+  display: none;
+}
+
+::view-transition-new(canvas) {
+  animation: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+}
+
+@keyframes layer-fly-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes layer-fly-out {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

@@ -45,7 +45,6 @@ import { command } from "~/components/states";
 import { formatDateTime, formatMs } from "~/lib/format";
 import type { JsonValue } from "~/lib/json";
 import { useNow, usePrefs } from "~/lib/prefs";
-import { tabKey, useTab } from "~/lib/tabs";
 import type { LiveLanguage, LiveRun, LiveStatus, RunItem, RunPage } from "~/server/api";
 import { getLiveStatus, getRun, getRuns, runLive } from "~/server/api";
 
@@ -94,7 +93,6 @@ export const Route = createFileRoute("/live")({
 });
 
 function LivePage() {
-  useTab({ key: tabKey.live(), title: "Editor", icon: "live" });
   const ws = root.useLoaderData();
   const { status: initialStatus, recent } = Route.useLoaderData();
   const { prefs, set } = usePrefs();

@@ -1,8 +1,9 @@
 # ngnui
 
 A local browser UI for the database [ngn](https://www.npmjs.com/package/@apisurf/ngn) records its runs into, laid
-out the way wireui is: tasks down the left, open tabs across the top, and each
-run shown with its logs and timings on one clock. Everything in it is read-only
+out the way wireui is: a canvas with your tasks on the left and their latest runs
+on the right, and whatever you open laid over it as a full-screen layer, with
+crumbs to get back. A run's page puts its logs and timings on one clock. Everything in it is read-only
 except the Editor and a task's **Run now**, **Pause**, **Resume** and **Run next**,
 which do not run or change anything themselves: they ask a running `ngn run` to.
 
@@ -64,27 +65,72 @@ does not exist yet is not an error: the UI starts empty and fills in once
 
 ## What you get
 
+The canvas, with nothing open:
+
 ```
-┌ ngnui / ngn.sqlite                                     [● Follow] ⟳ ⚙ ┐
-├──────────────────────┬────────────────────────────────────────────────┤
-│ ⌂ Overview           │ sync-users.ts                       ▷ Run now  │
-│ ◷ Runs               │ Run #41  ✕ Failed                          ‹ › │
-│ </> Editor           │ 27 Oct, 18:56 · took 1.2 s · 12 log lines · v2 │
-│                      │ The task failed: upstream returned 503         │
-│ Tasks                │ Timeline  Logs  Timings  Result  Details       │
-│ tasks/api/           ├────────────────────────────────────────────────┤
-│ sync-users.ts      ● │ +368 ms ERROR sync failed: …                ▏  │
-│ health.ts            │                                                │
-├──────────────────────┴────────────────────────────────────────────────┤
-└ runtime 127.0.0.1:4545 · 1 stalled                         Read-only ┘
+┌ ngnui / ngn.sqlite  [ Go to… ⌘K ]  Overview  Runs  Editor  [● Follow] ⟳ ⚙ ┐
+├ Canvas   Open a task or a run to look inside it ────────────────────────────┤
+│ TASKS                        RUNS                                         │
+│ Scheduled                    2 min ago · 5 runs · 1 failed                │
+│ ▾ tasks/                     ┌───────────────────────────────┐            │
+│ ├ ▾ api/                 ╭───│ ● #41 sync-users.ts   Failed  │            │
+│ │ └ sync-users.ts  12 ●──╯   └───────────────────────────────┘            │
+│ └ health.ts        40 ─────  ● #40 health.ts                              │
+│ Editor                                                                    │
+│ Editor runs         2                                                     │
+│ [− + ⤢] [minimap]                                                         │
+├───────────────────────────────────────────────────────────────────────────┤
+└ runtime 127.0.0.1:4545 · 1 stalled                              Read-only ┘
 ```
 
-**The sidebar** is the one navigation column. On top are the pages — **Overview**,
-**Runs** and **Editor** — and under them the project's task files, grouped by folder,
-with a mark on any that needs looking at (failing, circuit open, or Stalled) and
-nothing on the healthy ones. Editor runs are not listed as tasks; they are on the
-Editor page and under Runs. The chevron collapses the sidebar to a strip that still
-has the pages' icons, and expands it again.
+And two layers down, on a run:
+
+```
+├ Canvas › sync-users.ts › ● #41 ─────────────────────────────────────── ✕ ┤
+│ sync-users.ts                                                 ▷ Run now  │
+│ Run #41  ✕ Failed                                                    ‹ › │
+│ 27 Oct, 18:56 · took 1.2 s · 12 log lines · v2                           │
+│ Timeline  Logs  Timings  Result  Details                                 │
+│ +368 ms ERROR sync failed: …                                             │
+```
+
+**The canvas** is where the UI opens. It has two columns.
+
+- **Tasks**, on the left: the task files `ngn run` schedules, as a tree of their
+  folders, and under them a single **Editor runs** row for code sent from the
+  Editor. Each row has the task's name, how many times it has run, and a mark when
+  it needs a look: red when it is failing or its circuit is open, amber when it is
+  Stalled, blue while a run is going. A healthy task has no mark. A paused task
+  has a pause icon. Point at a task to get **Run now** (▷) on its row.
+- **Runs**, on the right: the 16 newest runs of every task, newest first. Runs
+  that started within three minutes of each other share a header
+  (`2 min ago · 5 runs · 1 failed`). Each run has its number, its task, its state
+  when it did not succeed (a skip says why), and how long it took. A line under
+  the column says how many older runs **Runs** has.
+
+A faint line ties each run to its task, red when the run failed. Pointing at a
+task lights up its runs, the lines to them and the folders above it, and greys
+out the rest. Pointing at a run does the same for its task.
+
+Click a task to open its page, and a run to open that run. Scroll or drag to
+pan, pinch or ⌘-scroll to zoom, and press **F** to fit everything in view. The
+minimap and zoom controls sit at the bottom left. ngnui re-reads the file each
+time you return to the canvas.
+
+**Layers.** Whatever you open is a flat layer over the canvas, and each step down
+the crumbs adds one. Open `sync-users.ts` and its page slides in over the canvas.
+Open run #41 from it and the run's page slides in over the task's. Going back up,
+the open page slides out and the one under it is there again. The canvas stays
+underneath, with whatever the open page is about marked and centred, so that is
+where you land when you close the layers.
+
+The crumbs (`Canvas › sync-users.ts › #41`) stay at the top. Click one to go
+back up to it. **Esc** goes up one layer, and ✕ goes straight back to the canvas.
+The animation follows your system's reduced-motion setting, and a browser
+without view transitions switches pages with no animation.
+
+**Overview**, **Runs** and **Editor** in the top bar open those pages as the first
+layer over the canvas:
 
 - **Runs.** Every run of every task, newest first, under day headings, with one
   filter bar that takes the language `ngn runs` takes: `task:extract status:failed
@@ -99,22 +145,16 @@ has the pages' icons, and expands it again.
   still opens it.
 
 Above the list, the filter and the facets share one toolbar row; the page has no
-heading of its own, since the sidebar already says where you are.
+heading of its own, since the crumbs already say where you are.
 
 **Colour** means "look here". A run that succeeded, a skip and an INFO line are
 the normal case and are drawn in greys: grey dots in lists, grey bars in charts.
 Red is a failure, amber a warning or a Stalled run, blue a run still going. Green
 is kept for a verdict said in words, like a header's **Succeeded** or **Healthy**.
 
-**⌘K** (Ctrl-K) opens a palette that jumps to a task by name, a run by its number
-(`41` or `#41`) or a page, and toggles Follow or the theme. `/` focuses the page's own
-filter where it has one.
-
-**Tabs** are off by default: every view has its own URL, so the browser's tabs and
-Back cover the same need. Turn on **Keep pages open as tabs** in Settings for a tab
-strip that works as in wireui: a single click opens a _preview_ tab (italic) that the
-next single click reuses; double-click a tab or a sidebar row to keep it. Middle-click
-closes a tab. Each tab remembers its sub-tab.
+**⌘K** (Ctrl-K), or **Go to…** in the top bar, opens a palette that jumps to a task
+by name, a run by its number (`41` or `#41`) or a page, and toggles Follow or the
+theme. `/` focuses the page's own filter where it has one.
 
 **A task's header** is one raised band holding the task and its tabs, and the
 page scrolls under it. It gives the task's health in words: **Healthy**, **Failing**,
@@ -129,7 +169,7 @@ runtime the button is off and says why.
 schedule log like the commands. They appear only when that `ngn run` says it can
 make them (`schedule: true` in its `/api/meta`); otherwise the header shows the
 command to run in a terminal. A paused task is marked **Paused** in the header and
-in the sidebar, and is never counted as unhealthy.
+on the canvas, and is never counted as unhealthy.
 
 **A task** shows its schedule — the `timing` export, read out of the newest
 compiled version and put into words when it is a common shape, with its `min`–`max`
@@ -159,12 +199,11 @@ header says so — `latest #6 skipped: still running` — and links to it. Its t
   run and why, and every change to its schedule, newest first, in the words
   `ngn schedule` uses, each linked to the run it was about
 
-**A run** opens under its task's header, shrunk to one line that links back to the
-task (and keeps Run now). The run is the title, `Run #41`, with its verdict beside it
-and its figures in one line under it: when it ran, how long it took, its log lines
-with their warnings and errors, its timed spans, what was decided after it (`then
-next run 15:05, set by the next hook: 312 jobs left`) and the version that ran. Anything
-it did not record is said in that line rather than shown as zeros. A failed run shows what it threw and the
+**A run** has the crumbs above it to name its task, so its page starts at the run:
+`Run #41` with its verdict, **Run again** (a Run now of its task), and the arrows to
+the task's previous and next run. One line under it says when it ran, how long it
+took, what ngn decided after it (`then next run 15:05, set by the next hook: 312
+jobs left`) and the version that ran. The tabs count what it logged and timed. A failed run shows what it threw and the
 stage it was thrown in (`Failed in shouldSkip: …`), as ngn recorded it; a run from
 before ngn recorded that shows the last error the task logged. A retried run lists every try of its tick, each a link, and
 says whether a later one succeeded. A skipped run explains its `skip_reason`, and
@@ -172,18 +211,16 @@ one skipped because the last run was still going links to that run. A run with n
 recorded end is **Stalled** once it is twice past the longer of its task's `budget`
 and schedule (a day when neither can be read), or at once when a lock it held
 stopped being renewed: the process running it is gone and ngn will not record an
-end. Stalled runs show on their task, in the sidebar, in the status bar, and in the
+end. Stalled runs show on their task, on the canvas, in the status bar, and in the
 Overview's verdict. It opens on its most useful tab: a failed run on its Logs, a run that
 logged or timed something on its Timeline, a quiet one on its Result or Details.
-Tabs with nothing in them are dimmed, and figures it did not record (no log lines,
-no timings) fold into one line instead of cards of zeros. The tabs are:
+The page leaves out a tab with nothing in it, except Logs and Details. The tabs are:
 
-- **Timeline**: log lines and timing spans on one clock, with a waterfall. **All**,
-  **Logs** or **Timings** narrows it to one kind, each with its count, and
-  **Problems only** to warnings and errors. ngn's own lifecycle lines are hidden
-  until **Lifecycle** is on, here and in **Logs**
+- **Timeline**: log lines and timing spans on one clock, with a waterfall.
+  **Problems only** narrows it to warnings and errors. ngn's own lifecycle lines
+  stay hidden until you turn on **Lifecycle**, here and in **Logs**
 - **Logs**: the run's lines, filterable, with JSON messages opening into a tree
-- **Timings**: spans folded by label, then every span
+- **Timings**: spans folded by label: how many, their total and the longest
 - **Result**: what `task` returned, as a JSON tree
 - **Details**: the run's ids, version, times, attempt, skip reason and any lock it holds
 
@@ -191,9 +228,9 @@ The code that ran is not repeated: the run links to its version in the task's
 **Versions** tab, and says so when the task has moved on since.
 
 `[` and `]` step to the previous or next run of the same task and keep the same
-tab open when that run has something there.
+tab open when that run shows it.
 
-**Overview** opens with a one-line verdict — every task healthy, or what is wrong, stalled runs included, and how many are paused —
+**Overview** (at `/overview`; the canvas is now the home page) opens with a one-line verdict — every task healthy, or what is wrong, stalled runs included, and how many are paused —
 and the last 24 hours in numbers. Under it, **Needs attention** lists each task whose
 latest run failed (for how long, how many runs, the last error it logged, a link to
 the failure), each Stalled run (since when, and how many ticks it has held back) and
@@ -212,8 +249,8 @@ that run's logs. Before anything is run, and in a tab beside the result after,
 whose header leads back here. The draft is kept in the browser.
 
 **The top bar** holds the database's file name (click it, or the settings button, for
-its full path), **Follow**, Refresh and the settings menu: theme, tabs on or off, and
-the database's path and size. **The status bar** is the
+its full path), **Go to…**, the Overview, Runs and Editor pages, **Follow**, Refresh
+and the settings menu: the theme, and the database's path and size. **The status bar** is the
 system's state: the live runtime, how many runs are going and how many are
 Stalled (each a link to Runs filtered to them), and whether Follow is on.
 
@@ -239,7 +276,8 @@ whenever you switch back to its tab. Themes are light, dark or system.
   started in when it holds the config, else the database's folder, and never from
   outside it.
 - **One file, one process.** No daemon, and it writes no state of its own to disk.
-  Layout preferences and the editor draft live in the browser's localStorage.
+  Layout preferences and the editor draft live in the browser's localStorage, and
+  where the canvas is panned and zoomed in its sessionStorage.
 
 ## From a checkout
 

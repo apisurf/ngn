@@ -51,7 +51,6 @@ import {
   readSkip,
 } from "~/lib/ngn";
 import { useNow, usePrefs } from "~/lib/prefs";
-import { tabKey, useTab } from "~/lib/tabs";
 import type {
   KvRow,
   LogRow,
@@ -139,13 +138,6 @@ function ProjectTaskPage() {
   const { tab = initial } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const now = useNow(Date.now());
-  useTab({
-    key: tabKey.task(task.id),
-    title: task.editor ? "Editor run" : task.file,
-    icon: "task",
-    failed: task.last_outcome === "failure",
-  });
-
   return (
     <>
       <TaskHeader page={page}>

@@ -8,6 +8,7 @@ import { css, cx } from "styled-system/css";
 import { usePrefs } from "~/lib/prefs";
 import { getRunTaskId } from "~/server/api";
 import {
+  IconCanvas,
   IconClock,
   IconCode,
   IconHistory,
@@ -34,7 +35,8 @@ interface Item {
 /** Most items listed at once; the rest are a few more letters away. */
 const MAX_ITEMS = 12;
 
-export function CommandPalette() {
+/** Whether the palette is open, with ⌘K (Ctrl-K) to open and close it. */
+export function useCommandPalette(): [boolean, React.Dispatch<React.SetStateAction<boolean>>] {
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -48,10 +50,10 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return open ? <Palette close={() => setOpen(false)} /> : null;
+  return [open, setOpen];
 }
 
-function Palette({ close }: { close: () => void }) {
+export function CommandPalette({ close }: { close: () => void }) {
   const ws = root.useLoaderData();
   const navigate = useNavigate();
   const { prefs, set, refresh } = usePrefs();
@@ -101,10 +103,17 @@ function Palette({ close }: { close: () => void }) {
           run: () => void navigate({ to: "/tasks/$taskId", params: { taskId: String(task.id) } }),
         })),
       {
+        id: "page:canvas",
+        label: "Canvas",
+        hint: "every task and its latest runs",
+        icon: <IconCanvas size={14} />,
+        run: () => void navigate({ to: "/" }),
+      },
+      {
         id: "page:overview",
         label: "Overview",
         icon: <IconOverview size={14} />,
-        run: () => void navigate({ to: "/" }),
+        run: () => void navigate({ to: "/overview" }),
       },
       {
         id: "page:runs",
@@ -290,7 +299,8 @@ function Palette({ close }: { close: () => void }) {
             <Kbd>↑</Kbd> <Kbd>↓</Kbd> choose · <Kbd>↵</Kbd> go · <Kbd>esc</Kbd> close
           </span>
           <span>
-            <Kbd>/</Kbd> page filter · <Kbd>[</Kbd> <Kbd>]</Kbd> previous, next run
+            <Kbd>/</Kbd> page filter · <Kbd>[</Kbd> <Kbd>]</Kbd> previous, next run · <Kbd>esc</Kbd>{" "}
+            up a layer · <Kbd>F</Kbd> fit the canvas
           </span>
         </div>
       </div>

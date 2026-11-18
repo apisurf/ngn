@@ -33,6 +33,14 @@ export function hasContent(tab: RunTab, content: RunContent): boolean {
   }
 }
 
+/**
+ * The tabs a run shows: the ones with something in them. Logs and Details are
+ * always there; Logs also holds ngn's own lifecycle lines.
+ */
+export function visibleRunTabs(content: RunContent): RunTab[] {
+  return RUN_TABS.filter((tab) => tab === "logs" || tab === "details" || hasContent(tab, content));
+}
+
 export function defaultRunTab(content: RunContent): RunTab {
   if (content.failed && content.taskLines > 0) return "logs";
   if (hasContent("timeline", content)) return "timeline";
@@ -41,15 +49,16 @@ export function defaultRunTab(content: RunContent): RunTab {
 }
 
 /**
- * The tab to show: the one asked for by name, else the one carried over from
- * the previous run when this run has something there, else this run's default.
+ * The tab to show: the one asked for by name when this run shows it, else the
+ * one carried over from the previous run when this run has something there,
+ * else this run's default.
  */
 export function pickRunTab(
   content: RunContent,
   asked: RunTab | undefined,
   carried: RunTab | undefined,
 ): RunTab {
-  if (asked) return asked;
+  if (asked && visibleRunTabs(content).includes(asked)) return asked;
   if (carried && hasContent(carried, content)) return carried;
   return defaultRunTab(content);
 }
